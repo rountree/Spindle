@@ -105,7 +105,7 @@ extern void spindle_dump_on_error();
       }                                                                 \
    } while (0)
 
-void init_spindle_debugging(char *name, int survive_exec);
+int init_spindle_debugging(char *name, int survive_exec);
 void fini_spindle_debugging();
 void reset_spindle_debugging();
 int is_debug_fd(int fd);

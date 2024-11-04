@@ -273,24 +273,34 @@ void reset_spindle_debugging()
    init_spindle_debugging(spindle_debug_name, 0);
 }
 
-void init_spindle_debugging(char *name, int survive_exec)
+int init_spindle_debugging(char *name, int survive_exec)
 {
+   // If the shell is not yet initialized to the point where the
+   // SPINDLE_DEBUG environment variable is set, assume log_level
+   // of 99, log the message, and return 1.  Subsequent messages
+   // will continue to check for SPINDLE_DEBUG.  Once it's found,
+   // initialize as usual and return 0 on success.
    char *already_setup, *log_level_str;
    int log_level = 0;
+   int missing_SPINDLE_TEST = 0;
 
    spindle_debug_name = name;
 
    if (spindle_debug_prints || run_tests)
-      return;
+      return 0;
 
    run_tests = (getenv("SPINDLE_TEST") != NULL);
 
    log_level_str = getenv("SPINDLE_DEBUG");
-   if (log_level_str)
+   if (log_level_str){
       log_level = atoi(log_level_str);
+   }else{
+      missing_SPINDLE_TEST = 1;
+      log_level = 99;
+   }
    spindle_debug_prints = log_level;
    if (!log_level && !run_tests)
-      return;
+      return 0;
 
    /* Setup locations for temp and output files */
    tempdir = getenv("TMPDIR");
@@ -324,6 +334,8 @@ void init_spindle_debugging(char *name, int survive_exec)
       spindle_debug_output_f = fdopen(debug_fd, "w");
    if (test_fd != -1)
       spindle_test_output_f = fdopen(test_fd, "w");      
+
+   return missing_SPINDLE_TEST;
 }
 
 void spindle_dump_on_error()
@@ -373,11 +385,12 @@ int spindle_debug_printf_impl(int priority, const char *file, unsigned int line,
    char *last_slash;
    
    if (!initialized) {
+      spindle_debug_prints = 0;
+      run_tests = 0;
       if (strcmp(spindle_debug_name, "UNKNOWN") == 0) {
          spindle_debug_name = "Launcher";
       }
-      init_spindle_debugging(spindle_debug_name, 0);
-      initialized = 1;
+      initialized = ! init_spindle_debugging(spindle_debug_name, 0);
    }
 
    if (!spindle_debug_prints || spindle_debug_prints < priority)

@@ -345,9 +345,11 @@ static int sp_init (flux_plugin_t *p,
     /*  If SPINDLE_DEBUG is set in the environment of the job, propagate
      *  it into the shell so we get spindle debugging for this session.
      */
-    if ((debug = flux_shell_getenv (shell, "SPINDLE_DEBUG")))
+    if ((debug = flux_shell_getenv (shell, "SPINDLE_DEBUG"))){
         setenv ("SPINDLE_DEBUG", debug, 1);
-
+    }else{
+        setenv ("SPINDLE_DEBUG", "0", 1);
+    }
     /*  The spindle testsuite requires SPINDLE_TEST
      */
     if ((test = flux_shell_getenv (shell, "SPINDLE_TEST")))
