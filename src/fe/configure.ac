@@ -35,4 +35,4 @@ if test "x$CLEANUP_PROC" == "xtrue"; then
 fi
 
 AC_OUTPUT
-
+AC_SUBST(PKGSYSCONF_DIR)

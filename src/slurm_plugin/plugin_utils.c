@@ -24,7 +24,7 @@
 #endif
 
 
-extern char *parse_location(char *loc);
+extern char *parse_location(char *loc, int number);
 extern char *realize(char *path);
 extern int spindle_mkdir(char *orig_path);
 
@@ -188,7 +188,7 @@ int isBEProc(spindle_args_t *params)
       sdprintf(1, "ERROR: Location not filled in\n");
       goto done;
    }
-   expanded_dir = parse_location(dir);
+   expanded_dir = parse_location(dir, params->number);
    if (!expanded_dir) {
       sdprintf(1, "ERROR: Could not expand file-system dir %s\n", dir);
       goto done;

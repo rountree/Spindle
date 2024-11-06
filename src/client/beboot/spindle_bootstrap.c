@@ -85,7 +85,7 @@ static char *default_subaudit_libstr = libstr_biter_subaudit;
 #endif
 
 extern int spindle_mkdir(char *path);
-extern char *parse_location(char *loc);
+extern char *parse_location(char *loc, int number);
 extern char *realize(char *path);
 
 static int establish_connection()
@@ -279,7 +279,7 @@ static void get_clientlib()
       err_printf("Failed to relocate client library %s\n", default_libstr);
    }
    else {
-      debug_printf("Relocated client library %s to %s\n", default_libstr, client_lib);
+      debug_printf2("Relocated client library %s to %s\n", default_libstr, client_lib);
       chmod(client_lib, 0600);
    }
 }
@@ -301,7 +301,7 @@ int main(int argc, char *argv[])
       fprintf(stderr, "spindle_boostrap cannot be invoked directly\n");
       return -1;
    }
-   location = parse_location(location);
+   location = parse_location(location, number);
    if (!location) {
       return -1;
    }

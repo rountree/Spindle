@@ -31,7 +31,7 @@ AC_ARG_WITH(testrm,
        [TESTRM=${withval}],
        [])
 AC_ARG_WITH(rm,
-        [AS_HELP_STRING([--with-rm=ARG],[Default resource manager (valid options are 'slurm', 'lrun', 'jsrun', and 'flux')])],
+        [AS_HELP_STRING([--with-rm=ARG],[Default resource manager (valid options are 'slurm', 'slurm-plugin', 'flux', and 'serial')])],
         [TESTRM=${withval}],
         [])
 if test "x$TESTRM" == "xunknown"; then
@@ -39,6 +39,44 @@ if test "x$TESTRM" == "xunknown"; then
 fi
 AC_SUBST(TESTRM)
 AC_DEFINE_UNQUOTED([TESTRM], "[$TESTRM]", [Default recource manager])
+
+AC_ARG_ENABLE(slurm,
+              [AS_HELP_STRING([--enable-slurm],[Builds in support for running with SLURM via srun launching])],
+              [ENABLE_SLURM=true],
+              [ENABLE_SLURM=false])
+#Slurm plugin and location detection
+AC_ARG_ENABLE(slurm-plugin,
+              [AS_HELP_STRING([--enable-slurm-plugin],[Builds in support for running with SLURM via plugin])],
+              [ENABLE_SLURM_PLUGIN="true"],
+              [ENABLE_SLURM_PLUGIN="false"])
+AC_ARG_ENABLE(flux-plugin,
+              [AS_HELP_STRING([--enable-flux-plugin],[Builds in support for running flux via a plugin])],
+              [ENABLE_FLUX_PLUGIN="true"],
+              [ENABLE_FLUX_PLUGIN="false"])
+AC_ARG_WITH(slurm-dir,
+            [AS_HELP_STRING([--with-slurm-dir=DIR],[Look in in DIR for root of a slurm installation])]
+            [SLURM_DIR=${withval}])
+
+              
+if test "x$TESTRM" == "xslurm"; then
+   ENABLE_SLURM=true
+fi
+if test "xTESTRM" == "xslurm-plugin"; then
+   ENABLE_SLURM_PLUGIN="true"
+fi
+if test "x$TESTRM" == "xflux"; then
+   ENABLE_FLUX_PLUGIN=true
+fi
+
+if test "x$ENABLE_SLURM" == "xtrue"; then
+  AC_DEFINE([ENABLE_SLURM], [1], [Slurm with via srun launching is enabled])
+fi
+if test "x$ENABLE_SLURM_PLUGIN" == "xtrue"; then
+  AC_DEFINE([ENABLE_SLURM_PLUGIN], [1], [Slurm with via plugin is enabled])
+fi
+if test "x$ENABLE_FLUX_PLUGIN" == "xtrue"; then
+  AC_DEFINE([ENABLE_FLUX_PLUGIN], [1], [Flux with via plugin is enabled])
+fi
 
 #OS Detection
 AC_ARG_ENABLE(bluegene,
@@ -76,7 +114,7 @@ bad_srun_major=20
 bad_srun_minor=11
 good_srun_major=0
 good_srun_minor=0
-if test "x$TESTRM" == "xslurm"; then
+if test "x$ENABLE_SLURM" == "xtrue"; then
   AC_PATH_PROG(SRUN_PATH, "srun", "none")
   if test "x$SRUN_PATH" == "xnone"; then
      AC_MSG_ERROR([Slurm support was requested but could not find srun in PATH])
@@ -276,21 +314,6 @@ fi
 AC_ARG_ENABLE(subaudit-as-default,
               [AS_HELP_STRING([--enable-subaudit-as-default],[Enable subaudit option as defaulted to on])],
               [USE_SUBAUDIT_BY_DEFAULT="true"])
-
-#Slurm plugin and location detection
-AC_ARG_ENABLE(slurm-plugin,
-              [AS_HELP_STRING([--enable-slurm-plugin],[Build a spindle plugin for slurm])],
-              [ENABLE_SLURM_PLUGIN="true"],
-              [ENABLE_SLURM_PLUGIN="false"])
-
-AC_ARG_WITH(slurm-dir,
-            [AS_HELP_STRING([--with-slurm-dir=DIR],[Look in in DIR for root of a slurm installation])]
-            [SLURM_DIR=${withval}])
-
-AC_ARG_ENABLE(flux-plugin,
-              [AS_HELP_STRING([--enable-flux-plugin],[Build a spindle plugin for flux])],
-              [ENABLE_FLUX_PLUGIN="true"],
-              [ENABLE_FLUX_PLUGIN="false"])
 
 if test "x$ENABLE_FLUX_PLUGIN" = "xtrue"; then
   # Check for whether to build Flux shell plugin

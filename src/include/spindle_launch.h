@@ -77,6 +77,7 @@ extern "C" {
 #define slurm_plugin_launcher (1 << 6)      /* Launched via a SLURM spank plugin */
 #define jsrun_launcher (1 << 7)             /* Launched via IBM's jsrun launcher */
 #define lrun_launcher (1 << 8)              /* Launched via LLNL's wrappers around jsrun */
+#define flux_plugin_launcher (1 << 9)
 
 /* Possible values for startup_type, describe how Spindle servers are started */
 #define startup_serial 0                    /* Job is non-parallel app, and server is forked/exec */
@@ -92,7 +93,8 @@ typedef uint64_t opt_t;
 
 /* Parameters for configuring Spindle */
 typedef struct {
-   /* A unique number that will be used to identify this spindle session */
+   /* A unique number that will be used to identify this spindle session 
+      Unlike unique_id, this is not a private identifier */
    unsigned int number;
 
    /* The beginning port in a range that will be used for server->server communication */
@@ -104,8 +106,8 @@ typedef struct {
    /* A bitfield of the above OPT_* values */
    opt_t opts;
 
-   /* A unique number that all servers will need
-      to provide to join the Spindle network */
+   /* A unique number that all servers will need to provide to join the Spindle network 
+      Under old security modes (not munge), this id needed to be kept private within the session */
    unique_id_t unique_id;
 
    /* The type of the MPI launcher */
@@ -137,7 +139,9 @@ typedef struct {
 
    /* Colon-seperated list of prefixes to exclude from numa optimization, with precedence over numa_files */
    char *numa_excludes;
-   
+
+   /* Path to rsh command, used if OPT_RSHLAUNCH */
+   char *rsh_command;
 } spindle_args_t;
 
 /* Functions used to startup Spindle on the front-end. Init returns after finishing start-up,
@@ -151,7 +155,8 @@ SPINDLE_EXPORT int spindleCloseFE(spindle_args_t *params);
    Mixing this with OPT_PERSIST could hang spindle */
 SPINDLE_EXPORT int spindleWaitForCloseFE(spindle_args_t *params);
    
-/* Fill in a spindle_args_t with default values */
+/* Fill in a spindle_args_t with default values
+   This should be deprecated in favor of fillInSpindleArgsCmdlineFE(), which can return errors */
 SPINDLE_EXPORT void fillInSpindleArgsFE(spindle_args_t *params);
 
 /* Similar to fillInSpindleArgsFE, but take overrides from a command line.  The command

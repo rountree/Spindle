@@ -35,7 +35,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #if defined(__cplusplus)
 extern "C" {
 #endif
-   char *parse_location(char *loc);
+   char *parse_location(char *loc, int number);
 #if defined(__cplusplus)
 }
 #endif
@@ -46,7 +46,7 @@ extern char *custom_getenv();
 #define IS_ENVVAR_CHAR(X) ((X >= 'a' && X <= 'z') || (X >= 'A' && X <= 'Z') || (X == '_'))
 
 /* Expand the user specified location with environment variable values */
-char *parse_location(char *loc)
+char *parse_location(char *loc, int number)
 {
    char newloc[MAX_PATH_LEN+1];
    char envvar[MAX_PATH_LEN+1];
@@ -82,6 +82,7 @@ char *parse_location(char *loc)
          char *env_start = loc + i + 1;
          char *env_end = env_start;
          size_t envvar_len, env_value_len;
+         char env_value_str[32];
          char *env_value;
 
          while (IS_ENVVAR_CHAR(*env_end)) env_end++;
@@ -94,11 +95,17 @@ char *parse_location(char *loc)
          }
          strncpy(envvar, env_start, envvar_len);
          envvar[envvar_len] = '\0';
+         if (strcmp(envvar, "NUMBER") == 0) {
+            snprintf(env_value_str, sizeof(env_value_str), "%x", (unsigned int) number);
+            env_value = env_value_str;
+         }
+         else {
 #if defined(CUSTOM_GETENV)
-         env_value = custom_getenv(envvar);
+            env_value = custom_getenv(envvar);
 #else
-         env_value = getenv(envvar);
-#endif         
+            env_value = getenv(envvar);
+#endif
+         }
          if (!env_value) {
             fprintf(stderr, "Spindle Error: No environment variable '%s' defined, from specified location %s\n",
                     envvar, loc);

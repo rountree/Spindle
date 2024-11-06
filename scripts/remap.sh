@@ -38,7 +38,9 @@ int dowork()
 }
 EOF
 
-cat <<EOF | $CCLINE -o $WORKINGDIR/remap$UNIQ -L$WORKINGDIR -lremap$UNIQ -Wl,-rpath,$WORKINGDIR -x c -
+echo $CCLINE -o $WORKINGDIR/remap$UNIQ -L$WORKINGDIR -lremap$UNIQ -Wl,-rpath,$WORKINGDIR -x c -
+
+cat <<EOF | $CCLINE -o $WORKINGDIR/remap$UNIQ -L$WORKINGDIR -x c - -lremap$UNIQ -Wl,-rpath,$WORKINGDIR
 extern int dowork();
 int data = 5;
 int main(int argc, char *argv[])
@@ -50,5 +52,5 @@ EOF
 cp $WORKINGDIR/remap$UNIQ $WORKINGDIR/remap2$UNIQ
 $WORKINGDIR/remap$UNIQ > /dev/null
 RETVAL=$?
-rm -f $WORKINGDIR/remap$UNIQ $WORKINGDIR/remap2$UNIQ $WORKINGDIR/libremap$UNIQ.so
+#rm -f $WORKINGDIR/remap$UNIQ $WORKINGDIR/remap2$UNIQ $WORKINGDIR/libremap$UNIQ.so
 exit $RETVAL

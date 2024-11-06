@@ -309,9 +309,9 @@ static int handle_client_file_request(ldcs_process_data_t *procdata, int nc, ldc
    client->is_lstat = is_lstat;
    client->is_loader = is_loader;   
    
-   debug_printf2("Server recvd query %s%s for %s.  Dir = %s, File = %s\n", 
+   debug_printf("Server recvd query %s%s for %s.  Dir = %s, File = %s\n", 
                  is_loader ? "loader " : "",
-                 is_stat ? "stat" : "exact path",
+                 is_stat ? "stat" : "file contents",
                  client->query_globalpath, client->query_dirname, client->query_filename);
    return handle_client_progress(procdata, nc);
 }
@@ -618,7 +618,7 @@ static void *handle_setup_file_buffer(ldcs_process_data_t *procdata, char *pathn
    double starttime;
    int errcode = 0;
 
-   debug_printf("Allocating buffer space for file %s\n", pathname);
+   debug_printf2("Allocating buffer space for file %s\n", pathname);
    filename[MAX_PATH_LEN] = dirname[MAX_PATH_LEN] = '\0';   
    
    /**
@@ -1059,7 +1059,7 @@ static int handle_client_originalfile_query(ldcs_process_data_t *procdata, int n
 {
    ldcs_client_t *client = procdata->client_table + nc;
    client->query_localpath = client->query_globalpath;
-   debug_printf2("Server is sending original file path back: %s\n", client->query_localpath);
+   debug_printf("Server is sending original file path back: %s\n", client->query_localpath);
    return handle_client_fulfilled_query(procdata, nc);
 }
 
@@ -1118,13 +1118,13 @@ static int handle_client_fulfilled_query(ldcs_process_data_t *procdata, int nc)
 
    ldcs_send_msg(connid, &out_msg);
 
-   debug_printf2("Server answering query (fulfilled): %s\n", out_msg.data);
-   
    /* statistic */
    procdata->server_stat.clientmsg.cnt++;
    procdata->server_stat.clientmsg.time += ldcs_get_time() -
       client->query_arrival_time;
 
+   debug_printf("Server answering query: %s\n", outfile);
+   
    handle_close_client_query(procdata, nc);
    return 0;
 }
@@ -1151,11 +1151,12 @@ static int handle_client_rejected_query(ldcs_process_data_t *procdata, int nc, i
       
    ldcs_send_msg(connid, &out_msg);
 
-   debug_printf2("Server answering query (rejected with errcode %d)\n", errcode);
       
    /* statistic */
    procdata->server_stat.clientmsg.cnt++;
    procdata->server_stat.clientmsg.time += ldcs_get_time() - client->query_arrival_time;
+
+   debug_printf("Server answering query (rejected with errcode %d)\n", errcode);
    handle_close_client_query(procdata, nc);
    return 0;
 }
@@ -1961,6 +1962,7 @@ static int handle_report_fileexist_result(ldcs_process_data_t *procdata, int nc,
    procdata->server_stat.clientmsg.cnt++;
    procdata->server_stat.clientmsg.time += ldcs_get_time() - client->query_arrival_time;
 
+   debug_printf("Responding to file exist as: %s", query_result ? "exists" : "nonexistant");
    handle_close_client_query(procdata, nc);
    
    return result;
@@ -2044,8 +2046,7 @@ static int handle_client_fileexist_msg(ldcs_process_data_t *procdata, int nc, ld
    client->query_open = 1;
    client->existance_query = 1;
    
-   debug_printf2("Server recvd existance query for %s.  Dir = %s, File = %s\n", 
-                 client->query_globalpath, client->query_dirname, client->query_filename);
+   debug_printf("Server recvd existance query for %s.", client->query_globalpath);
    return handle_client_progress(procdata, nc);
 }
 
@@ -2087,6 +2088,8 @@ static int handle_client_origpath_msg(ldcs_process_data_t *procdata, int nc, ldc
    procdata->server_stat.clientmsg.cnt++;
    procdata->server_stat.clientmsg.time += ldcs_get_time() - client->query_arrival_time;
 
+   debug_printf("Responding to client with original path message for %s\n",
+                origpath);
    handle_close_client_query(procdata, nc);
    
    return result;
@@ -2464,6 +2467,7 @@ static int handle_client_metadata_result(ldcs_process_data_t *procdata, int nc, 
    procdata->server_stat.clientmsg.cnt++;
    procdata->server_stat.clientmsg.time+=(ldcs_get_time()-
                                                    client->query_arrival_time);
+   debug_printf("Handle stat response: %s\n", localpath ? localpath : "[NO FILE]");
    handle_close_client_query(procdata, nc);
    
    return result;

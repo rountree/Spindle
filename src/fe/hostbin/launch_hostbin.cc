@@ -36,7 +36,6 @@ using namespace std;
 
 #include "spindle_launch.h"
 #include "spindle_debug.h"
-#include "../startup/parseargs.h"
 #include "../startup/launcher.h"
 
 #if !defined(LIBEXEC)
@@ -535,7 +534,7 @@ static bool fileExists(string f)
 }
 
 class HostbinLauncher : public Launcher {
-   friend Launcher *createHostbinLauncher(spindle_args_t *params);
+   friend Launcher *createHostbinLauncher(spindle_args_t *params, ConfigMap &config);
    friend void hostbin_on_child(int);
 private:
    bool initError;
@@ -548,7 +547,7 @@ private:
 
 protected:
    virtual bool spawnDaemon();
-   HostbinLauncher(spindle_args_t *args);
+   HostbinLauncher(spindle_args_t *args, ConfigMap &config_);
 public:
    virtual bool spawnJob(app_id_t id, int app_argc, char **app_argv);
    virtual const char **getProcessTable();
@@ -568,8 +567,8 @@ void hostbin_on_child(int)
    }
 }
 
-Launcher *createHostbinLauncher(spindle_args_t *params) {
-   HostbinLauncher::hlauncher = new HostbinLauncher(params);
+Launcher *createHostbinLauncher(spindle_args_t *params, ConfigMap &config) {
+   HostbinLauncher::hlauncher = new HostbinLauncher(params, config);
    if (HostbinLauncher::hlauncher->initError) {
       delete HostbinLauncher::hlauncher;
       return NULL;
@@ -577,8 +576,8 @@ Launcher *createHostbinLauncher(spindle_args_t *params) {
    return HostbinLauncher::hlauncher;
 }
 
-HostbinLauncher::HostbinLauncher(spindle_args_t *params) :
-   Launcher(params),
+HostbinLauncher::HostbinLauncher(spindle_args_t *params_, ConfigMap &config_) :
+   Launcher(params_, config_),
    initError(false),
    initDone(false),
    io_thread(),
@@ -600,7 +599,13 @@ bool HostbinLauncher::spawnDaemon()
 
 bool HostbinLauncher::spawnJob(app_id_t id, int app_argc, char **app_argv)
 {
-   string hostbin_exe = getHostbin(); 
+   pair<bool, string> gethostbin = config.getValueString(confHostbin);
+   if (!gethostbin.first) {
+      fprintf(stderr, "Spindle Error: Hostbin requested, but hostbin path unset\n");
+      err_printf("Hostbin path unset\n");
+   }
+   string hostbin_exe = gethostbin.second;
+
    if (hostbin_exe.find('/') == string::npos) {
       string fullpath = string(libexec_dir) + hostbin_exe;
       if (fileExists(fullpath))

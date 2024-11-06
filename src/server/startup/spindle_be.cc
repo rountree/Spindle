@@ -65,6 +65,7 @@ static int unpack_data(spindle_args_t *args, void *buffer, int buffer_size)
    unpack_param(args->bundle_cachesize_kb, buf, pos);
    unpack_param(args->numa_files, buf, pos);
    unpack_param(args->numa_excludes, buf, pos);
+   unpack_param(args->rsh_command, buf, pos);
    assert(pos == buffer_size);
 
    return 0;    
@@ -140,7 +141,7 @@ int spindleRunBE(unsigned int port, unsigned int num_ports, unique_id_t unique_i
    
    
    /* Expand environment variables in location. */
-   char *new_location = parse_location(args.location);
+   char *new_location = parse_location(args.location, args.number);
    if (!new_location) {
       err_printf("Failed to convert location %s\n", args.location);
       return -1;

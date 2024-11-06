@@ -4,8 +4,8 @@ include_HEADERS = $(top_srcdir)/../include/spindle_launch.h
 
 AM_CPPFLAGS = -I$(top_srcdir)/../logging
 
-CORE_SOURCES = spindle_fe.cc parseargs.cc parse_preload.cc $(top_srcdir)/../utils/pathfn.c $(top_srcdir)/../utils/keyfile.c $(top_srcdir)/../utils/parseloc.c $(top_srcdir)/../utils/rshlaunch.c
-CORE_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/../include -I$(top_srcdir)/comlib -I$(top_srcdir)/../server/cache -I$(top_srcdir)/../server/comlib -I$(top_srcdir)/../utils -I$(top_srcdir)/../cobo -DBINDIR=\"$(pkglibexecdir)\" -DLIBEXECDIR=\"$(pkglibexecdir)\" -DPROGLIBDIR=\"$(pkglibdir)\"
+CORE_SOURCES = spindle_fe.cc parseargs.cc config_parser.cc config_mgr.cc parse_preload.cc $(top_srcdir)/../utils/pathfn.c $(top_srcdir)/../utils/keyfile.c $(top_srcdir)/../utils/parseloc.c $(top_srcdir)/../utils/rshlaunch.c
+CORE_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/../include -I$(top_srcdir)/comlib -I$(top_srcdir)/../server/cache -I$(top_srcdir)/../server/comlib -I$(top_srcdir)/../utils -I$(top_srcdir)/../cobo -DBINDIR=\"$(pkglibexecdir)\" -DLIBEXECDIR=\"$(pkglibexecdir)\" -DPROGLIBDIR=\"$(pkglibdir)\" -DPKGSYSCONFDIR=\"$(PKGSYSCONF_DIR)\"
 CORE_LDADD = $(top_builddir)/logging/libspindleflogc.la -lpthread
 if COBO
 CORE_LDADD += $(top_builddir)/comlib/libfe_cobo.la $(top_builddir)/cobo/libldcs_cobo.la

@@ -66,7 +66,7 @@ static const char *user_options = NULL;
 static int enable_spindle = 0;
 
 extern char **environ;
-extern char *parse_location(char *loc);
+extern char *parse_location(char *loc, int number);
 
 struct spank_option spank_options[] =
 {
@@ -242,7 +242,7 @@ static int fillInArgs(spank_t spank, spindle_args_t *args, int argc, char **argv
 
    oldlocation = args->location;
    current_spank = spank;
-   args->location = parse_location(oldlocation);
+   args->location = parse_location(oldlocation, args->number);
    free(oldlocation);
 
    return 0;

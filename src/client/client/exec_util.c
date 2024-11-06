@@ -262,9 +262,9 @@ int exec_pathsearch(int ldcsid, const char *orig_exec, char **reloc_exec, int *e
          access_denied_found = 1;
          continue;
       }
-      debug_printf("File %s exists and has execute set, requesting full file\n", newexec);
+      debug_printf2("File %s exists and has execute set, requesting full file\n", newexec);
       get_relocated_file(ldcsid, newexec, reloc_exec, errcode);
-      debug_printf("Exec search request returned %s -> %s\n", newexec, *reloc_exec ? *reloc_exec : "NULL");
+      debug_printf2("Exec search request returned %s -> %s\n", newexec, *reloc_exec ? *reloc_exec : "NULL");
       if (*reloc_exec) {
          found = 1;
          break;

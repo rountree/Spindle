@@ -53,7 +53,7 @@ extern char **environ;
 
 class LMonLauncher : public Launcher 
 {
-   friend Launcher *createLaunchmonLauncher(spindle_args_t *params);
+   friend Launcher *createLaunchmonLauncher(spindle_args_t *params, ConfigMap &config);
 private:
    static LMonLauncher *llauncher;
    int aSession;
@@ -63,7 +63,7 @@ private:
 
    void initEnvironment();
    bool initLMon();
-   LMonLauncher(spindle_args_t *params_);
+   LMonLauncher(spindle_args_t *params_, ConfigMap &config_);
    static int pack_environ(void *udata, void *msgbuf, 
                            int msgbufmax, int *msgbuflen);
    static int packfebe_cb(void *udata, void *msgbuf, 
@@ -82,9 +82,9 @@ public:
 
 LMonLauncher *LMonLauncher::llauncher = NULL;
 
-Launcher *createLaunchmonLauncher(spindle_args_t *params)
+Launcher *createLaunchmonLauncher(spindle_args_t *params, ConfigMap &config)
 {
-   LMonLauncher *l = new LMonLauncher(params);
+   LMonLauncher *l = new LMonLauncher(params, config);
    if (l->initError) {
       delete l;
       return NULL;
@@ -236,8 +236,8 @@ int LMonLauncher::packfebe_cb(void *udata, void *msgbuf,
    return 0;
 }
 
-LMonLauncher::LMonLauncher(spindle_args_t *params_) :
-   Launcher(params_),
+LMonLauncher::LMonLauncher(spindle_args_t *params_, ConfigMap &config_) :
+   Launcher(params_, config_),
    aSession(0),
    appid(0),
    status(0),
