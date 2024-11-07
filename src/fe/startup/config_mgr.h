@@ -44,6 +44,7 @@ enum SpindleConfigID {
    confSecurity,
    confJoblauncher,
    confNuma,
+   confNumaIncludes,
    confNumaExcludes,
    confAuditType,
    confShmcacheSize,
@@ -105,16 +106,17 @@ enum CmdlineShortOptions {
    shortMsgcacheTimeout = 281,
    shortCleanupProc = 282,
    shortRSHMode = 283,
-   shortNUMAExcludes = 284,
-   shortCachePrefix = 285,
-   shortNumPorts = 286,
-   shortSerial = 287,
-   shortRSHCmd = 288,
-   shortPushPull = 289,
-   shortSecuritySet = 290,
-   shortLauncher = 291,
-   shortNetwork = 292,
-   shortHostbinEnable = 293
+   shortNUMAIncludes = 284,
+   shortNUMAExcludes = 285,
+   shortCachePrefix = 286,
+   shortNumPorts = 287,
+   shortSerial = 288,
+   shortRSHCmd = 289,
+   shortPushPull = 290,
+   shortSecuritySet = 291,
+   shortLauncher = 292,
+   shortNetwork = 293,
+   shortHostbinEnable = 294
 };
 
 enum CmdlineGroups {

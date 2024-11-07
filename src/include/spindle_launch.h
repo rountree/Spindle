@@ -77,7 +77,7 @@ extern "C" {
 #define slurm_plugin_launcher (1 << 6)      /* Launched via a SLURM spank plugin */
 #define jsrun_launcher (1 << 7)             /* Launched via IBM's jsrun launcher */
 #define lrun_launcher (1 << 8)              /* Launched via LLNL's wrappers around jsrun */
-#define flux_plugin_launcher (1 << 9)
+#define flux_plugin_launcher (1 << 9)       /* Launched via flux's plugin */
 
 /* Possible values for startup_type, describe how Spindle servers are started */
 #define startup_serial 0                    /* Job is non-parallel app, and server is forked/exec */

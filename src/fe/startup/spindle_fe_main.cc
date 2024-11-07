@@ -99,11 +99,13 @@ int main(int argc, char *argv[])
 
    spindle_args_t *params = (spindle_args_t *) malloc(sizeof(spindle_args_t));;
    memset(params, 0, sizeof(spindle_args_t));
+   debug_printf("launcher = %u\n", params->startup_type);
    result = config.toSpindleArgs(*params);
    if (!result) {
       debug_printf("Aborting due to internal error moving config to spindle_args_t\n");
       return -1;
    }
+   debug_printf("launcher = %u\n", params->startup_type);
    result = config.getUniqueID(params->unique_id, errmessage);
    if (!result) {
       fprintf(stderr, "Error: %s\n", errmessage.c_str());
@@ -112,6 +114,8 @@ int main(int argc, char *argv[])
    params->number = config.getNumber();
 
    init_session(params, config);
+
+   debug_printf("launcher = %u\n", params->startup_type);
 
    Launcher *launcher = newLauncher(params, config);
    if (!launcher) {

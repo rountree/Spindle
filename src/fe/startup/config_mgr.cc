@@ -60,7 +60,7 @@ using namespace std;
 #  define DEFAULT_LAUNCHER_STR TESTRM
 #else
 #  if ENABLE_FLUX_PLUGIN
-#     define DEFAULT_LAUNCHER_STR "flux-plugin"
+#     define DEFAULT_LAUNCHER_STR "flux"
 #  elif ENABLE_SLURM_PLUGIN
 #     define DEFAULT_LAUNCHER_STR "slurm-plugin"
 #  elif ENABLE_SLURM
@@ -118,7 +118,7 @@ using namespace std;
 #define CLEANUP_PROC_STR "false"
 #endif
 
-#if defined(RSHLAUNCH_ENABLE)
+#if defined(RSHLAUNCH_ENABLED)
 #define RSHLAUNCH_STR "true"
 #else
 #define RSHLAUNCH_STR "false"
@@ -149,16 +149,16 @@ const list<SpindleOption> Options = {
    { confCmdlineNewgroup, "", shortNone, groupPushPull, cvBool, {}, "",
      "These options specify how the Spindle network should distibute files. Push is better for SPMD programs. Pull is better for MPMD programs. Default is push." },
    { confCmdlineOnly, "push", shortPush, groupPushPull, cvBool, {}, "true",
-     "Use a push model where objects loaded by any process are made available to all processes." },
+     "Use a push model where objects loaded by any process are made available to all processes. (Deprecated for --pushpull=push)" },
    { confCmdlineOnly, "pull", shortPull, groupPushPull, cvBool, {}, "false",
-     "Use a pull model where objects are only made available to processes that require them." },
+     "Use a pull model where objects are only made available to processes that require them. (Deprecated for --pushpull=pull)" },
    { confPushpull, "pushpull", shortPushPull, groupPushPull, cvEnum, { "push", "pull" }, "push",
      "Sets the network 'push' or 'pull' model to the given string." },
 
    { confCmdlineNewgroup, "", shortNone, groupNetwork, cvBool, {}, "",
      "These options configure Spindle's network model.  Typical Spindle runs should not need to set these." },
    { confCmdlineOnly, "cobo", shortCobo, groupNetwork, cvBool, {}, "true",
-     "Use a tree-based cobo network for distributing objects." },
+     "Use a tree-based cobo network for distributing objects. (Deprecated for --network=cobo)" },
    { confNetwork, "network", shortNetwork, groupNetwork, cvEnum, { "cobo" }, "cobo",
      "Sets the network communication type to the given mode." },
    { confPort, "port", shortPort, groupNetwork, cvInteger, {}, SPINDLE_PORT_STR,
@@ -169,25 +169,25 @@ const list<SpindleOption> Options = {
    { confCmdlineNewgroup, "", shortNone, groupSec, cvBool, {}, "",
      "These options specify the security model Spindle should use for validating TCP connections." },
    { confCmdlineOnly, "security-munge", shortSecMunge, groupSec, cvBool, {}, "",
-     "Use munge for security authentication" },
+     "Use munge for security authentication. (Deprecated for --security=munge)" },
    { confCmdlineOnly, "security-lmon", shortSecKeyLMon, groupSec, cvBool, {}, "",
-     "Use launchmon to exchange keys for security authentication." },
+     "Use launchmon to exchange keys for security authentication. (Deprecated for --security=launchmon)" },
    { confCmdlineOnly, "security-keyfile", shortSecKeyFile, groupSec, cvBool, {}, "",
-     "Use a keyfile stored in a global file system for security authentication." },
+     "Use a keyfile stored in a global file system for security authentication. (Deprecated for --security=keyfile)" },
    { confCmdlineOnly, "security-none", shortSecNull, groupSec, cvBool, {}, "",
-     "Do not do any security authentication" },
+     "Do not do any security authentication. (Deprecated for --security=none)" },
    { confSecurity, "security", shortSecuritySet, groupSec, cvEnum, { "munge", "keyfile", "launchmon", "none" }, SECURITY_DEFAULT_STR,
      "Set the security mode to the given value." },
 
    { confCmdlineNewgroup, "", shortNone, groupLauncher, cvBool, {}, "",
      "These options specify the job launcher Spindle is being run with.  If unspecified, Spindle will try to autodetect." },
    { confCmdlineOnly, "launcher-startup", shortLauncherStartup, groupLauncher, cvBool, {}, "false",
-     "Launch spindle daemons using the system's job launcher (requires an already set-up session)." },
+     "Launch spindle daemons using the system's job launcher (requires an already set-up session) (Deprecated for launcher=[mode])." },
    { confCmdlineOnly, "no-mpi", shortNoMPI, groupLauncher, cvBool, {}, "no",
-     "Run serial job instead of a MPI job." },
+     "Run serial job instead of a MPI job. (Deprecated for launcher=serial)" },
    { confCmdlineOnly, "serial", shortSerial, groupLauncher, cvBool, {}, "no",
-     "Run serial job instead of a MPI job. Alias for --no-mpi." },
-   { confJoblauncher, "launcher", shortLauncher, groupLauncher, cvEnum, { "slurm", "flux-plugin", "slurm-plugin", "serial", "unknown" }, DEFAULT_LAUNCHER_STR,
+     "Run serial job instead of a MPI job. Alias for --no-mpi. (Deprecated for launcher=serial)" },
+   { confJoblauncher, "launcher", shortLauncher, groupLauncher, cvEnum, { "slurm", "flux", "slurm-plugin", "serial", "unknown" }, DEFAULT_LAUNCHER_STR,
      "Sets the launcher to the specified value." },
 
    { confCmdlineNewgroup, "", shortNone, groupSession, cvBool, {}, "",
@@ -200,12 +200,14 @@ const list<SpindleOption> Options = {
      "Run a new job in the given session." },
 
    { confCmdlineNewgroup, "", shortNone, groupNuma, cvBool, {}, "",
-     "Options for controlling spindle's numa-based optimizations, where it performs memory-aware library placement." },
-   { confNuma, "numa", shortNUMA, groupNuma, cvList, {}, "",
-     "Colon-seperated list of substrings that will be matched to executables/libraries. Matches will have their memory replicated into each NUMA domain."
-     " Specify the option, but leave it blank to replicate all spindle-relocated files into each NUMA domain." },
+     "Options for controlling spindle's numa-centric optimizations, where it performs memory-aware library replication and placement." },
+   { confNuma, "numa", shortNUMA, groupNuma, cvBool, {}, "false",
+     "Enables NUMA-centric optimizations." },
+   { confNumaIncludes, "numa-includes", shortNUMAIncludes, groupNuma, cvList, {}, "",
+     "Colon-seperated list of substrings that will be matched to executables/libraries. Matches will have their memory replicated into each NUMA domain. "
+     "If numa optimizations are enabled, but this option is not present, then all executables/libraries will have NUMA optimizations." },
    { confNumaExcludes, "numa-excludes", shortNUMAExcludes, groupNuma, cvList, {}, "",
-     "Colon-seprated list of prefixes that will excludes executables/libraries from NUMA optimization. Takes precedence over other numa lists." },
+     "Colon-seprated list of prefixes that will excludes executables/libraries from NUMA optimization. Takes precedence over numa includes." },
 
    { confCmdlineNewgroup, "", shortNone, groupMisc, cvBool, {}, "",
      "Misc options" },
@@ -348,7 +350,7 @@ bool ConfigMap::mergeOnto(const ConfigMap &other)
                        opt.cmdline_long, existing_value.c_str(), value.c_str(), other.origin.c_str());
          newvalue = value + ":" + existing_value;
       }
-      else if (!existing_value.empty()) {
+      else if (!existing_value.empty() && newvalue != value) {
          debug_printf3("Config parsing overwriting existing value for %s '%s' with '%s' from %s\n",
                        opt.cmdline_long, existing_value.c_str(), value.c_str(), other.origin.c_str());
          newvalue = value;
@@ -730,22 +732,28 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
             break;
          case confJoblauncher:
             if (strresult == "slurm") {
+               debug_printf("Setting srun_launcher as job launcher\n");
                args.startup_type = startup_mpi;
                args.use_launcher = srun_launcher;
+               debug_printf("launcher = %u\n", args.startup_type);
             }
-            else if (strresult == "flux-plugin") {
+            else if (strresult == "flux") {
+               debug_printf("Setting flux_plugin_launcher as job launcher\n");
                args.startup_type = startup_external;
                args.use_launcher = flux_plugin_launcher;
             }
             else if (strresult == "slurm-plugin") {
+               debug_printf("Setting slurm_plugin_launcher as job launcher\n");
                args.startup_type = startup_external;
                args.use_launcher = slurm_plugin_launcher;
             }
             else if (strresult == "serial") {
+               debug_printf("Setting serial as job launcher\n");
                args.startup_type = startup_serial;
                args.use_launcher = serial_launcher;
             }
             else if (strresult == "unknown") {
+               debug_printf("Job launcher is unknown\n");
             }
             else {
                err_printf("Unknown job launcher: %s\n", strresult.c_str());
@@ -753,6 +761,9 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
             }
             break;
          case confNuma:
+            setopt(args.opts, OPT_NUMA, boolresult);
+            break;
+         case confNumaIncludes:
             setopt(args.opts, OPT_NUMA, true);
             args.numa_files = getstr(strresult, alloc_strs);
             break;
@@ -781,7 +792,8 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
             args.preloadfile = getstr(strresult, alloc_strs);
             break;
          case confHostbinEnable:
-            args.startup_type = startup_hostbin;
+            if (boolresult)
+               args.startup_type = startup_hostbin;
             break;
          case confHostbin:
             break;
@@ -825,8 +837,12 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
             args.rsh_command = getstr(strresult, alloc_strs);
             break;
          case confStartSession:
+            setopt(args.opts, OPT_SESSION, boolresult);
+            break;
          case confEndSession:
          case confRunSession:
+            setopt(args.opts, OPT_SESSION, !strresult.empty());
+            
             break;
       }
    }

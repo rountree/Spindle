@@ -257,7 +257,8 @@ int fillInSpindleArgsCmdlineFE(spindle_args_t *params, unsigned int options, int
    if (!result) {
       err_printf("Failed to gather config info for launcher: %s\n", errmsg.c_str());
       fillargs_errmsg = errmsg;
-      *errstr = const_cast<char*>(fillargs_errmsg.c_str());
+      if (errstr)
+         *errstr = const_cast<char*>(fillargs_errmsg.c_str());
       return -1;
    }
 
@@ -265,7 +266,8 @@ int fillInSpindleArgsCmdlineFE(spindle_args_t *params, unsigned int options, int
    if (!result) {
       err_printf("Internal error converting config to args\n");
       fillargs_errmsg = "Internal Error";
-      *errstr = const_cast<char*>(fillargs_errmsg.c_str());
+      if (errstr)
+         *errstr = const_cast<char*>(fillargs_errmsg.c_str());
       return -1;
    }
 
@@ -276,7 +278,8 @@ int fillInSpindleArgsCmdlineFE(spindle_args_t *params, unsigned int options, int
       result = config.getUniqueID(params->unique_id, errmsg);
       if (!result) {
          fillargs_errmsg = errmsg;
-         *errstr = const_cast<char*>(fillargs_errmsg.c_str());
+         if (errstr)
+            *errstr = const_cast<char*>(fillargs_errmsg.c_str());
          return -1;
       }
    }
