@@ -55,7 +55,7 @@ static char debugging_name[32];
 static char old_cwd[MAX_PATH_LEN+1];
 static int rankinfo[4]={-1,-1,-1,-1};
 
-extern char *parse_location(char *loc);
+extern char *parse_location(char *loc, int number);
 
 /* compare the pointer top the cookie not the cookie itself, it may be changed during runtime by audit library  */
 int use_ldcs = 1;
@@ -195,7 +195,7 @@ static int init_server_connection()
    shm_cachesize = atoi(cachesize_s) * 1024;
 
    if (strchr(location, '$')) {
-      location = parse_location(location);
+      location = parse_location(location, number);
    }
 
    if (!(opts & OPT_FOLLOWFORK)) {
@@ -391,7 +391,7 @@ char *client_library_load(const char *name)
       patch_on_load_success(newname, name);
    }
 
-   debug_printf("la_objsearch redirecting %s to %s\n", name, newname);
+   debug_printf2("la_objsearch redirecting %s to %s\n", name, newname);
    test_log(newname);
    return newname;
 }

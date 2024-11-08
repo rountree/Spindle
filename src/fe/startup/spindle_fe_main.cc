@@ -32,35 +32,35 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "jobtask.h"
 #include "launcher.h"
 #include "parse_launcher.h"
-#include "parseargs.h"
 #include "spindle_debug.h"
 #include "spindle_launch.h"
 #include "parse_launcher.h"
 #include "spindle_session.h"
+#include "config_mgr.h"
 
 using namespace std;
 
 static void setupLogging(int argc, char **argv);
-static bool getNextTask(Launcher *launcher, spindle_args_t *params, vector<JobTask*> &tasks);
+static bool getNextTask(Launcher *launcher, spindle_args_t *params, vector<JobTask*> &tasks, const ConfigMap &config);
 
 #if defined(HAVE_LMON)
-extern Launcher *createLaunchmonLauncher(spindle_args_t *params);
+extern Launcher *createLaunchmonLauncher(spindle_args_t *params, ConfigMap &config_);
 #endif
-extern Launcher *createSerialLauncher(spindle_args_t *params);
-extern Launcher *createHostbinLauncher(spindle_args_t *params);
-extern Launcher *createMPILauncher(spindle_args_t *params);
-extern Launcher *createLSFLauncher(spindle_args_t *params);
+extern Launcher *createSerialLauncher(spindle_args_t *params, ConfigMap &config_);
+extern Launcher *createHostbinLauncher(spindle_args_t *params, ConfigMap &config_);
+extern Launcher *createMPILauncher(spindle_args_t *params, ConfigMap &config_);
+extern Launcher *createLSFLauncher(spindle_args_t *params, ConfigMap &config_);
 
-Launcher *newLauncher(spindle_args_t *params)
+Launcher *newLauncher(spindle_args_t *params, ConfigMap &config)
 {
    if (params->use_launcher == serial_launcher) {
       debug_printf("Starting application in serial mode\n");
-      return createSerialLauncher(params);
+      return createSerialLauncher(params, config);
    }
    else if (params->startup_type == startup_lmon) {
       debug_printf("Starting application with launchmon\n");
 #if defined(HAVE_LMON)
-      return createLaunchmonLauncher(params);
+      return createLaunchmonLauncher(params, config);
 #else
       fprintf(stderr, "Spindle Error: Spindle was not built with LaunchMON support\n");
       err_printf("HAVE_LMON not defined\n");
@@ -69,15 +69,15 @@ Launcher *newLauncher(spindle_args_t *params)
    }
    else if (params->startup_type == startup_hostbin) {
       debug_printf("Starting application with hostbin\n");
-      return createHostbinLauncher(params);
+      return createHostbinLauncher(params, config);
    }
    else if (params->startup_type == startup_mpi) {
       debug_printf("Starting application with MPI startup\n");
-      return createMPILauncher(params);
+      return createMPILauncher(params, config);
    }
    else if (params->startup_type == startup_lsf) {
       debug_printf("Starting application with MPI startup\n");
-      return createLSFLauncher(params);      
+      return createLSFLauncher(params, config);
    }
    err_printf("Mis-set use_launcher value: %d\n", (int) params->use_launcher);
    return NULL;
@@ -88,12 +88,32 @@ int main(int argc, char *argv[])
    bool result;
    setupLogging(argc, argv);
 
+   ConfigMap config("[Spindle Config]");
+   string errmessage;
+   result = gatherAllConfigInfo(argc, argv, true, config, errmessage);
+   if (!result) {
+      fprintf(stderr, "Error: %s\n", errmessage.c_str());
+      debug_printf("Aborting due to error parsing args or configs\n");
+      return -1;
+   }
+
    spindle_args_t *params = (spindle_args_t *) malloc(sizeof(spindle_args_t));;
-   parseCommandLine(argc, argv, params, 0, NULL);
+   memset(params, 0, sizeof(spindle_args_t));
+   result = config.toSpindleArgs(*params);
+   if (!result) {
+      debug_printf("Aborting due to internal error moving config to spindle_args_t\n");
+      return -1;
+   }
+   result = config.getUniqueID(params->unique_id, errmessage);
+   if (!result) {
+      fprintf(stderr, "Error: %s\n", errmessage.c_str());
+      return -1;
+   }
+   params->number = config.getNumber();
 
-   init_session(params);
+   init_session(params, config);
 
-   Launcher *launcher = newLauncher(params);
+   Launcher *launcher = newLauncher(params, config);
    if (!launcher) {
       fprintf(stderr, "Internal error while initializing spindle\n");
       return -1;
@@ -114,7 +134,7 @@ int main(int argc, char *argv[])
    for (;;) {
       vector<JobTask*> tasks;
       debug_printf("Getting next task in Spindle main loop\n");
-      result = getNextTask(launcher, params, tasks);
+      result = getNextTask(launcher, params, tasks, config);
       if (!result) {
          fprintf(stderr, "Internal error while getting next spindle job\n");
          return -1;
@@ -238,7 +258,7 @@ static void setupLogging(int argc, char **argv)
    bare_printf("\n");
 }
 
-static bool getNextTask(Launcher *launcher, spindle_args_t *params, vector<JobTask*> &tasks)
+static bool getNextTask(Launcher *launcher, spindle_args_t *params, vector<JobTask*> &tasks, const ConfigMap &config)
 {
    int app_argc;
    char **app_argv;      
@@ -251,7 +271,7 @@ static bool getNextTask(Launcher *launcher, spindle_args_t *params, vector<JobTa
    }
    if (!(params->opts & OPT_SESSION) && !init_done) {
       JobTask *runapp = new JobTask();
-      getAppArgs(&app_argc, &app_argv);
+      config.getApplicationCmdline(app_argc, app_argv);
       runapp->setLaunch(1, app_argc, app_argv);
       runapp->setNoClean();
       tasks.push_back(runapp);      

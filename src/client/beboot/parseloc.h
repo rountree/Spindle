@@ -21,7 +21,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 extern "C" {
 #endif
 
-char *parse_location(char *loc);
+char *parse_location(char *loc, int number);
 
 #if defined(__cplusplus)
 }

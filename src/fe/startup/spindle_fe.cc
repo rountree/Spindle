@@ -18,12 +18,12 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "ldcs_api.h"
 #include "spindle_launch.h"
 #include "fe_comm.h"
-#include "parseargs.h"
 #include "keyfile.h"
 #include "config.h"
 #include "spindle_debug.h"
 #include "ldcs_cobo.h"
 #include "rshlaunch.h"
+#include "config_mgr.h"
 
 #include <string>
 #include <cassert>
@@ -70,6 +70,7 @@ static int pack_data(spindle_args_t *args, void* &buffer, unsigned &buffer_size)
    buffer_size += args->preloadfile ? strlen(args->preloadfile) + 1 : 1;
    buffer_size += args->numa_files ? strlen(args->numa_files) + 1 : 1;
    buffer_size += args->numa_excludes ? strlen(args->numa_excludes) + 1 : 1;
+   buffer_size += args->rsh_command ? strlen(args->rsh_command) + 1 : 1;
 
    unsigned int pos = 0;
    char *buf = (char *) malloc(buffer_size);
@@ -88,6 +89,7 @@ static int pack_data(spindle_args_t *args, void* &buffer, unsigned &buffer_size)
    pack_param(args->bundle_cachesize_kb, buf, pos);
    pack_param(args->numa_files, buf, pos);
    pack_param(args->numa_excludes, buf, pos);
+   pack_param(args->rsh_command, buf, pos);
    assert(pos == buffer_size);
 
    buffer = (void *) buf;
@@ -229,47 +231,64 @@ int getApplicationArgsFE(spindle_args_t *params, int *spindle_argc, char ***spin
 
 void fillInSpindleArgsFE(spindle_args_t *params)
 {
-   LOGGING_INIT(const_cast<char *>("FE"));
-
-   //parseCommandLine will fill in the params.  Call it 
-   // with a fake, empty command line to get defaults.
-   char *fake_argv[3];
-   fake_argv[0] = const_cast<char *>("spindle");
-   fake_argv[1] = const_cast<char *>("launcher");
-   fake_argv[2] = NULL;
-   parseCommandLine(2, fake_argv, params, 0, NULL);
-
-   params->use_launcher = external_launcher;
-   params->startup_type = startup_external;
+   fillInSpindleArgsCmdlineFE(params, 0, 0, NULL, NULL);
 }
 
+static string fillargs_errmsg;
 int fillInSpindleArgsCmdlineFE(spindle_args_t *params, unsigned int options, int sargc, char *sargv[], char **errstr)
 {
-   int mod_argc, i, result;
-   char **mod_argv;
-   unsigned int opts;
-   
    LOGGING_INIT(const_cast<char *>("FE"));
+   static ConfigMap config("[Launcher Default Config]");
 
-   mod_argc = sargc + 3;
-   mod_argv = (char **) malloc(mod_argc * sizeof(char *));
+   int i = 0;
+   int mod_argc = sargc + 2;
+   char **mod_argv = (char **) malloc((mod_argc+1) * sizeof(char *));
    mod_argv[0] = const_cast<char *>("spindle");
-   for (i = 0; i < sargc && sargv[i] != NULL; i++) {
+   for (i = 0; i < sargc && sargv && sargv[i] != NULL; i++) {
       mod_argv[i+1] = sargv[i];
    }
-   mod_argv[i+1] = const_cast<char*>("launcher");
+   i++;
+   mod_argv[i++] = const_cast<char*>("launcher");
    mod_argv[i] = NULL;
 
-   opts = PARSECMD_FLAG_NOEXIT;
-   opts |= PARSECMD_FLAG_CAPTUREIO;
-   opts |= (options & SPINDLE_FILLARGS_NOUNIQUEID) ? PARSECMD_FLAG_NOUNIQUEID : 0;
-   opts |= (options & SPINDLE_FILLARGS_NONUMBER) ? PARSECMD_FLAG_NONUMBER : 0;
-   result = parseCommandLine(i, mod_argv, params, opts, errstr);
+   string errmsg;
+   bool result = gatherAllConfigInfo(mod_argc, mod_argv, false, config, errmsg);
+   free(mod_argv);
+   if (!result) {
+      err_printf("Failed to gather config info for launcher: %s\n", errmsg.c_str());
+      fillargs_errmsg = errmsg;
+      if (errstr)
+         *errstr = const_cast<char*>(fillargs_errmsg.c_str());
+      return -1;
+   }
+
+   result = config.toSpindleArgs(*params, true);
+   if (!result) {
+      err_printf("Internal error converting config to args\n");
+      fillargs_errmsg = "Internal Error";
+      if (errstr)
+         *errstr = const_cast<char*>(fillargs_errmsg.c_str());
+      return -1;
+   }
 
    params->use_launcher = external_launcher;
    params->startup_type = startup_external;
-   free(mod_argv);
-   return result;
+
+   if (!(options & SPINDLE_FILLARGS_NOUNIQUEID)) {
+      result = config.getUniqueID(params->unique_id, errmsg);
+      if (!result) {
+         fillargs_errmsg = errmsg;
+         if (errstr)
+            *errstr = const_cast<char*>(fillargs_errmsg.c_str());
+         return -1;
+      }
+   }
+   
+   if (!(options & SPINDLE_FILLARGS_NONUMBER)) {
+      params->number = config.getNumber();
+   }
+
+   return 0;
 }
 
 static void *md_data_ptr;

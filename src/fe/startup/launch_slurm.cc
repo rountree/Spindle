@@ -16,7 +16,6 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "launcher.h"
 #include "spindle_debug.h"
-#include "parseargs.h"
 
 #include <string>
 #include <vector>
@@ -35,7 +34,7 @@ using namespace std;
 
 class SlurmLauncher : public ForkLauncher
 {
-   friend Launcher *createSlurmLauncher(spindle_args_t *params);
+   friend Launcher *createSlurmLauncher(spindle_args_t *params, ConfigMap &config_);
 private:
    int nnodes;
    bool initError;
@@ -46,7 +45,7 @@ protected:
    virtual bool spawnDaemon();
    virtual bool spawnJob(app_id_t id, int app_argc, char **app_argv);
 public:
-   SlurmLauncher(spindle_args_t *params_);
+   SlurmLauncher(spindle_args_t *params_, ConfigMap &config_);
    virtual ~SlurmLauncher();
    virtual const char **getProcessTable();
    virtual const char *getDaemonArg();
@@ -57,10 +56,10 @@ public:
 
 SlurmLauncher *SlurmLauncher::slauncher = NULL;
 
-Launcher *createSlurmLauncher(spindle_args_t *params)
+Launcher *createSlurmLauncher(spindle_args_t *params, ConfigMap &config)
 {
    assert(!SlurmLauncher::slauncher);
-   SlurmLauncher::slauncher = new SlurmLauncher(params);
+   SlurmLauncher::slauncher = new SlurmLauncher(params, config);
    if (SlurmLauncher::slauncher->initError) {
       delete SlurmLauncher::slauncher;
       SlurmLauncher::slauncher = NULL;
@@ -68,15 +67,12 @@ Launcher *createSlurmLauncher(spindle_args_t *params)
    return SlurmLauncher::slauncher;
 }
 
-SlurmLauncher::SlurmLauncher(spindle_args_t *params_) :
-   ForkLauncher(params_),
+SlurmLauncher::SlurmLauncher(spindle_args_t *params_, ConfigMap &config_) :
+   ForkLauncher(params_, config_),
    nnodes(0),
    initError(false)
 {
-   useRSH = (bool) getUseRSH();
-   if (useRSH) {
-      params_->opts |= OPT_RSHLAUNCH;
-   }      
+   useRSH = params_->opts & OPT_RSHLAUNCH;
    params_->opts |= OPT_PERSIST;
 
    char *nodelist_str = getenv("SLURM_NODELIST");

@@ -23,7 +23,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <map>
 
 #include "spindle_launch.h"
-
+#include "config_mgr.h"
 #include <unistd.h>
 
 typedef unsigned long app_id_t;
@@ -32,6 +32,7 @@ class Launcher
 {
 protected:
    spindle_args_t *params;
+   ConfigMap &config;
    int jobfinish_write_fd;
    int jobfinish_read_fd;
    int daemon_argc;
@@ -40,7 +41,7 @@ protected:
    void markFinished();
    virtual bool spawnDaemon() = 0;
 public:
-   Launcher(spindle_args_t *params_);
+   Launcher(spindle_args_t *params_, ConfigMap &config_);
    virtual ~Launcher();
    bool setupDaemons();
    bool setupJob(app_id_t id, int &app_argc, char** &app_argv);
@@ -62,7 +63,7 @@ class ForkLauncher : public Launcher
    std::map<pid_t, app_id_t> app_pids;
    static ForkLauncher *flauncher;
   public:
-   ForkLauncher(spindle_args_t *params_);
+   ForkLauncher(spindle_args_t *params_, ConfigMap &config_);
    virtual ~ForkLauncher();
    virtual bool getReturnCodes(bool &daemon_done, int &daemon_ret,
                                std::vector<std::pair<app_id_t, int> > &app_rets);

@@ -40,8 +40,9 @@ static void mark_closeonexec(int fd)
    fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
-Launcher::Launcher(spindle_args_t *params_) :
-   params(params_)
+Launcher::Launcher(spindle_args_t *params_, ConfigMap &config_) :
+   params(params_),
+   config(config_)
 {
    int fds[2];
 
@@ -147,8 +148,8 @@ void on_child_forklauncher(int)
    ForkLauncher::flauncher->markFinished();
 }
 
-ForkLauncher::ForkLauncher(spindle_args_t *params_) :
-   Launcher(params_),
+ForkLauncher::ForkLauncher(spindle_args_t *params_, ConfigMap &config_) :
+   Launcher(params_, config_),
    daemon_pid(0)
 {
    signal(SIGCHLD, on_child_forklauncher);
@@ -205,10 +206,10 @@ bool ForkLauncher::getReturnCodes(bool &daemon_done, int &daemon_ret,
    }
 }
 
-extern Launcher *createSlurmLauncher(spindle_args_t *params);
-extern Launcher *createLSFLauncher(spindle_args_t *params);
+extern Launcher *createSlurmLauncher(spindle_args_t *params, ConfigMap &config);
+extern Launcher *createLSFLauncher(spindle_args_t *params, ConfigMap &config);
 
-Launcher *createMPILauncher(spindle_args_t *params)
+Launcher *createMPILauncher(spindle_args_t *params, ConfigMap &config)
 {
    int launcher = params->use_launcher;
 
@@ -227,10 +228,10 @@ Launcher *createMPILauncher(spindle_args_t *params)
 
    switch (launcher) {
       case srun_launcher:
-         return createSlurmLauncher(params);
+         return createSlurmLauncher(params, config);
       case lrun_launcher:
       case jsrun_launcher:
-         return createLSFLauncher(params);
+         return createLSFLauncher(params, config);
       case openmpi_launcher:
       case wreckrun_launcher:
          err_printf("Unsupported launcher %d\n", launcher);

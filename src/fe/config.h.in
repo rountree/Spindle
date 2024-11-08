@@ -21,6 +21,9 @@
 /* Default to using a dedicated process to clean data files */
 #undef DEFAULT_CLEANUP_PROC
 
+/* Flux with via plugin is enabled */
+#undef ENABLE_FLUX_PLUGIN
+
 /* Enable support for jsrun */
 #undef ENABLE_JSRUN_LAUNCHER
 
@@ -32,6 +35,12 @@
 
 /* Enable support for openmpi */
 #undef ENABLE_OPENMPI_LAUNCHER
+
+/* Slurm with via srun launching is enabled */
+#undef ENABLE_SLURM
+
+/* Slurm with via plugin is enabled */
+#undef ENABLE_SLURM_PLUGIN
 
 /* Enable support for srun */
 #undef ENABLE_SRUN_LAUNCHER

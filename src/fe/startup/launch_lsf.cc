@@ -27,7 +27,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 class LSFLauncher : public ForkLauncher
 {
-   friend Launcher *createLSFLauncher(spindle_args_t *params);
+   friend Launcher *createLSFLauncher(spindle_args_t *params, ConfigMap &config);
 private:
    bool initError;
    static LSFLauncher *llauncher;
@@ -39,7 +39,7 @@ private:
 protected:
    virtual bool spawnDaemon();
 public:
-   LSFLauncher(spindle_args_t *params);
+   LSFLauncher(spindle_args_t *params_, ConfigMap &config_);
    virtual ~LSFLauncher();
    virtual const char **getProcessTable();
    virtual const char *getDaemonArg();
@@ -50,10 +50,10 @@ public:
 
 LSFLauncher *LSFLauncher::llauncher = NULL;
 
-Launcher *createLSFLauncher(spindle_args_t *params)
+Launcher *createLSFLauncher(spindle_args_t *params, ConfigMap &config)
 {
    assert(!LSFLauncher::llauncher);
-   LSFLauncher::llauncher = new LSFLauncher(params);
+   LSFLauncher::llauncher = new LSFLauncher(params, config);
    if (LSFLauncher::llauncher->initError) {
       delete LSFLauncher::llauncher;
       LSFLauncher::llauncher = NULL;
@@ -61,8 +61,8 @@ Launcher *createLSFLauncher(spindle_args_t *params)
    return LSFLauncher::llauncher;
 }
 
-LSFLauncher::LSFLauncher(spindle_args_t *params_) :
-   ForkLauncher(params_),
+LSFLauncher::LSFLauncher(spindle_args_t *params_, ConfigMap &config_) :
+   ForkLauncher(params_, config_),
    initError(false)
 {
    char *mcpu_hosts = getenv("LSB_MCPU_HOSTS");

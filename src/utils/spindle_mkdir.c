@@ -79,7 +79,7 @@ int spindle_mkdir(char *orig_path)
    struct stat buf;
    char orig_char;
 
-   debug_printf("spindle_mkdir on %s\n", orig_path);
+   debug_printf2("spindle_mkdir on %s\n", orig_path);
    
 
    strncpy(path, orig_path, sizeof(path));

@@ -180,7 +180,7 @@ static int remap_to_high_fd(int fd)
          continue;
       dup2(fd, i);
       close(fd);
-      debug_printf("Remapped fd %d to high fd %d\n", fd, i);
+      debug_printf3("Remapped fd %d to high fd %d\n", fd, i);
       return i;
    }
    err_printf("Failed to map fd %d to higher limit\n", fd);

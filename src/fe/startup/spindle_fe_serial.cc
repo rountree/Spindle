@@ -31,12 +31,12 @@ using namespace std;
 
 class SerialLauncher : public ForkLauncher
 {
-   friend Launcher *createSerialLauncher(spindle_args_t *params);
+   friend Launcher *createSerialLauncher(spindle_args_t *params, ConfigMap &config);
 private:
    bool initError;
    static SerialLauncher *slauncher;
 
-   SerialLauncher(spindle_args_t *params_);
+   SerialLauncher(spindle_args_t *params_, ConfigMap &config_);
 protected:
    virtual bool spawnDaemon();
 public:
@@ -47,9 +47,9 @@ public:
 };
 SerialLauncher *SerialLauncher::slauncher = NULL;
 
-Launcher *createSerialLauncher(spindle_args_t *params)
+Launcher *createSerialLauncher(spindle_args_t *params, ConfigMap &config)
 {
-   SerialLauncher::slauncher = new SerialLauncher(params);
+   SerialLauncher::slauncher = new SerialLauncher(params, config);
    if (SerialLauncher::slauncher->initError) {
       delete SerialLauncher::slauncher;
       return NULL;
@@ -57,8 +57,8 @@ Launcher *createSerialLauncher(spindle_args_t *params)
    return static_cast<Launcher*>(SerialLauncher::slauncher);
 }
 
-SerialLauncher::SerialLauncher(spindle_args_t *params_) :
-   ForkLauncher(params_),
+SerialLauncher::SerialLauncher(spindle_args_t *params_, ConfigMap &config_) :
+   ForkLauncher(params_, config_),
    initError(false)
 {
 }

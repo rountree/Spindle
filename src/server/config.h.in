@@ -18,8 +18,17 @@
 /* Define if were using sockets for client/server communication */
 #undef COMM_SOCKET
 
+/* Flux with via plugin is enabled */
+#undef ENABLE_FLUX_PLUGIN
+
 /* Allow NULL encryption */
 #undef ENABLE_NULL_ENCRYPTION
+
+/* Slurm with via srun launching is enabled */
+#undef ENABLE_SLURM
+
+/* Slurm with via plugin is enabled */
+#undef ENABLE_SLURM_PLUGIN
 
 /* Enable gcrypt for authentication */
 #undef GCRYPT

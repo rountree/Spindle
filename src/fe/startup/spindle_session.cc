@@ -38,7 +38,6 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <string>
 #include <map>
 
-#include "parseargs.h"
 #include "spindle_session.h"
 #include "spindle_debug.h"
 
@@ -375,10 +374,10 @@ int get_session_runcmds(app_id_t &appid, int &app_argc, char** &app_argv, bool &
    return 0;
 }
 
-int init_session(spindle_args_t *args)
+int init_session(spindle_args_t *args, const ConfigMap &config)
 {
    int result;
-   session_status_t sstatus = get_session_status();
+   session_status_t sstatus = config.getSessionStatus();
    if (sstatus == sstatus_unused) {
       debug_printf("Spindle session not set\n");
       return 0;
@@ -425,7 +424,7 @@ int init_session(spindle_args_t *args)
       return 0;
    }
 
-   set_session_id(get_arg_session_id());
+   set_session_id(config.getArgSessionId());
    debug_printf("Connecting to existing spindle session-id %s\n", session_id.c_str());
    result = connect_to_session();
    if (result == -1) {
@@ -439,7 +438,7 @@ int init_session(spindle_args_t *args)
       char **app_argv;
       int cmd = RET_RUN_CMD;
       int rc;
-      getAppArgs(&app_argc, &app_argv);
+      config.getApplicationCmdline(app_argc, app_argv);
       result = safe_send(sock, &cmd, sizeof(cmd));
       if (result == -1) {
          debug_printf("Error sending RET_RUN_CMD\n");

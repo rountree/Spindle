@@ -14,41 +14,33 @@ program; if not, write to the Free Software Foundation, Inc., 59 Temple
 Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#if !defined(PARSEARGS_H_)
-#define PARSEARGS_H_
+#if !defined(CONFIG_PARSER_H_)
+#define CONFIG_PARSER_H_
 
-#include "spindle_launch.h"
 #include <string>
+#include "config_mgr.h"
 
-typedef enum {
-   sstatus_unused,
-   sstatus_start,
-   sstatus_run,
-   sstatus_end
-} session_status_t;
+class ConfigFile
+{
+  private:
+   std::string filename;
+   
+   bool open_error;
+   bool parse_error;
+   std::string err_string;
+   ConfigMap configmap;
 
-opt_t parseArgs(int argc, char *argv[]);
-char *getPreloadFile();
-unsigned int getPort();
-unsigned int getNumPorts();
-std::string getLocation(int number);
-std::string getPythonPrefixes();
-std::string getHostbin();
-int getStartupType();
-int getLauncher();
-int getShmCacheSize();
-unique_id_t get_unique_id();
-std::string get_arg_session_id();
-session_status_t get_session_status();
-int getUseRSH();
+   void parse();
+   bool parseLine(std::string line, int lineno);
+  public:
+   ConfigFile(std::string filename_);
+   ~ConfigFile();
 
+   bool parseError() const;
+   bool openError() const;
+   std::string errorString() const;
 
-#define PARSECMD_FLAG_NOEXIT (1<<0)
-#define PARSECMD_FLAG_NOUNIQUEID (1<<1)
-#define PARSECMD_FLAG_CAPTUREIO (1<<2)
-#define PARSECMD_FLAG_NONUMBER (1<<3)
-int parseCommandLine(int argc, char *argv[], spindle_args_t *args, unsigned int flags, char **errstring);
-
-int getAppArgs(int *argc, char ***argv);
+   const ConfigMap& getConfigMap() const;
+};
 
 #endif

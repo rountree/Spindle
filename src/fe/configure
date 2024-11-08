@@ -658,7 +658,8 @@ ac_includes_default="\
 #endif"
 
 ac_header_c_list=
-ac_subst_vars='am__EXEEXT_FALSE
+ac_subst_vars='PKGSYSCONF_DIR
+am__EXEEXT_FALSE
 am__EXEEXT_TRUE
 LTLIBOBJS
 LIBOBJS
@@ -860,6 +861,10 @@ with_default_num_ports
 with_localstorage
 with_testrm
 with_rm
+enable_slurm
+enable_slurm_plugin
+enable_flux_plugin
+with_slurm_dir
 enable_bluegene
 with_hostbin
 with_rsh_launch
@@ -877,9 +882,6 @@ with_numa_excludes
 with_usage_logging
 enable_cleanup_process
 enable_subaudit_as_default
-enable_slurm_plugin
-with_slurm_dir
-enable_flux_plugin
 enable_sec_munge
 enable_sec_keydir
 enable_sec_launchmon
@@ -892,7 +894,6 @@ with_launchmon
 with_launchmon_incdir
 with_launchmon_libdir
 with_launchmon_rmcommdir
-enable_slurm
 enable_openmpi
 enable_wreck
 enable_lrun
@@ -1559,6 +1560,10 @@ Optional Features:
   --enable-maintainer-mode
                           enable make rules and dependencies not useful (and
                           sometimes confusing) to the casual installer
+  --enable-slurm          Builds in support for running with SLURM via srun
+                          launching
+  --enable-slurm-plugin   Builds in support for running with SLURM via plugin
+  --enable-flux-plugin    Builds in support for running flux via a plugin
   --enable-bluegene       Build Spindle for BlueGene/Q
   --enable-pipes          Use pipes for server/client communication
   --enable-socket         Use sockets for server/client communication
@@ -1572,8 +1577,6 @@ Optional Features:
                           relocated files
   --enable-subaudit-as-default
                           Enable subaudit option as defaulted to on
-  --enable-slurm-plugin   Build a spindle plugin for slurm
-  --enable-flux-plugin    Build a spindle plugin for flux
   --enable-sec-munge      Enable munge for connection authentication
   --enable-sec-keydir=keydir
                           Enable filesystem directory 'keydir' to propagate
@@ -1604,7 +1607,9 @@ Optional Packages:
   --with-localstorage=DIR Directory on back-ends for storing relocated files
   --with-testrm=ARG
   --with-rm=ARG           Default resource manager (valid options are 'slurm',
-                          'lrun', 'jsrun', and 'flux')
+                          'slurm-plugin', 'flux', and 'serial')
+  --with-slurm-dir=DIR    Look in in DIR for root of a slurm installation
+            SLURM_DIR=${withval}
   --with-hostbin=EXE      Executable for returning host lists for jobs
   --with-rsh-launch       Enable rsh launch mode by default for startup modes
                           that support it
@@ -1617,8 +1622,6 @@ Optional Packages:
                           substrings
   --with-usage-logging=FILE
                           File for writing usage logs
-  --with-slurm-dir=DIR    Look in in DIR for root of a slurm installation
-            SLURM_DIR=${withval}
   --with-gcrypt-dir=DIR   Look in DIR for gcrypt installation
   --with-munge-dir=DIR    Look in DIR for munge installation
   --with-glibc-be-dir=DIR If glibc on compute nodes is installed in a
@@ -17500,6 +17503,66 @@ fi
 printf "%s\n" "#define TESTRM \"$TESTRM\"" >>confdefs.h
 
 
+# Check whether --enable-slurm was given.
+if test ${enable_slurm+y}
+then :
+  enableval=$enable_slurm; ENABLE_SLURM=true
+else $as_nop
+  ENABLE_SLURM=false
+fi
+
+#Slurm plugin and location detection
+# Check whether --enable-slurm-plugin was given.
+if test ${enable_slurm_plugin+y}
+then :
+  enableval=$enable_slurm_plugin; ENABLE_SLURM_PLUGIN="true"
+else $as_nop
+  ENABLE_SLURM_PLUGIN="false"
+fi
+
+# Check whether --enable-flux-plugin was given.
+if test ${enable_flux_plugin+y}
+then :
+  enableval=$enable_flux_plugin; ENABLE_FLUX_PLUGIN="true"
+else $as_nop
+  ENABLE_FLUX_PLUGIN="false"
+fi
+
+
+# Check whether --with-slurm-dir was given.
+if test ${with_slurm_dir+y}
+then :
+  withval=$with_slurm_dir;
+fi
+
+
+
+if test "x$TESTRM" == "xslurm"; then
+   ENABLE_SLURM=true
+fi
+if test "xTESTRM" == "xslurm-plugin"; then
+   ENABLE_SLURM_PLUGIN="true"
+fi
+if test "x$TESTRM" == "xflux"; then
+   ENABLE_FLUX_PLUGIN=true
+fi
+
+if test "x$ENABLE_SLURM" == "xtrue"; then
+
+printf "%s\n" "#define ENABLE_SLURM 1" >>confdefs.h
+
+fi
+if test "x$ENABLE_SLURM_PLUGIN" == "xtrue"; then
+
+printf "%s\n" "#define ENABLE_SLURM_PLUGIN 1" >>confdefs.h
+
+fi
+if test "x$ENABLE_FLUX_PLUGIN" == "xtrue"; then
+
+printf "%s\n" "#define ENABLE_FLUX_PLUGIN 1" >>confdefs.h
+
+fi
+
 #OS Detection
 # Check whether --enable-bluegene was given.
 if test ${enable_bluegene+y}
@@ -17563,7 +17626,7 @@ bad_srun_major=20
 bad_srun_minor=11
 good_srun_major=0
 good_srun_minor=0
-if test "x$TESTRM" == "xslurm"; then
+if test "x$ENABLE_SLURM" == "xtrue"; then
   # Extract the first word of ""srun"", so it can be a program name with args.
 set dummy "srun"; ac_word=$2
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
@@ -18003,33 +18066,6 @@ then :
 fi
 
 
-#Slurm plugin and location detection
-# Check whether --enable-slurm-plugin was given.
-if test ${enable_slurm_plugin+y}
-then :
-  enableval=$enable_slurm_plugin; ENABLE_SLURM_PLUGIN="true"
-else $as_nop
-  ENABLE_SLURM_PLUGIN="false"
-fi
-
-
-
-# Check whether --with-slurm-dir was given.
-if test ${with_slurm_dir+y}
-then :
-  withval=$with_slurm_dir;
-fi
-
-
-# Check whether --enable-flux-plugin was given.
-if test ${enable_flux_plugin+y}
-then :
-  enableval=$enable_flux_plugin; ENABLE_FLUX_PLUGIN="true"
-else $as_nop
-  ENABLE_FLUX_PLUGIN="false"
-fi
-
-
 if test "x$ENABLE_FLUX_PLUGIN" = "xtrue"; then
   # Check for whether to build Flux shell plugin
 
@@ -18162,6 +18198,9 @@ printf "%s\n" "no" >&6; }
 		PKG_CONFIG=""
 	fi
 fi
+if test -z "$PKG_CONFIG"; then
+	as_fn_error $? "pkg-config not found" "$LINENO" 5
+fi
 
 pkg_failed=no
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for flux-core > 0.40.0" >&5
@@ -18214,21 +18253,21 @@ else
         _pkg_short_errors_supported=no
 fi
         if test $_pkg_short_errors_supported = yes; then
-	        FLUX_CORE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "flux-core > 0.40.0" 2>&1`
+                FLUX_CORE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "flux-core > 0.40.0" 2>&1`
         else
-	        FLUX_CORE_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "flux-core > 0.40.0" 2>&1`
+                FLUX_CORE_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "flux-core > 0.40.0" 2>&1`
         fi
-	# Put the nasty error message in config.log where it belongs
-	echo "$FLUX_CORE_PKG_ERRORS" >&5
+        # Put the nasty error message in config.log where it belongs
+        echo "$FLUX_CORE_PKG_ERRORS" >&5
 
-	ENABLE_FLUX_PLUGIN=false
+        ENABLE_FLUX_PLUGIN=false
 elif test $pkg_failed = untried; then
         { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-	ENABLE_FLUX_PLUGIN=false
+        ENABLE_FLUX_PLUGIN=false
 else
-	FLUX_CORE_CFLAGS=$pkg_cv_FLUX_CORE_CFLAGS
-	FLUX_CORE_LIBS=$pkg_cv_FLUX_CORE_LIBS
+        FLUX_CORE_CFLAGS=$pkg_cv_FLUX_CORE_CFLAGS
+        FLUX_CORE_LIBS=$pkg_cv_FLUX_CORE_LIBS
         { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
 
@@ -18285,14 +18324,14 @@ else
         _pkg_short_errors_supported=no
 fi
         if test $_pkg_short_errors_supported = yes; then
-	        FLUX_HOSTLIST_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "flux-hostlist" 2>&1`
+                FLUX_HOSTLIST_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "flux-hostlist" 2>&1`
         else
-	        FLUX_HOSTLIST_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "flux-hostlist" 2>&1`
+                FLUX_HOSTLIST_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "flux-hostlist" 2>&1`
         fi
-	# Put the nasty error message in config.log where it belongs
-	echo "$FLUX_HOSTLIST_PKG_ERRORS" >&5
+        # Put the nasty error message in config.log where it belongs
+        echo "$FLUX_HOSTLIST_PKG_ERRORS" >&5
 
-	as_fn_error $? "Package requirements (flux-hostlist) were not met:
+        as_fn_error $? "Package requirements (flux-hostlist) were not met:
 
 $FLUX_HOSTLIST_PKG_ERRORS
 
@@ -18305,7 +18344,7 @@ See the pkg-config man page for more details." "$LINENO" 5
 elif test $pkg_failed = untried; then
         { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-	{ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+        { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
 printf "%s\n" "$as_me: error: in \`$ac_pwd':" >&2;}
 as_fn_error $? "The pkg-config script could not be found or is too old.  Make sure it
 is in your PATH or set the PKG_CONFIG environment variable to the full
@@ -18318,8 +18357,8 @@ See the pkg-config man page for more details.
 To get pkg-config, see <http://pkg-config.freedesktop.org/>.
 See \`config.log' for more details" "$LINENO" 5; }
 else
-	FLUX_HOSTLIST_CFLAGS=$pkg_cv_FLUX_HOSTLIST_CFLAGS
-	FLUX_HOSTLIST_LIBS=$pkg_cv_FLUX_HOSTLIST_LIBS
+        FLUX_HOSTLIST_CFLAGS=$pkg_cv_FLUX_HOSTLIST_CFLAGS
+        FLUX_HOSTLIST_LIBS=$pkg_cv_FLUX_HOSTLIST_LIBS
         { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
 

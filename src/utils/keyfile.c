@@ -32,14 +32,14 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #error Spindle built with sec-keyfile, but no keyfile specified
 #endif
 
-extern char *parse_location(char *loc);
+extern char *parse_location(char *loc, int number);
 void get_keyfile_path(char *pathname, int pathname_len, uint64_t unique_id)
 {
 #if defined(KEYFILE)
    debug_printf("Turning pathname %s and unique_id %lu to key file location\n",
                 SEC_KEYDIR, (unsigned long) unique_id);
 
-   char *demangled_loc = parse_location(SEC_KEYDIR);
+   char *demangled_loc = parse_location(SEC_KEYDIR, 0);
    if (demangled_loc == NULL)
       abort();
    snprintf(pathname, pathname_len, "%s/spindle_key.%d.%lu", demangled_loc, getuid(), (unsigned long) unique_id);
