@@ -44,7 +44,7 @@ public:
    Launcher(spindle_args_t *params_, ConfigMap &config_);
    virtual ~Launcher();
    bool setupDaemons();
-   bool setupJob(app_id_t id, int &app_argc, char** &app_argv);
+   virtual bool setupJob(app_id_t id, int &app_argc, char** &app_argv);
    virtual const char **getProcessTable() = 0;
    virtual const char *getDaemonArg() = 0;
    virtual void getSecondaryDaemonArgs(std::vector<const char *> &secondary_args);
@@ -64,9 +64,25 @@ class ForkLauncher : public Launcher
    static ForkLauncher *flauncher;
   public:
    ForkLauncher(spindle_args_t *params_, ConfigMap &config_);
-   virtual ~ForkLauncher();
+   virtual ~ForkLauncher();   virtual bool getReturnCodes(bool &daemon_done, int &daemon_ret,
+                               std::vector<std::pair<app_id_t, int> > &app_rets);
+};
+
+class PassthroughLauncher : public ForkLauncher
+{
+protected:
+   PassthroughLauncher(spindle_args_t *params_, ConfigMap &config_);
+   virtual bool spawnDaemon();
+public:
+   friend Launcher *createPassthroughLauncher(spindle_args_t *params, ConfigMap &config);
+   virtual const char **getProcessTable();
+   virtual const char *getDaemonArg();
+   virtual void getSecondaryDaemonArgs(std::vector<const char *> &secondary_args);
    virtual bool getReturnCodes(bool &daemon_done, int &daemon_ret,
                                std::vector<std::pair<app_id_t, int> > &app_rets);
+   virtual bool spawnJob(app_id_t id, int app_argc, char **app_argv);
+   virtual bool setupJob(app_id_t id, int &app_argc, char** &app_argv);   
+   virtual ~PassthroughLauncher();
 };
 
 #endif

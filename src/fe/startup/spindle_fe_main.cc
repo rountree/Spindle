@@ -50,9 +50,14 @@ extern Launcher *createSerialLauncher(spindle_args_t *params, ConfigMap &config_
 extern Launcher *createHostbinLauncher(spindle_args_t *params, ConfigMap &config_);
 extern Launcher *createMPILauncher(spindle_args_t *params, ConfigMap &config_);
 extern Launcher *createLSFLauncher(spindle_args_t *params, ConfigMap &config_);
+extern Launcher *createPassthroughLauncher(spindle_args_t *params, ConfigMap &config_);
 
 Launcher *newLauncher(spindle_args_t *params, ConfigMap &config)
 {
+   if (params->opts & OPT_OFF) {
+      debug_printf("Turning spindle off. Using pass-through launcher\n");
+      return createPassthroughLauncher(params, config);
+   }
    if (params->use_launcher == serial_launcher) {
       debug_printf("Starting application in serial mode\n");
       return createSerialLauncher(params, config);

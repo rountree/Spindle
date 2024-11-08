@@ -145,6 +145,9 @@ const list<SpindleOption> Options = {
      "Relocate objects in fork'd child processes." },
    { confStopReloc, "stop-reloc", shortStopReloc, groupReloc, cvBool, {}, "false",
      "Do not relocate file contents, though still intercept operations that would lead to file-not-found returns." },
+   { confSpindleLevel, "level", shortSpindleLevel, groupReloc, cvEnum, { "high", "medium", "low", "off", "default" }, "default",
+     "Sets the other spindle relocation options on/off based on the specified level. 'high' relocates everything possible. 'medium' is a balance "
+     "that tries for minimal impact on debugging. 'low' turns off most relocation, but leaves a file existance cache. 'off' turns off spindle." },
 
    { confCmdlineNewgroup, "", shortNone, groupPushPull, cvBool, {}, "",
      "These options specify how the Spindle network should distibute files. Push is better for SPMD programs. Pull is better for MPMD programs. Default is push." },
@@ -350,7 +353,7 @@ bool ConfigMap::mergeOnto(const ConfigMap &other)
                        opt.cmdline_long, existing_value.c_str(), value.c_str(), other.origin.c_str());
          newvalue = value + ":" + existing_value;
       }
-      else if (!existing_value.empty() && newvalue != value) {
+      else if (!existing_value.empty() && existing_value != value) {
          debug_printf3("Config parsing overwriting existing value for %s '%s' with '%s' from %s\n",
                        opt.cmdline_long, existing_value.c_str(), value.c_str(), other.origin.c_str());
          newvalue = value;
@@ -698,6 +701,46 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
          case confStopReloc:
             setopt(args.opts, OPT_STOPRELOC, boolresult);
             break;
+         case confSpindleLevel:
+            if (strresult == "default") {
+               setopt(args.opts, OPT_OFF, false);              
+            }
+            if (strresult == "high") {
+               setopt(args.opts, OPT_RELOCAOUT, true);
+               setopt(args.opts, OPT_RELOCSO, true);
+               setopt(args.opts, OPT_RELOCPY, true);
+               setopt(args.opts, OPT_RELOCEXEC, true);
+               setopt(args.opts, OPT_FOLLOWFORK, true);
+               setopt(args.opts, OPT_STOPRELOC, false);
+               setopt(args.opts, OPT_OFF, false);
+            }
+            if (strresult == "medium") {
+               setopt(args.opts, OPT_RELOCAOUT, false);
+               setopt(args.opts, OPT_RELOCSO, true);
+               setopt(args.opts, OPT_RELOCPY, true);
+               setopt(args.opts, OPT_RELOCEXEC, false);
+               setopt(args.opts, OPT_FOLLOWFORK, true);
+               setopt(args.opts, OPT_STOPRELOC, false);
+               setopt(args.opts, OPT_OFF, false);
+            }
+            if (strresult == "low") {
+               setopt(args.opts, OPT_RELOCAOUT, false);
+               setopt(args.opts, OPT_RELOCSO, false);
+               setopt(args.opts, OPT_RELOCPY, false);
+               setopt(args.opts, OPT_RELOCEXEC, false);
+               setopt(args.opts, OPT_FOLLOWFORK, true);
+               setopt(args.opts, OPT_STOPRELOC, true);
+               setopt(args.opts, OPT_OFF, false);
+            }
+            if (strresult == "off") {
+               setopt(args.opts, OPT_RELOCAOUT, false);
+               setopt(args.opts, OPT_RELOCSO, false);
+               setopt(args.opts, OPT_RELOCPY, false);
+               setopt(args.opts, OPT_RELOCEXEC, false);
+               setopt(args.opts, OPT_FOLLOWFORK, true);
+               setopt(args.opts, OPT_STOPRELOC, false);
+               setopt(args.opts, OPT_OFF, true);
+            }            
          case confPushpull:
             if (strresult == "pull") {
                setopt(args.opts, OPT_PULL, true);
@@ -850,6 +893,17 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
             
             break;
       }
+   }
+
+   /* Set any option dependencies */
+   if (args.startup_type == startup_serial) {
+      setopt(args.opts, OPT_RSHLAUNCH, false);
+   }
+   if (args.opts & OPT_SESSION) {
+      args.opts |= OPT_PERSIST;
+   }
+   if (args.opts & OPT_DEBUG) {
+      args.opts |= OPT_REMAPEXEC;
    }
    return true;
 }

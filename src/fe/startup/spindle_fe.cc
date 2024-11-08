@@ -295,6 +295,9 @@ static void *md_data_ptr;
 
 int spindleInitFE(const char **hosts, spindle_args_t *params)
 {
+   if (params->opts & OPT_OFF)
+      return 0;
+   
    LOGGING_INIT(const_cast<char *>("FE"));
    debug_printf("Called spindleInitFE\n");
 
@@ -360,7 +363,10 @@ int spindleInitFE(const char **hosts, spindle_args_t *params)
 
 int spindleWaitForCloseFE(spindle_args_t *params)
 {
-   LOGGING_INIT(const_cast<char *>("FE"));
+   if (params->opts & OPT_OFF)
+      return 0;
+   
+   LOGGING_INIT(const_cast<char *>("FE"));   
    if (params->opts & OPT_PERSIST) {
       debug_printf("Warning: blocking for close on a spindle network marked as persistant.  This may permanently hang\n");
    }
@@ -370,6 +376,9 @@ int spindleWaitForCloseFE(spindle_args_t *params)
 int spindleCloseFE(spindle_args_t *params)
 {
    pid_t rshpid;
+   if (params->opts & OPT_OFF)
+      return 0;
+   
    LOGGING_INIT(const_cast<char *>("FE"));
 
    debug_printf("Called spindleCloseFE\n");
@@ -395,7 +404,7 @@ int spindleCloseFE(spindle_args_t *params)
 }
 
 pid_t getRSHPidFE()
-{
+{   
    return get_fe_rsh_pid();
 }
 

@@ -58,6 +58,7 @@ extern "C" {
 #define OPT_RSHLAUNCH  (1 << 27)            /* Launch BEs via an rsh/ssh tree */
 #define OPT_STOPRELOC  (1 << 28)            /* Stops spindle from relocating file contents, but still allow it to intercept file-not-found attempts */
 #define OPT_NUMA       (1 << 29)            /* Enables file replication across NUMA domains */
+#define OPT_OFF        (1 << 30)            /* Turns spindle off, disabling everything */
    
 #define OPT_SET_SEC(OPT, X) OPT |= (X << 19)
 #define OPT_GET_SEC(OPT) ((OPT >> 19) & 7)

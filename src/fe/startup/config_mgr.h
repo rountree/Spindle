@@ -39,6 +39,7 @@ enum SpindleConfigID {
    confRelocExec,
    confFollowFork,
    confStopReloc,
+   confSpindleLevel,
    confPushpull,
    confNetwork,
    confSecurity,
@@ -115,7 +116,8 @@ enum CmdlineShortOptions {
    shortSecuritySet = 291,
    shortLauncher = 292,
    shortNetwork = 293,
-   shortHostbinEnable = 294
+   shortHostbinEnable = 294,
+   shortSpindleLevel = 295
 };
 
 enum CmdlineGroups {

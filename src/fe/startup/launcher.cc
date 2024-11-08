@@ -246,3 +246,80 @@ Launcher *createMPILauncher(spindle_args_t *params, ConfigMap &config)
    }
    return NULL;
 }
+
+PassthroughLauncher::PassthroughLauncher(spindle_args_t *params_, ConfigMap &config_) :
+   ForkLauncher(params_, config_)
+{
+}
+
+PassthroughLauncher::~PassthroughLauncher()
+{
+}
+ 
+const char **PassthroughLauncher::getProcessTable()
+{
+   static char* empty_proctable[1];
+   empty_proctable[0] = NULL;
+   return const_cast<const char **>(empty_proctable);
+}
+
+const char *PassthroughLauncher::getDaemonArg()
+{
+   return "";
+}
+
+void PassthroughLauncher::getSecondaryDaemonArgs(std::vector<const char *> &secondary_args)
+{
+   return;
+}
+
+bool PassthroughLauncher::setupJob(app_id_t id, int &app_argc, char** &app_argv)
+{
+   return true;
+}
+
+bool PassthroughLauncher::spawnJob(app_id_t id, int app_argc, char **app_argv)
+{
+   debug_printf("Launching job with app-id %lu: %s\n", id, app_argv[0]);
+   int pid = fork();
+   if (pid == -1) {
+      int error = errno;
+      err_printf("Failed to fork process for app: %s\n", strerror(error));
+      return false;
+   }
+   else if (pid == 0) {
+      execvp(*app_argv, app_argv);
+      int error = errno;
+      fprintf(stderr, "Spindle failed to run %s: %s\n", app_argv[0], strerror(error));
+      err_printf("Failed to run application %s: %s\n", app_argv[0], strerror(error));
+      exit(-1);
+   }
+   app_pids[pid] = id;
+   return true;
+}
+
+bool PassthroughLauncher::spawnDaemon()
+{
+   return true;
+}
+
+bool PassthroughLauncher::getReturnCodes(bool &daemon_done, int &daemon_ret,
+                                         std::vector<std::pair<app_id_t, int> > &app_rets)
+{
+   bool result = ForkLauncher::getReturnCodes(daemon_done, daemon_ret, app_rets);
+   if (!app_rets.empty()) {
+      daemon_done = true;
+      daemon_ret = 0;
+   }
+   return result;
+
+}
+
+Launcher *createPassthroughLauncher(spindle_args_t *params, ConfigMap &config)
+{
+   static Launcher *ptlauncher = NULL;
+   if (ptlauncher)
+      return ptlauncher;
+   ptlauncher = new PassthroughLauncher(params, config);
+   return ptlauncher;
+}

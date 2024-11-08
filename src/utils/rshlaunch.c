@@ -49,7 +49,7 @@ static int daemon_argv_needs_free = 0;
 
 #define SPINDLE_BE_PATH LIBEXECDIR "/spindle_be"
 
-static char *get_rsh_command()
+static char *get_rsh_command(spindle_args_t *args)
 {
    char *rsh_command;
    rsh_command = getenv("SPINDLE_RSH");
@@ -57,7 +57,9 @@ static char *get_rsh_command()
       return rsh_command;
    rsh_command = getenv("SPINDLE_SSH");
    if (rsh_command)
-      return rsh_command;   
+      return rsh_command;
+   if (args->rsh_command)
+      return args->rsh_command;
 #if defined(RSHLAUNCH_CMD)
    rsh_command = (char *) ((RSHLAUNCH_CMD && *RSHLAUNCH_CMD) ? RSHLAUNCH_CMD : NULL);
    if (rsh_command)
@@ -77,7 +79,7 @@ void init_rsh_launch_fe(spindle_args_t *args)
    
    is_fe = 1;
 
-   rsh_cmd = get_rsh_command();
+   rsh_cmd = get_rsh_command(args);
 
    snprintf(sec_mode_str, sizeof(sec_mode_str), "%d", (int) OPT_GET_SEC(args->opts));
    snprintf(number_str, sizeof(number_str), "%u",  args->number);
