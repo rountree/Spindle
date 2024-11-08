@@ -51,7 +51,6 @@ enum SpindleConfigID {
    confDebug,
    confPreload,
    confHostbin,
-   confHostbinEnable,
    confNoclean,
    confDisableLogging,
    confNoHide,

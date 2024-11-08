@@ -305,6 +305,9 @@ static int parse(int key, char *arg, struct argp_state *vstate)
       else if (strcmp(opt.cmdline_long, "launcher-startup") == 0) {
          argmap.set(confJoblauncher, "slurm", errtext);
       }
+      else if (strcmp(opt.cmdline_long, "enable-hostbin") == 0) {
+         argmap.set(confJoblauncher, "hostbin", errtext);
+      }
       else if (strcmp(opt.cmdline_long, "no-mpi") == 0 || strcmp(opt.cmdline_long, "serial") == 0) {
          argmap.set(confJoblauncher, "serial", errtext);
       }

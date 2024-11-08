@@ -182,12 +182,16 @@ const list<SpindleOption> Options = {
    { confCmdlineNewgroup, "", shortNone, groupLauncher, cvBool, {}, "",
      "These options specify the job launcher Spindle is being run with.  If unspecified, Spindle will try to autodetect." },
    { confCmdlineOnly, "launcher-startup", shortLauncherStartup, groupLauncher, cvBool, {}, "false",
-     "Launch spindle daemons using the system's job launcher (requires an already set-up session) (Deprecated for launcher=[mode])." },
+     "Launch spindle daemons using the system's job launcher (requires an already set-up session) (Deprecated)." },
    { confCmdlineOnly, "no-mpi", shortNoMPI, groupLauncher, cvBool, {}, "no",
      "Run serial job instead of a MPI job. (Deprecated for launcher=serial)" },
    { confCmdlineOnly, "serial", shortSerial, groupLauncher, cvBool, {}, "no",
      "Run serial job instead of a MPI job. Alias for --no-mpi. (Deprecated for launcher=serial)" },
-   { confJoblauncher, "launcher", shortLauncher, groupLauncher, cvEnum, { "slurm", "flux", "slurm-plugin", "serial", "unknown" }, DEFAULT_LAUNCHER_STR,
+   { confCmdlineOnly, "enable-hostbin", shortHostbinEnable, groupLauncher, cvBool, {}, HOSTBIN_ENABLE_STR,
+     "Enables hostbin startup mode. (Derecated for launcher=hostbin)" },
+   { confHostbin, "hostbin", shortHostbin, groupLauncher, cvString, {}, HOSTBIN_PATH_STR,
+     "Path to a script that returns the hostlist for a job on a cluster." },   
+   { confJoblauncher, "launcher", shortLauncher, groupLauncher, cvEnum, { "slurm", "flux", "slurm-plugin", "serial", "hostbin", "unknown" }, DEFAULT_LAUNCHER_STR,
      "Sets the launcher to the specified value." },
 
    { confCmdlineNewgroup, "", shortNone, groupSession, cvBool, {}, "",
@@ -221,10 +225,6 @@ const list<SpindleOption> Options = {
      "Alias for python-prefix" },
    { confDebug, "debug", shortDebug, groupMisc, cvBool, {}, "false",
      "If yes, hide spindle from debuggers so they think libraries come from the original locations.  May cause extra overhead." },
-   { confHostbinEnable, "enable-hostbin", shortHostbinEnable, groupMisc, cvBool, {}, HOSTBIN_ENABLE_STR,
-     "Enables hostbin startup mode." },
-   { confHostbin, "hostbin", shortHostbin, groupMisc, cvString, {}, HOSTBIN_PATH_STR,
-     "Path to a script that returns the hostlist for a job on a cluster." },
    { confPreload, "preload", shortPreload, groupMisc, cvString, {}, "",
      "Provides a text file containing a white-space separated list of files that should be relocated to each node before execution begins" },
    { confStrip, "strip", shortStrip, groupMisc, cvBool, {}, "true", 
@@ -752,6 +752,11 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
                args.startup_type = startup_serial;
                args.use_launcher = serial_launcher;
             }
+            else if (strresult == "hostbin") {
+               debug_printf("Setting hostbin as job launcher\n");
+               args.startup_type = startup_hostbin;
+               args.use_launcher = marker_launcher;
+            }
             else if (strresult == "unknown") {
                debug_printf("Job launcher is unknown\n");
             }
@@ -791,11 +796,11 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
          case confPreload:
             args.preloadfile = getstr(strresult, alloc_strs);
             break;
-         case confHostbinEnable:
-            if (boolresult)
-               args.startup_type = startup_hostbin;
-            break;
          case confHostbin:
+            if (!strresult.empty()) {
+               args.startup_type = startup_hostbin;
+               args.use_launcher = marker_launcher;
+            }               
             break;
          case confNoclean:
             setopt(args.opts, OPT_NOCLEAN, boolresult);
