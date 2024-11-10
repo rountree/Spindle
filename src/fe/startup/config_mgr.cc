@@ -942,7 +942,7 @@ static unsigned int str_hash(const char *str)
    return (unsigned int) hash;
 }
 
-static bool getRandom(void *bytes, size_t bytes_size)
+bool getRandom(void *bytes, size_t bytes_size)
 {
    int fd = open("/dev/urandom", O_RDONLY);
    if (fd == -1)

@@ -26,7 +26,6 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <stdio.h>
 #include <limits.h>
 #include <assert.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -41,6 +40,8 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "spindle_session.h"
 #include "spindle_debug.h"
 
+using namespace std;
+
 static int pipefd[2];
 static std::string session_socket;
 static std::string session_id;
@@ -54,24 +55,74 @@ static int sock = -1;
 #define RET_RUN_CMD 2
 #define RET_END_SESSION 3
 
+extern bool getRandom(void *bytes, size_t bytes_size);
+
+static string getTmpdir()
+{
+   string dirname;
+   if (getenv("TMPDIR")) {
+      return getenv("TMPDIR");
+   }
+#if defined(P_tmpdir)
+   else if (P_tmpdir) {
+      return P_tmpdir;
+   }
+#endif
+   else {
+      return "/tmp";
+   }
+}
+
+#define SESSION_ID_CHARS 8
 static void create_session_id()
 {
-   char *socket_name = tempnam(NULL, SOCKET_PREFIX);
-   int socket_prefix_len = strlen(SOCKET_PREFIX);
-   const char *id = strstr(socket_name, SOCKET_PREFIX) + MIN(socket_prefix_len, 5);
+   unsigned char randombytes[SESSION_ID_CHARS];
+   char session_id_str[SESSION_ID_CHARS+1];
+   string dirname = getTmpdir();
+   
+   for (int j = 0; j < 5; j++) { //Try to generate a random name five times. 
+      bool result = getRandom(randombytes, sizeof(randombytes));
+      if (!result) {
+         err_printf("Failed to read random bytes\n");
+         fprintf(stderr, "Spindle error reading random bytes from /dev/random. Could not create session id\n");
+         exit(-1);
+      }
+      for (int i = 0; i < sizeof(randombytes); i++) {
+         unsigned int val = (unsigned int) (randombytes[i] & 63); //6 bits
+         if (val < 26) 
+            session_id_str[i] = 'a' + val;
+         else if (val < 52)
+            session_id_str[i] = 'A' + (val - 26);
+         else if (val < 62)
+            session_id_str[i] = '0' + (val - 52);
+         else if (val == 62)
+            session_id_str[i] = '.';
+         else if (val == 63)
+            session_id_str[i] = '!';
+         else
+            assert(0);
+      }
+      session_id_str[i] = '\0';
+      
+      string fullpath = dirname + "/" +  socket_prefix + session_id_str;
 
-   session_id = std::string(id);
-   session_socket = std::string(socket_name);
-   free(socket_name);
+      struct stat_buf buf;
+      if (stat(fullpath.c_str(), &buf) != -1) {
+         debug_printf("Warning. Tried to generate a random filename %s and got a collision. Suspiciously odd.\n", fullpath.c_str());
+         continue;
+      }
+
+      session_id = string(session_id_str);
+      session_socket = fullpath;
+      return true;
+   }
 }
 
 static void set_session_id(std::string id)
 {
+   string dirname = getTmpdir();
+   session_socket = dirname + "/" +  socket_prefix + session_id_str;
    session_id = id;
-   char *socket_name = tempnam(NULL, NULL);
-   char *dir = strrchr(socket_name, '/') + 1;
-   *dir = '\0';
-   session_socket = std::string(socket_name) + SOCKET_PREFIX + id;
 }
 
 static int create_unixsocket()
