@@ -737,10 +737,10 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
                setopt(args.opts, OPT_RELOCSO, false);
                setopt(args.opts, OPT_RELOCPY, false);
                setopt(args.opts, OPT_RELOCEXEC, false);
-               setopt(args.opts, OPT_FOLLOWFORK, true);
+               setopt(args.opts, OPT_FOLLOWFORK, false);
                setopt(args.opts, OPT_STOPRELOC, false);
                setopt(args.opts, OPT_OFF, true);
-            }            
+            }
          case confPushpull:
             if (strresult == "pull") {
                setopt(args.opts, OPT_PULL, true);

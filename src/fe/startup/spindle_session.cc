@@ -87,7 +87,7 @@ static void create_session_id()
          fprintf(stderr, "Spindle error reading random bytes from /dev/random. Could not create session id\n");
          exit(-1);
       }
-      for (int i = 0; i < sizeof(randombytes); i++) {
+      for (unsigned long i = 0; i < sizeof(randombytes); i++) {
          unsigned int val = (unsigned int) (randombytes[i] & 63); //6 bits
          if (val < 26) 
             session_id_str[i] = 'a' + val;
@@ -102,11 +102,11 @@ static void create_session_id()
          else
             assert(0);
       }
-      session_id_str[i] = '\0';
+      session_id_str[sizeof(session_id_str)-1] = '\0';
       
-      string fullpath = dirname + "/" +  socket_prefix + session_id_str;
+      string fullpath = dirname + "/" +  SOCKET_PREFIX + session_id_str;
 
-      struct stat_buf buf;
+      struct stat buf;
       if (stat(fullpath.c_str(), &buf) != -1) {
          debug_printf("Warning. Tried to generate a random filename %s and got a collision. Suspiciously odd.\n", fullpath.c_str());
          continue;
@@ -114,14 +114,17 @@ static void create_session_id()
 
       session_id = string(session_id_str);
       session_socket = fullpath;
-      return true;
+      return;
    }
+   err_printf("Failed create unique session id\n");
+   fprintf(stderr, "Spindle error creating unique session id\n");
+   exit(-1);
 }
 
 static void set_session_id(std::string id)
 {
    string dirname = getTmpdir();
-   session_socket = dirname + "/" +  socket_prefix + session_id_str;
+   session_socket = dirname + "/" +  SOCKET_PREFIX + id;
    session_id = id;
 }
 

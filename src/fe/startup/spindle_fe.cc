@@ -33,6 +33,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <sys/time.h>
 #include <time.h>
 
+#include <sstream>
 #if defined(USAGE_LOGGING_FILE)
 static const char *logging_file = USAGE_LOGGING_FILE;
 #else
@@ -293,6 +294,60 @@ int fillInSpindleArgsCmdlineFE(spindle_args_t *params, unsigned int options, int
 
 static void *md_data_ptr;
 
+static void printFlag(opt_t &opts, opt_t flag, const char *str, stringstream &ss)
+{
+   if (!(opts & flag))
+       return;
+   opts &= ~flag;
+   if (ss.tellp())
+      ss << ", ";
+   ss << str;
+}
+   
+static void printSpindleFlags(opt_t opts) {
+   if (!spindle_debug_prints)
+      return;
+   stringstream ss;
+   printFlag(opts, OPT_COBO, "OPT_COBO", ss);
+   printFlag(opts, OPT_DEBUG, "OPT_DEBUG", ss);
+   printFlag(opts, OPT_FOLLOWFORK, "OPT_FOLLOWFORK", ss);
+   printFlag(opts, OPT_PRELOAD, "OPT_PRELOAD", ss);
+   printFlag(opts, OPT_PUSH, "OPT_PUSH", ss);
+   printFlag(opts, OPT_PULL, "OPT_PULL", ss);
+   printFlag(opts, OPT_RELOCAOUT, "OPT_RELOCAOUT", ss);
+   printFlag(opts, OPT_RELOCSO, "OPT_RELOCSO", ss);
+   printFlag(opts, OPT_RELOCEXEC, "OPT_RELOCEXEC", ss);
+   printFlag(opts, OPT_RELOCPY, "OPT_RELOCPY", ss);
+   printFlag(opts, OPT_STRIP, "OPT_STRIP", ss);
+   printFlag(opts, OPT_NOCLEAN, "OPT_NOCLEAN", ss);
+   printFlag(opts, OPT_NOHIDE, "OPT_NOHIDE", ss);
+   printFlag(opts, OPT_REMAPEXEC, "OPT_REMAPEXEC", ss);
+   printFlag(opts, OPT_LOGUSAGE, "OPT_LOGUSAGE", ss);
+   printFlag(opts, OPT_SHMCACHE, "OPT_SHMCACHE", ss);
+   printFlag(opts, OPT_SUBAUDIT, "OPT_SUBAUDIT", ss);
+   printFlag(opts, OPT_PERSIST, "OPT_PERSIST", ss);
+   printFlag(opts, OPT_SEC, "OPT_SEC", ss);
+   printFlag(opts, OPT_SESSION, "OPT_SESSION", ss);
+   printFlag(opts, OPT_MSGBUNDLE, "OPT_MSGBUNDLE", ss);
+   printFlag(opts, OPT_SELFLAUNCH, "OPT_SELFLAUNCH", ss);
+   printFlag(opts, OPT_BEEXIT, "OPT_BEEXIT", ss);
+   printFlag(opts, OPT_PROCCLEAN, "OPT_PROCCLEAN", ss);
+   printFlag(opts, OPT_RSHLAUNCH, "OPT_RSHLAUNCH", ss);
+   printFlag(opts, OPT_STOPRELOC, "OPT_STOPRELOC", ss);
+   printFlag(opts, OPT_NUMA, "OPT_NUMA", ss);
+   printFlag(opts, OPT_OFF, "OPT_OFF", ss);
+   ss << ", ";
+   if (OPT_GET_SEC(opts) == OPT_SEC_MUNGE) ss << "OPT_SEC_MUNGE";
+   if (OPT_GET_SEC(opts) == OPT_SEC_KEYLMON) ss << "OPT_SEC_KEYLMON";
+   if (OPT_GET_SEC(opts) == OPT_SEC_KEYFILE) ss << "OPT_SEC_KEYFILE";
+   if (OPT_GET_SEC(opts) == OPT_SEC_NULL) ss << "OPT_SEC_NULL";
+   opts &= ~((opt_t) OPT_SEC);
+   if (opts) {
+      ss << "[Unrecognize opts string " << opts << "]";
+   }
+   debug_printf("Spindle Options: %s\n", ss.str().c_str());
+}
+
 int spindleInitFE(const char **hosts, spindle_args_t *params)
 {
    if (params->opts & OPT_OFF)
@@ -334,6 +389,7 @@ int spindleInitFE(const char **hosts, spindle_args_t *params)
                 params->use_launcher, params->startup_type, params->shm_cache_size, params->location,
                 params->pythonprefix, params->preloadfile, params->bundle_timeout_ms,
                 params->bundle_cachesize_kb);
+   printSpindleFlags(params->opts);
    debug_printf("Starting FE servers with hostlist of size %u on port %u\n", hosts_size, params->port);
    ldcs_audit_server_fe_md_open(const_cast<char **>(hosts), hosts_size, 
                                 params->port, params->num_ports, params->unique_id,

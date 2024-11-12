@@ -176,6 +176,10 @@ static void wait_for_shell_init (flux_future_t *f, void *arg)
     const char *name;
     int rc = -1;
 
+    if (ctx->params.opts & OPT_OFF) {
+       return;
+    }
+    
     if (flux_job_event_watch_get (f, &event) < 0)
         shell_die_errno (1, "spindle failed waiting for shell.init event");
     if (!(o = json_loads (event, 0, NULL))
@@ -227,7 +231,7 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
     int had_error = 0;
     int numa = 0;
     const char *relocaout = NULL, *reloclibs = NULL, *relocexec = NULL, *relocpython = NULL;
-    const char *followfork = NULL, *preload = NULL;
+    const char *followfork = NULL, *preload = NULL, *level = NULL;
     const char *pyprefix = NULL;
     char *numafiles = NULL;
 
@@ -251,7 +255,7 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
      *  supplied by the user, but not unpacked (This handles typos, etc).
      */
     if (json_unpack_ex (opts, &error, JSON_STRICT,
-                        "{s?i s?i s?i s?i s?s s?s s?s s?s s?s s?s s?i s?s s?s}",
+                        "{s?i s?i s?i s?i s?s s?s s?s s?s s?s s?s s?i s?s s?s s?s}",
                         "noclean", &noclean,
                         "nostrip", &nostrip,
                         "push", &push,
@@ -264,7 +268,8 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
                         "python-prefix", &pyprefix,
                         "numa", &numa,
                         "numa-files", &numafiles,
-                        "preload", &preload) < 0)
+                        "preload", &preload,
+                        "level", &level) < 0)
         return shell_log_errno ("Error in spindle option: %s", error.text);
 
     if (noclean)
@@ -300,13 +305,50 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
        ctx->params.opts |= OPT_NUMA;
        ctx->params.numa_files = numafiles;
     }
-    
     if (pyprefix) {
         char *tmp;
         if (asprintf (&tmp, "%s:%s", ctx->params.pythonprefix, pyprefix) < 0)
             return shell_log_errno ("unable to append to pythonprefix");
         free (ctx->params.pythonprefix);
         ctx->params.pythonprefix = tmp;
+    }
+    if (level) {
+       if (strcmp(level, "high") == 0) {
+          ctx->params.opts |= OPT_RELOCAOUT;
+          ctx->params.opts |= OPT_RELOCSO;
+          ctx->params.opts |= OPT_RELOCPY;
+          ctx->params.opts |= OPT_RELOCEXEC;
+          ctx->params.opts |= OPT_FOLLOWFORK;
+          ctx->params.opts &= ~((opt_t) OPT_STOPRELOC);
+          ctx->params.opts &= ~((opt_t) OPT_OFF);
+       }
+       if (strcmp(level, "medium") == 0) {
+          ctx->params.opts &= ~((opt_t) OPT_RELOCAOUT);
+          ctx->params.opts |= OPT_RELOCSO;
+          ctx->params.opts |= OPT_RELOCPY;
+          ctx->params.opts &= ~((opt_t) OPT_RELOCEXEC);
+          ctx->params.opts |= OPT_FOLLOWFORK;
+          ctx->params.opts &= ~((opt_t) OPT_STOPRELOC);
+          ctx->params.opts &= ~((opt_t) OPT_OFF);
+       }
+       if (strcmp(level, "low") == 0) {
+          ctx->params.opts &= ~((opt_t) OPT_RELOCAOUT);
+          ctx->params.opts &= ~((opt_t) OPT_RELOCSO);
+          ctx->params.opts &= ~((opt_t) OPT_RELOCPY);
+          ctx->params.opts &= ~((opt_t) OPT_RELOCEXEC);
+          ctx->params.opts |= OPT_FOLLOWFORK;
+          ctx->params.opts |= OPT_STOPRELOC;
+          ctx->params.opts &= ~((opt_t) OPT_OFF);
+       }
+       if (strcmp(level, "off") == 0) {
+          ctx->params.opts &= ~((opt_t) OPT_RELOCAOUT);
+          ctx->params.opts &= ~((opt_t) OPT_RELOCSO);
+          ctx->params.opts &= ~((opt_t) OPT_RELOCPY);
+          ctx->params.opts &= ~((opt_t) OPT_RELOCEXEC);
+          ctx->params.opts |= OPT_FOLLOWFORK;
+          ctx->params.opts &= ~((opt_t) OPT_STOPRELOC);
+          ctx->params.opts |= OPT_OFF;
+       }
     }
     if (had_error)
        return had_error;
@@ -396,11 +438,15 @@ static int sp_init (flux_plugin_t *p,
                                     NULL) < 0)
         return shell_log_errno ("fillInSpindleArgsCmdlineFE failed");
 
+
     /*  Read other spindle options from spindle option in jobspec:
      */
     if (sp_getopts (shell, ctx) < 0)
         return -1;
-
+    if (ctx->params.opts & OPT_OFF) {
+       return 0;
+    }
+    
     /*  N.B. Override unique_id with id again to be sure it wasn't changed
      *  (Occaisionally see hangs if this is not done)
      */
@@ -447,7 +493,7 @@ static int sp_task (flux_plugin_t *p,
                     void *data)
 {
     struct spindle_ctx *ctx = flux_plugin_aux_get (p, "spindle");
-    if (ctx && ctx->argc > 0) {
+    if (ctx && ctx->argc > 0 && !(ctx->params.opts & OPT_OFF)) {
         int i;
         flux_shell_t *shell = flux_plugin_get_shell (p);
         flux_shell_task_t *task = flux_shell_current_task (shell);
@@ -473,6 +519,8 @@ static int sp_exit (flux_plugin_t *p,
                     void *data)
 {
     struct spindle_ctx *ctx = flux_plugin_aux_get (p, "spindle");
+    if (ctx->params.opts & OPT_OFF)
+       return 0;    
     if (ctx && ctx->shell_rank == 0)
         spindleCloseFE (&ctx->params);
     return 0;

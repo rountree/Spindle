@@ -30,8 +30,6 @@ int ldcs_audit_server_fe_md_close(void *data);
 int ldcs_audit_server_fe_md_waitfor_close();
 int ldcs_audit_server_fe_broadcast(ldcs_message_t *msg, void *data);
 
-int read_msg(int fd, ldcs_message_t *msg);
-   
 #if defined(__cplusplus)
 }
 #endif

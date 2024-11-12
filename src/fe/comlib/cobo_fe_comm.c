@@ -23,6 +23,29 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <assert.h>
 #include <stdlib.h>
 
+static int read_msg(int fd, ldcs_message_t *msg)
+{
+   int result;
+
+   result = ll_read(fd, msg, sizeof(*msg));
+   if (result == -1)
+      return -1;
+
+   if (msg->header.len) {
+      msg->data = (char *) malloc(msg->header.len);
+      result = ll_read(fd, msg->data, msg->header.len);
+      if (result == -1) {
+         free(msg->data);
+         return -1;
+      }
+   }
+   else {
+      msg->data = NULL;
+   }
+
+   return 0;
+}
+
 int ldcs_audit_server_fe_md_open ( char **hostlist, int numhosts, unsigned int port, unsigned int num_ports,
                                    unique_id_t unique_id, 
                                    void **data  ) {
@@ -95,25 +118,4 @@ int ldcs_audit_server_fe_broadcast(ldcs_message_t *msg, void *data)
    return write_msg(root_fd, msg);
 }
 
-int read_msg(int fd, ldcs_message_t *msg)
-{
-   int result;
 
-   result = ll_read(fd, msg, sizeof(*msg));
-   if (result == -1)
-      return -1;
-
-   if (msg->header.len) {
-      msg->data = (char *) malloc(msg->header.len);
-      result = ll_read(fd, msg->data, msg->header.len);
-      if (result == -1) {
-         free(msg->data);
-         return -1;
-      }
-   }
-   else {
-      msg->data = NULL;
-   }
-
-   return 0;
-}
