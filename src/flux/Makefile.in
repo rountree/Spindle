@@ -136,10 +136,10 @@ am__uninstall_files_from_dir = { \
 am__installdirs = "$(DESTDIR)$(libdir)" "$(DESTDIR)$(rcdir)"
 LTLIBRARIES = $(lib_LTLIBRARIES)
 am__DEPENDENCIES_1 =
-libspindleflux_la_DEPENDENCIES = $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_1) \
-	$(top_builddir)/src/server/startup/libspindlebe.la \
-	$(top_builddir)/src/fe/startup/libspindlefe.la
+libspindleflux_la_DEPENDENCIES =  \
+	$(top_builddir)/src/server/startup/libspindlebe_static.la \
+	$(top_builddir)/src/fe/startup/libspindlefe_static.la \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 am_libspindleflux_la_OBJECTS = libspindleflux_la-flux-spindle.lo
 libspindleflux_la_OBJECTS = $(am_libspindleflux_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
@@ -388,13 +388,14 @@ libspindleflux_la_CPPFLAGS = \
 	$(FLUX_HOSTLIST_CFLAGS)
 
 libspindleflux_la_LIBADD = \
+	$(top_builddir)/src/server/startup/libspindlebe_static.la \
+	$(top_builddir)/src/fe/startup/libspindlefe_static.la \
 	$(FLUX_CORE_LIBS) \
-	$(FLUX_HOSTLIST_LIBS) \
-	$(top_builddir)/src/server/startup/libspindlebe.la \
-	$(top_builddir)/src/fe/startup/libspindlefe.la
+	$(FLUX_HOSTLIST_LIBS)
 
 libspindleflux_la_LDFLAGS = \
 	$(fluxplugin_ldflags) \
+   -Wl,--allow-multiple-definition \
    -version-info $(libver) \
 	-module
 

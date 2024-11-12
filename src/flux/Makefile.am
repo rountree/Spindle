@@ -15,13 +15,14 @@ libspindleflux_la_CPPFLAGS = \
 	$(FLUX_HOSTLIST_CFLAGS)
 
 libspindleflux_la_LIBADD = \
+	$(top_builddir)/src/server/startup/libspindlebe_static.la \
+	$(top_builddir)/src/fe/startup/libspindlefe_static.la \
 	$(FLUX_CORE_LIBS) \
-	$(FLUX_HOSTLIST_LIBS) \
-	$(top_builddir)/src/server/startup/libspindlebe.la \
-	$(top_builddir)/src/fe/startup/libspindlefe.la
+	$(FLUX_HOSTLIST_LIBS)
 
 libspindleflux_la_LDFLAGS = \
 	$(fluxplugin_ldflags) \
+   -Wl,--allow-multiple-definition \
    -version-info $(libver) \
 	-module
 

@@ -1,5 +1,6 @@
 pkglibexec_PROGRAMS = spindle_be
 lib_LTLIBRARIES = libspindlebe.la
+noinst_LTLIBRARIES = libspindlebe_static.la
 
 AM_CPPFLAGS = -I$(top_srcdir)/../logging
 
@@ -30,6 +31,10 @@ libspindlebe_la_CPPFLAGS = $(CORE_CPPFLAGS) -DSPINDLEBELIB
 libspindlebe_la_SOURCES = $(CORE_SOURCES)
 libspindlebe_la_LIBADD = $(CORE_LDADD) $(MUNGE_DYN_LIB)
 libspindlebe_la_LDFLAGS = -version-info $(SPINDLEBE_LIB_VERSION)
+
+libspindlebe_static_la_CPPFLAGS = $(libspindlebe_la_CPPFLAGS)
+libspindlebe_static_la_SOURCES = $(libspindlebe_la_SOURCES)
+libspindlebe_static_la_LIBADD = $(libspindlebe_la_LIBADD)
 
 spindle_be_LDFLAGS = -static
 spindle_be_CPPFLAGS = $(CORE_CPPFLAGS)

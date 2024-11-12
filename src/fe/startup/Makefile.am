@@ -1,5 +1,7 @@
 bin_PROGRAMS = spindle
 lib_LTLIBRARIES = libspindlefe.la
+noinst_LTLIBRARIES = libspindlefe_static.la
+
 include_HEADERS = $(top_srcdir)/../include/spindle_launch.h
 
 AM_CPPFLAGS = -I$(top_srcdir)/../logging
@@ -19,6 +21,11 @@ libspindlefe_la_CPPFLAGS = $(CORE_CPPFLAGS) -DSPINDLEFELIB
 libspindlefe_la_SOURCES = $(CORE_SOURCES)
 libspindlefe_la_LIBADD = $(CORE_LDADD)
 libspindlefe_la_LDFLAGS = -version-info $(SPINDLEFE_LIB_VERSION)
+
+libspindlefe_static_la_CPPFLAGS = $(libspindlefe_la_CPPFLAGS)
+libspindlefe_static_la_SOURCES = $(libspindlefe_la_SOURCES)
+libspindlefe_static_la_LIBADD = $(libspindlefe_la_LIBADD)
+
 
 spindle_CPPFLAGS = $(CORE_CPPFLAGS) -DSPINDLEEXE
 spindle_SOURCES = spindle_fe_main.cc spindle_fe_serial.cc parse_launcher.cc parse_launcher_args.cc launcher.cc spindle_session.cc launch_slurm.cc launch_lsf.cc $(CORE_SOURCES)
