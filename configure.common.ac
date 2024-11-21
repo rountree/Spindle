@@ -35,7 +35,8 @@ AC_ARG_WITH(rm,
         [TESTRM=${withval}],
         [])
 if test "x$TESTRM" == "xunknown"; then
-   AC_MSG_WARN(["--with-rm not specified.  Tests will not work"])
+   AC_MSG_WARN([--with-rm not specified.  Tests will run in serial mode])
+   TESTRM=serial
 fi
 AC_SUBST(TESTRM)
 AC_DEFINE_UNQUOTED([TESTRM], "[$TESTRM]", [Default recource manager])

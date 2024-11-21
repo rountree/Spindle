@@ -22,6 +22,11 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 void writeFile(FILE *f, char *prefix, int size)
 {
    int i;
+   fprintf(f, "__thread int tlsvar_%d = -1;\n", size);
+   fprintf(f, "static void on_load() __attribute__((constructor));\n");
+   fprintf(f, "static void on_load() { tlsvar_%d = %d; }\n", size, size);
+   fprintf(f, "int get_tlsvar_%s() { return tlsvar_%d; }\n", prefix, size);
+   fprintf(f, "#if defined(FUNC_NAME)\n");
    fprintf(f, "int %s_cache[%d];\n", prefix, size+1);
    fprintf(f, "volatile int always_zero = 0;\n");
    fprintf(f, "volatile int vals[16];\n");
@@ -41,6 +46,7 @@ void writeFile(FILE *f, char *prefix, int size)
               prefix, i); /* return */
    }
    fprintf(f, "int %s_calc() { int count = 0; return %s_fib%d(&count); }\n", prefix, prefix, size);
+   fprintf(f, "#endif\n");
    fclose(f);
 };
 

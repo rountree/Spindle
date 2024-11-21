@@ -13,8 +13,9 @@ have received a copy of the GNU Lesser General Public License along with this
 program; if not, write to the Free Software Foundation, Inc., 59 Temple
 Place, Suite 330, Boston, MA 02111-1307 USA
 */
-
+#if defined(HAVE_MPI)
 #include <mpi.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <dlfcn.h>
@@ -82,6 +83,7 @@ typedef struct {
    char *libname;
    void *dlhandle;
    int (*calc_func)(void);
+   int (*tls_func)(void);
    int opened;
    int flags;
    char *subdir;
@@ -96,6 +98,7 @@ typedef struct {
 #define FLAGS_SYMLINK  (1 << 2)
 #define FLAGS_SKIP     (1 << 3)
 #define FLAGS_WONTLOAD (1 << 4)
+#define FLAGS_TLSLIB   (1 << 5)
 int abort_mode = 0;
 int fork_mode = 0;
 int fork_child = 0;
@@ -115,41 +118,72 @@ static void setup_forkmode();
 GCC7_DISABLE_WARNING("-Wformat-truncation");
 
 open_libraries_t libraries[] = {
-   { "libtest10.so", NULL, NULL, UNLOADED, FLAGS_MUSTOPEN, NULL },
-   { "libtest50.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libtest100.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libtest500.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libtest1000.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libtest2000.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libtest4000.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libtest6000.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libtest8000.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libtest10000.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libdepA.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libcxxexceptA.so", NULL, NULL, UNLOADED, 0, NULL },
-   { "libnoexist.so", NULL, NULL, UNLOADED, FLAGS_NOEXIST, NULL },
-   { "libsymlink.so", NULL, NULL, UNLOADED, FLAGS_SYMLINK | FLAGS_SKIP | FLAGS_WONTLOAD, NULL },
-   { "liboriginlib.so", NULL, NULL, UNLOADED, 0, "origin_dir/" },
+   { "libtest10.so", NULL, NULL, NULL, UNLOADED, FLAGS_MUSTOPEN, NULL },
+   { "libtest11.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest12.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest13.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest14.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest15.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest16.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest17.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest18.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest19.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest20.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest50.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest100.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest500.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest1000.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest2000.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest4000.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest6000.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest8000.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libtest10000.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libdepA.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libcxxexceptA.so", NULL, NULL, NULL, UNLOADED, 0, NULL },
+   { "libnoexist.so", NULL, NULL, NULL, UNLOADED, FLAGS_NOEXIST, NULL },
+   { "libsymlink.so", NULL, NULL, NULL, UNLOADED, FLAGS_SYMLINK | FLAGS_SKIP | FLAGS_WONTLOAD, NULL },
+   { "liboriginlib.so", NULL, NULL, NULL, UNLOADED, 0, "origin_dir/" },
+   { "libtls1.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls2.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls3.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls4.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls5.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls6.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls7.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls8.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls9.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls10.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls11.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls12.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls13.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls14.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls15.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls16.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls17.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls18.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls19.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
+   { "libtls20.so", NULL, NULL, NULL, UNLOADED, FLAGS_TLSLIB | FLAGS_SKIP, NULL },
    { NULL, NULL, NULL, 0, 0 }
 };
 int num_libraries;
 
 #define DEPENDENCY_HANDLE ((void *) 1)
 
-void get_calc_function(int (*func)(void), char *name)
+void set_lib_functions(int (*calcfunc)(void), int(*tlsfunc)(void), char *name)
 {
    int i;
    for (i = 0; libraries[i].libname; i++) {
       if (strcmp(libraries[i].libname, name) != 0)
          continue;
-      libraries[i].calc_func = func;
+      libraries[i].calc_func = calcfunc;
+      libraries[i].tls_func = tlsfunc;
       return;
    }
    err_printf("Failed to find function %s in list\n", name);
 }
 
 typedef int (*func_t)(void);
-typedef void (*cb_func_t)(func_t, char *);
+typedef void (*cb_func_t)(func_t, func_t, char *);
 extern void setup_func_callback(cb_func_t);
 
 static char oldcwd[4096];
@@ -168,6 +202,8 @@ char *libpath(char *s, char *subdir) {
 static void open_library(int i)
 {
    char *fullpath, *result;
+   if (libraries[i].flags & FLAGS_TLSLIB)
+      return;
    if (!(libraries[i].flags & FLAGS_WONTLOAD))
       test_printf("dlstart %s\n", libraries[i].libname);
    fullpath = libpath(libraries[i].libname, libraries[i].subdir);
@@ -702,6 +738,45 @@ void check_libraries()
    }
 }
 
+void checkTlsSum()
+{
+   int i;
+   int sum = 0;
+   for (i = 0; libraries[i].libname; i++) {
+      if (!libraries[i].tls_func)
+         continue;
+      sum += libraries[i].tls_func();
+   }
+   int correct = 31815; //Sum of all the libtest*.so libraries's values
+   if ((sum != correct)  && (open_mode != om_partial)) { 
+      err_printf("Sum %d of TLS variables in all libtest libraries did not add to %d\n", sum, correct);
+      return;
+   }
+
+   //dlopen all the libtls*.so
+   sum = 0;
+   for (i = 0; libraries[i].libname; i++) {
+      if (!(libraries[i].flags & FLAGS_TLSLIB))
+         continue;
+      test_printf("dlstart %s\n", libraries[i].libname);
+      void *result = dlopen(libraries[i].libname, RTLD_LAZY | RTLD_GLOBAL);
+      if (!result) {
+         err_printf("Failed to open library %s\n", libraries[i].libname);
+         continue;
+      }
+      libraries[i].opened = DLOPENED;
+      libraries[i].dlhandle = result;
+      
+      sum += libraries[i].tls_func();
+   }
+   correct = 210; //Sum of all the libtls*.so values
+   if (sum != correct) {
+      err_printf("Sum %d of TLS variables in all libtest libraries did not add to %d\n", sum, correct);
+      return;
+   }
+
+}
+
 void close_libs()
 {
    int i, result;
@@ -716,10 +791,10 @@ void close_libs()
 
 int run_test()
 {
-   /*Make get_calc_function get called when a library loads.
-     if a library has already been loaded, get_calc_function
+   /*Make set_lib_functions gets called when a library loads.
+     if a library has already been loaded, set_lib_functions
      will be called now. */
-   setup_func_callback(get_calc_function);
+   setup_func_callback(set_lib_functions);
 
    if (chdir_mode)
       push_cwd();
@@ -744,13 +819,17 @@ int run_test()
    if (had_error)
       return -1;
 
+   checkTlsSum();
+   if (had_error)
+      return -1;
+
    close_libs();
    if (had_error)
       return -1;
 
    if (chdir_mode)
       pop_cwd();
-   
+
    return 0;
 }
 
@@ -767,6 +846,65 @@ int hash(char *str)
    return hash;
 }
 
+#if defined(USE_NEEDED)
+volatile int dont_actually_call = 0;
+int t10_calc();
+int t11_calc();
+int t12_calc();
+int t13_calc();
+int t14_calc();
+int t15_calc();
+int t16_calc();
+int t17_calc();
+int t18_calc();
+int t19_calc();
+int t20_calc();
+int t50_calc();
+int t100_calc();
+int t500_calc();
+int t1000_calc();
+int t2000_calc();
+int t4000_calc();
+int t6000_calc();
+int t8000_calc();
+int t10000_calc();
+int depA_calc();
+int cxxexceptA_calc();
+int origin_calc();
+void reference_SOs()
+{
+   if (!dont_actually_call)
+      return;
+   t10_calc();
+   t11_calc();
+   t12_calc();
+   t13_calc();
+   t14_calc();
+   t15_calc();
+   t16_calc();
+   t17_calc();
+   t18_calc();
+   t19_calc();
+   t20_calc();
+   t50_calc();
+   t100_calc();
+   t500_calc();
+   t1000_calc();
+   t2000_calc();
+   t4000_calc();
+   t6000_calc();
+   t8000_calc();
+   t10000_calc();
+   depA_calc();
+   cxxexceptA_calc();
+   origin_calc();   
+}
+#else
+void reference_SOs()
+{
+}
+#endif
+
 int main(int argc, char *argv[])
 {
    int result = 0;
@@ -774,9 +912,11 @@ int main(int argc, char *argv[])
    int passed;
 
    if (getenv("SPINDLE_TEST") == NULL) {
-      fprintf(stderr, "Enable environment variable SPINDLE_TEST before running!");
+      fprintf(stderr, "Enable environment variable SPINDLE_TEST before running!\n");
       return -1;
    }
+
+   reference_SOs();
 
    open_libraries_t *cur_lib;
    for (cur_lib = libraries; cur_lib->libname; cur_lib++, num_libraries++);
@@ -784,10 +924,15 @@ int main(int argc, char *argv[])
    parse_args(argc, argv);
 
    if (!nompi_mode) {
+#if defined(MPI_VERSION)
       result = MPI_Init(&argc, &argv);
       MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#else
+      rank = 0;
+#endif
    }
    
+
    /* Setup */
    if (fork_mode)
       setup_forkmode();
@@ -802,8 +947,10 @@ int main(int argc, char *argv[])
    if (!nompi_mode && !collectResults())
       passed = 0;
 
+#if defined(MPI_VERSION)
    if (!nompi_mode)
       MPI_Finalize();
+#endif
 
    if (rank == 0) {
       if (passed)
@@ -815,8 +962,13 @@ int main(int argc, char *argv[])
    if (abort_mode) {
       if (nompi_mode)
          abort();
-      else
+      else {
+#if defined(MPI_VERSION)         
          MPI_Abort(MPI_COMM_WORLD, 0);
+#else
+         abort();
+#endif
+      }
    }
 
    return passed ? 0 : -1;
@@ -879,6 +1031,7 @@ static int collect_forkmode(int passed) {
  * One process from each node in an MPI job will return true,
  * others will return false.
  **/
+#if defined(MPI_VERSION)
 static int getUniqueHostPerNode()
 {
    int color, global_rank;
@@ -941,6 +1094,13 @@ static int getUniqueHostPerNode()
 
    return (rank == 0);
 }
+#else
+static int getUniqueHostPerNode()
+{
+   return 1;
+}
+#endif
+
 
 static int collectResults()
 {
@@ -987,12 +1147,15 @@ static int collectResults()
    }
 
    int global_test_passed = 0;
+#if defined(MPI_VERSION)
    int result = MPI_Allreduce(&test_passed, &global_test_passed, 1, MPI_INT, MPI_LAND, MPI_COMM_WORLD);
    if (result != MPI_SUCCESS) {
       fprintf(stderr, "Error in MPI_Allreduce #2\n");
       MPI_Abort(MPI_COMM_WORLD, -1);
    }
-   
+#else
+   global_test_passed = test_passed;
+#endif
    return global_test_passed;
 }
    

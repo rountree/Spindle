@@ -1,71 +1,122 @@
-#!/bin/sh
+#!/bin/bash
 
 export SPINDLE_TEST_ARGS="$@"
 export SPINDLE_BLUEGENE="BLUEGENE_TEST"
 export TEST_RM="TEST_RESOURCE_MANAGER"
+export GLOBAL_RESULT=0
+CHECK_RETCODE() { if [[ $? != 0 ]]; then export GLOBAL_RESULT=-1; fi }
 
 ./run_driver --dependency --push
+CHECK_RETCODE
 ./run_driver --dlopen --push
+CHECK_RETCODE
 ./run_driver --dlreopen --push
+CHECK_RETCODE
 ./run_driver --reorder --push
+CHECK_RETCODE
 ./run_driver --partial --push
+CHECK_RETCODE
 ./run_driver --ldpreload --push
+CHECK_RETCODE
 
 ./run_driver --dependency --pull
+CHECK_RETCODE
 ./run_driver --dlopen --pull
+CHECK_RETCODE
 ./run_driver --dlreopen --pull
+CHECK_RETCODE
 ./run_driver --reorder --pull
+CHECK_RETCODE
 ./run_driver --partial --pull
+CHECK_RETCODE
 ./run_driver --ldpreload --pull
+CHECK_RETCODE
 
 ./run_driver --dependency --numa
+CHECK_RETCODE
 ./run_driver --dlopen --numa
+CHECK_RETCODE
 ./run_driver --dlreopen --numa
+CHECK_RETCODE
 ./run_driver --reorder --numa
+CHECK_RETCODE
 ./run_driver --partial --numa
+CHECK_RETCODE
 ./run_driver --ldpreload --numa
+CHECK_RETCODE
 
 if test "x$SPINDLE_BLUEGENE" != "xtrue"; then
 ./run_driver --dependency --fork
+CHECK_RETCODE
 ./run_driver --dlopen --fork
+CHECK_RETCODE
 ./run_driver --dlreopen --fork
+CHECK_RETCODE
 ./run_driver --reorder --fork
+CHECK_RETCODE
 ./run_driver --partial --fork
+CHECK_RETCODE
 ./run_driver --ldpreload --fork
+CHECK_RETCODE
 fi
 
 if test "x$SPINDLE_BLUEGENE" != "xtrue"; then
 ./run_driver --dependency --forkexec
+CHECK_RETCODE
 ./run_driver --dlopen --forkexec
+CHECK_RETCODE
 ./run_driver --dlreopen --forkexec
+CHECK_RETCODE
 ./run_driver --reorder --forkexec
+CHECK_RETCODE
 ./run_driver --partial --forkexec
+CHECK_RETCODE
 ./run_driver --ldpreload --forkexec
+CHECK_RETCODE
 fi
 
 ./run_driver --dependency --chdir
+CHECK_RETCODE
 ./run_driver --dlopen --chdir
+CHECK_RETCODE
 ./run_driver --dlreopen --chdir
+CHECK_RETCODE
 ./run_driver --reorder --chdir
+CHECK_RETCODE
 ./run_driver --partial --chdir
+CHECK_RETCODE
 ./run_driver --ldpreload --chdir
+CHECK_RETCODE
 
 ./run_driver --dependency --preload
+CHECK_RETCODE
 ./run_driver --dlopen --preload
+CHECK_RETCODE
 ./run_driver --dlreopen --preload
+CHECK_RETCODE
 ./run_driver --reorder --preload
+CHECK_RETCODE
 ./run_driver --partial --preload
+CHECK_RETCODE
 ./run_driver --ldpreload --preload
+CHECK_RETCODE
 
-if test "x$TEST_RM" != "xflux"; then
+if test "x$TEST_RM" != "xflux" && test "x$TEST_RM" != "xserial"; then
 export SESSION_ID=`./run_driver --start-session`
 ./run_driver --dependency --session
+CHECK_RETCODE
 ./run_driver --dlopen --session
+CHECK_RETCODE
 ./run_driver --dlreopen --session
+CHECK_RETCODE
 ./run_driver --reorder --session
+CHECK_RETCODE
 ./run_driver --partial --session
+CHECK_RETCODE
 ./run_driver --ldpreload --session
+CHECK_RETCODE
 ./run_driver --end-session $SESSION_ID
+CHECK_RETCODE
 unset SESSION_ID
 else
 echo Skipping: ./run_driver --dependency --session
@@ -75,3 +126,10 @@ echo Skipping: ./run_driver --reorder --session
 echo Skipping: ./run_driver --partial --session
 echo Skipping: ./run_driver --ldpreload --session
 fi
+
+if [[ $GLOBAL_RESULT != 0 ]]; then
+    echo SOME TESTS FAILED
+    exit -1
+fi
+echo ALL TESTS PASSED
+exit 0

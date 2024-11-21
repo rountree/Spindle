@@ -25,5 +25,5 @@ else
     export FLUX_LD_PRELOAD=""
 fi
 
-flux run $FLUX_LD_PRELOAD -o userrc=spindle.rc -o $FLUX_SPINDLE_OPTS $PROCS $*
+exec flux run $FLUX_LD_PRELOAD -o userrc=spindle.rc -o spindle.level=high -o $FLUX_SPINDLE_OPTS $PROCS $*
 

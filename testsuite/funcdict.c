@@ -18,10 +18,11 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <stdlib.h>
 
 typedef int (*func_t)(void);
-typedef void (*cb_func_t)(func_t, char *);
+typedef void (*cb_func_t)(func_t, func_t, char *);
 
 struct func_table_t {
-   func_t function;
+   func_t calc_function;
+   func_t tls_function;
    char *name;
 };
 
@@ -36,20 +37,22 @@ void setup_func_callback(cb_func_t c)
    cb = c;
 
    for (i = 0; i<cur_library; i++) {
-      cb(func_table[i].function, func_table[i].name);
+      cb(func_table[i].calc_function, func_table[i].tls_function, func_table[i].name);
    }
 }
 
-void register_calc_function(func_t f, char *n)
+void register_lib_function(func_t fcalc, func_t ftls, char *n)
 {
    if (cb) {
-      cb(f, n);
+      cb(fcalc, ftls, n);
       return;
    }
 
    assert(cur_library != MAX_LIBRARIES);
-   func_table[cur_library].function = f;
+   func_table[cur_library].calc_function = fcalc;
+   func_table[cur_library].tls_function = ftls;
    func_table[cur_library].name = n;
    cur_library++;
 }
+
 

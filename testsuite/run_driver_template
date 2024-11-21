@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 cd TEST_RUN_DIR
 if [ "x$LD_LIBRARY_PATH" != "x" ] ; then
@@ -21,7 +21,8 @@ fi
 
 echo Running: ./run_driver $* $SPINDLE_LAUNCH_MODE
 
-export LIBRARY_LIST="`pwd`/libcxxexceptA.so:`pwd`/libtest100.so:`pwd`/libtest2000.so:`pwd`/libtest500.so:`pwd`/libtest1000.so:`pwd`/libtest4000.so:`pwd`/libtest6000.so:`pwd`/libdepA.so:`pwd`/libtest10.so:`pwd`/libtest10000.so:`pwd`/libtest50.so:`pwd`/libtest8000.so:`pwd`/origin_dir/liboriginlib.so"
+export LIBRARY_LIST="`pwd`/libcxxexceptA.so:`pwd`/libtest100.so:`pwd`/libtest2000.so:`pwd`/libtest500.so:`pwd`/libtest1000.so:`pwd`/libtest4000.so:`pwd`/libtest6000.so:`pwd`/libdepA.so:`pwd`/libtest10.so:`pwd`/libtest11.so:`pwd`/libtest12.so:`pwd`/libtest13.so:`pwd`/libtest14.so:`pwd`/libtest15.so:`pwd`/libtest16.so:`pwd`/libtest17.so:`pwd`/libtest18.so:`pwd`/libtest19.so:`pwd`/libtest20.so:`pwd`/libtest10000.so:`pwd`/libtest50.so:`pwd`/libtest8000.so:`pwd`/origin_dir/liboriginlib.so"
+
 
 if [ $1 == --dependency ] ; then
 export TEST_EXEC=./test_driver_libs
@@ -61,6 +62,8 @@ export SPINDLE_BGQ_LD_PRELOAD="false"
 else
 export SPINDLE_BGQ_LD_PRELOAD="true"
 fi
+
+export SPINDLE_FLAGS="--level=high"
 
 ./run_driver_rm $TEST_EXEC $*
 

@@ -34,19 +34,29 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 extern "C" {
 #endif
 
+#if defined(FUNC_NAME) || defined(TLS_NAME)
+extern void register_lib_function(int (*calcfunc)(void), int (*tsfunc)(void), char *);
 #if defined(FUNC_NAME)
-   
 extern int FUNC_NAME();
-
-extern void register_calc_function(int (*func)(void), char *);
-
+#endif
+#if defined(TLS_NAME)
+extern int TLS_NAME();
+#endif
 static void onload() __attribute__((constructor));
 static void onload()
 {
-   register_calc_function(FUNC_NAME, (char *) STR(SO_NAME));
+   int (*calcf)(void) = NULL;
+   int (*tlsf)(void) = NULL;
+#if defined(FUNC_NAME)
+   calcf = FUNC_NAME;
+#endif
+#if defined(TLS_NAME)
+   tlsf = TLS_NAME;
+#endif
+   register_lib_function(calcf, tlsf, (char *) STR(SO_NAME));
 }
 #endif
-
+   
 typedef struct libs_list_t {
    const char *libname;
    int count;
