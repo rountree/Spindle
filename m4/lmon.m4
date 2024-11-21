@@ -24,7 +24,7 @@ AC_CHECK_HEADER([lmon_api/lmon_fe.h],
                 [AC_MSG_NOTICE([Found launchmon headers])],
                 [if test "x$EXPLICIT_LMON" == "xtrue"; 
                    then AC_MSG_ERROR([Could not find or build LaunchMON includes])
-                   else AC_MSG_WARN([Could not find or build LaunchMON includes]); HAVE_LMON=false
+                   else HAVE_LMON=false
                  fi])
 CPPFLAGS=$CPPFLAGS_HOLD
 

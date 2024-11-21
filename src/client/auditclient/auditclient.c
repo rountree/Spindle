@@ -27,6 +27,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 unsigned int spindle_la_version(unsigned int version)
 {
+   patchDTV_init();
    return 1;
 }
 
@@ -37,6 +38,8 @@ void spindle_la_activity (uintptr_t *cookie, unsigned int flag)
                  (flag == LA_ACT_ADD) ?        "LA_ACT_ADD" :
                  (flag == LA_ACT_DELETE) ?     "LA_ACT_DELETE" :
                  "???");
+   if (flag == LA_ACT_CONSISTENT)
+      patchDTV_check();   
    return;
 }
 

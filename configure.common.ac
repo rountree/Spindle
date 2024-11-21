@@ -79,6 +79,16 @@ if test "x$ENABLE_FLUX_PLUGIN" == "xtrue"; then
   AC_DEFINE([ENABLE_FLUX_PLUGIN], [1], [Flux with via plugin is enabled])
 fi
 
+AC_MSG_CHECKING([for glibc dtv allocation bug])
+if test "x`${SPINDLE_SOURCE_ROOT}/scripts/dtvtest/run_dtvtest.sh ${SPINDLE_SOURCE_ROOT}/scripts/dtvtest ${SPINDLE_BUILD_ROOT}/dtvtest '$CC' '$CFLAGS'`" == "x0"; then
+   DTV_ALLOC_BUG=0
+   AC_MSG_RESULT([no])
+else
+   DTV_ALLOC_BUG=1
+   AC_MSG_RESULT([yes])
+fi
+AC_DEFINE_UNQUOTED([DTV_ALLOCATION_BUG],[$DTV_ALLOC_BUG],[Defined if GLIBC has an allocation bug])
+
 #OS Detection
 AC_ARG_ENABLE(bluegene,
               [AS_HELP_STRING([--enable-bluegene],[Build Spindle for BlueGene/Q])],

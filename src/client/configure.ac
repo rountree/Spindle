@@ -11,6 +11,8 @@ AM_PROG_CC_C_O
 AC_CONFIG_FILES([logging/Makefile biter/Makefile shm_cache/Makefile client_comlib/Makefile client/Makefile auditclient/Makefile subaudit/Makefile beboot/Makefile spindle_api/Makefile ldsolookup/Makefile Makefile])
 AC_PROG_LN_S
 LT_INIT
+SPINDLE_BUILD_ROOT=`pwd`/../..
+SPINDLE_SOURCE_ROOT=`realpath ${srcdir}/../..`
 
 #Include common ops
 m4_include([../../m4/lx_detect_bluegene.m4])

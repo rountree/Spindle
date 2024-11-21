@@ -16,6 +16,9 @@ LT_INIT
 # Initialize pkg-config
 PKG_PROG_PKG_CONFIG
 
+SPINDLE_BUILD_ROOT=`pwd`
+SPINDLE_SOURCE_ROOT=`realpath ${srcdir}`
+
 #Include common ops
 m4_include([configure.common.ac])
 m4_include([m4/ax_tls.m4])

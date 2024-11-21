@@ -30,11 +30,14 @@ struct link_map *get_linkmap_from_cookie(uintptr_t *cookie);
 
 Elf64_Addr doPermanentBinding_idx(struct link_map *map,
                                   unsigned long plt_reloc_idx,
-                                  Elf64_Addr target);
+                                  Elf64_Addr target,
+                                  const char *symname);
 Elf64_Addr doPermanentBinding_noidx(uintptr_t *refcook, uintptr_t *defcook,
                                     Elf64_Addr target, const char *symname,
                                     void *stack_begin, void *stack_end);
 
+void patchDTV_init();
+void patchDTV_check();
 
 #define AUDIT_EXPORT __attribute__((__visibility__("default")))
 

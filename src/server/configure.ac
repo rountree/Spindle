@@ -13,6 +13,9 @@ AC_CONFIG_FILES([logging/Makefile biter/Makefile cache/Makefile auditserver/Make
 AC_PROG_LN_S
 LT_INIT
 
+SPINDLE_BUILD_ROOT=`pwd`/../..
+SPINDLE_SOURCE_ROOT=`realpath ${srcdir}/../..`
+
 #Include common ops
 m4_include([../../m4/lx_detect_bluegene.m4])
 m4_include([../../configure.common.ac])

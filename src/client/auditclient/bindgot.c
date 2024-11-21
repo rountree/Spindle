@@ -184,7 +184,8 @@ Elf64_Addr doPermanentBinding_noidx(uintptr_t *refcook, uintptr_t *defcook,
 
 Elf64_Addr doPermanentBinding_idx(struct link_map *map,
                                   unsigned long plt_reloc_idx,
-                                  Elf64_Addr target)
+                                  Elf64_Addr target,
+                                  const char *symname)
 {
    Elf64_Dyn *dynamic_section = map->l_ld;
    Elf64_Rela *rel = NULL;
@@ -201,7 +202,7 @@ Elf64_Addr doPermanentBinding_idx(struct link_map *map,
    got_entry = (Elf64_Addr *) (rel->r_offset + base);
                 
    make_got_writable(got_entry, map);
-   debug_printf3("binding at %p to target %lx in %s\n", got_entry, target, map->l_name);
+   debug_printf3("binding %s at %p to target %lx in %s\n", symname, got_entry, target, map->l_name);
    *got_entry = target;
    return target;
 }

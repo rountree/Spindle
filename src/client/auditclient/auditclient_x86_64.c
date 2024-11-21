@@ -24,7 +24,8 @@ Elf64_Addr la_x86_64_gnu_pltenter(Elf64_Sym *sym, unsigned int ndx,
 
 Elf64_Addr doPermanentBinding_idx(struct link_map *map,
                                   unsigned long plt_reloc_idx,
-                                  Elf64_Addr target);
+                                  Elf64_Addr target,
+                                  const char *symname);
 
 Elf64_Addr la_x86_64_gnu_pltenter(Elf64_Sym *sym,
                                   unsigned int ndx,
@@ -38,5 +39,5 @@ Elf64_Addr la_x86_64_gnu_pltenter(Elf64_Sym *sym,
    struct link_map *map = get_linkmap_from_cookie(refcook);
    unsigned long reloc_index = *((unsigned long *) (regs->lr_rsp-8));
    Elf64_Addr target = client_call_binding(symname, sym->st_value);
-   return doPermanentBinding_idx(map, reloc_index, target);
+   return doPermanentBinding_idx(map, reloc_index, target, symname);
 }

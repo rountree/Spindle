@@ -1,7 +1,7 @@
 #!/bin/sh
 
 if [ "x$SPINDLE_TEST_ARGS" = "x" ] ; then
-PROCS="-n `flux resource info | tr ',' '\n' | grep Cores | awk '{print $1}'`"
+PROCS="-N `flux resource info | tr ',' '\n' | grep Nodes | awk '{print $1}'` --tasks-per-node 16"
 else
 PROCS=$SPINDLE_TEST_ARGS
 fi

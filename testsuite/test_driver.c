@@ -13,6 +13,7 @@ have received a copy of the GNU Lesser General Public License along with this
 program; if not, write to the Free Software Foundation, Inc., 59 Temple
 Place, Suite 330, Boston, MA 02111-1307 USA
 */
+#include "config.h"
 #if defined(HAVE_MPI)
 #include <mpi.h>
 #endif
@@ -924,7 +925,7 @@ int main(int argc, char *argv[])
    parse_args(argc, argv);
 
    if (!nompi_mode) {
-#if defined(MPI_VERSION)
+#if defined(HAVE_MPI)
       result = MPI_Init(&argc, &argv);
       MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 #else
@@ -947,7 +948,7 @@ int main(int argc, char *argv[])
    if (!nompi_mode && !collectResults())
       passed = 0;
 
-#if defined(MPI_VERSION)
+#if defined(HAVE_MPI)
    if (!nompi_mode)
       MPI_Finalize();
 #endif
@@ -963,7 +964,7 @@ int main(int argc, char *argv[])
       if (nompi_mode)
          abort();
       else {
-#if defined(MPI_VERSION)         
+#if defined(HAVE_MPI)         
          MPI_Abort(MPI_COMM_WORLD, 0);
 #else
          abort();
@@ -1031,7 +1032,7 @@ static int collect_forkmode(int passed) {
  * One process from each node in an MPI job will return true,
  * others will return false.
  **/
-#if defined(MPI_VERSION)
+#if defined(HAVE_MPI)
 static int getUniqueHostPerNode()
 {
    int color, global_rank;
@@ -1147,7 +1148,7 @@ static int collectResults()
    }
 
    int global_test_passed = 0;
-#if defined(MPI_VERSION)
+#if defined(HAVE_MPI)
    int result = MPI_Allreduce(&test_passed, &global_test_passed, 1, MPI_INT, MPI_LAND, MPI_COMM_WORLD);
    if (result != MPI_SUCCESS) {
       fprintf(stderr, "Error in MPI_Allreduce #2\n");
