@@ -307,7 +307,7 @@ static void printFlag(opt_t &opts, opt_t flag, const char *str, stringstream &ss
 static void printSpindleFlags(opt_t opts) {
    if (!spindle_debug_prints)
       return;
-   stringstream ss;
+   stringstream ss(ios_base::in | ios_base::out);
    printFlag(opts, OPT_COBO, "OPT_COBO", ss);
    printFlag(opts, OPT_DEBUG, "OPT_DEBUG", ss);
    printFlag(opts, OPT_FOLLOWFORK, "OPT_FOLLOWFORK", ss);

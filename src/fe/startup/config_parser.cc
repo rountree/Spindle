@@ -70,7 +70,7 @@ bool ConfigFile::parseLine(string line, int lineno) {
    
    string::size_type equals = line.find('=');
    if (equals == string::npos) {
-      stringstream ss;
+      stringstream ss(ios_base::in | ios_base::out);
       parse_error = true;
       ss << "Config parse error in " << filename << ":" << lineno << ". No '=' character found in line. All lines must be of form 'name = value'";
       err_string = ss.str();
@@ -81,7 +81,7 @@ bool ConfigFile::parseLine(string line, int lineno) {
    string value = trim(line.substr(equals+1));
 
    if (name.empty()) {
-      stringstream ss;
+      stringstream ss(ios_base::in | ios_base::out);
       parse_error = true;
       ss << "Config parse error in " << filename << ":" << lineno << ". Line is not in 'name = value' format.\n";
       err_string = ss.str();
@@ -96,7 +96,7 @@ bool ConfigFile::parseLine(string line, int lineno) {
    const map<string, const SpindleOption&> &optsbylong = getOptionsByLongName();
    const map<string, const SpindleOption&>::const_iterator i = optsbylong.find(name);
    if (i == optsbylong.end()) {
-      stringstream ss;
+      stringstream ss(ios_base::in | ios_base::out);
       ss << "Parse error at " << filename << ":" << lineno << " - Unknown option " << name << "\n";
       err_string = ss.str();
       err_printf("%s\n", err_string.c_str());
@@ -107,7 +107,7 @@ bool ConfigFile::parseLine(string line, int lineno) {
    string local_errstring;
    bool result = configmap.set(opt.config_id, value, local_errstring);
    if (!result) {
-      stringstream ss;
+      stringstream ss(ios_base::in | ios_base::out);
       ss << "Parse error at " << filename << ":" << lineno << " - " << local_errstring;
       err_string = ss.str();
       err_printf("%s\n", err_string.c_str());
@@ -156,7 +156,7 @@ void ConfigFile::parse() {
    }
 
    if (!prev_incomplete_line.empty()) {
-      stringstream ss;
+      stringstream ss(ios_base::in | ios_base::out);
       parse_error = true;
       ss << "Config parse error in " << filename << ":" << lineno << ". Unexpected End-of-File.";
       err_string = ss.str();
