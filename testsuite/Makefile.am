@@ -1,7 +1,7 @@
 noinst_PROGRAMS = libgenerator
 
 ABS_TEST_DIR = $(abspath $(top_builddir)/testsuite)
-BUILT_SOURCES = libtest10.so libtest11.so libtest12.so libtest13.so libtest14.so libtest15.so libtest16.so libtest17.so libtest18.so libtest19.so libtest20.so libtest50.so libtest100.so libtest500.so libtest1000.so libtest2000.so libtest4000.so libtest6000.so libtest8000.so libtest10000.so libtls1.c libtls2.c libtls3.c libtls4.c libtls5.c libtls6.c libtls7.c libtls8.c libtls9.c libtls10.c libtls11.c libtls12.c libtls13.c libtls14.c libtls15.c libtls16.c libtls17.c libtls18.c libtls19.c libtls20.c libsymlink.so libdepC.so libdepB.so libdepA.so libcxxexceptB.so libcxxexceptA.so origin_dir/liboriginlib.so origin_dir/origin_subdir/liborigintarget.so libtestoutput.so libfuncdict.so runTests run_driver run_driver_rm spindle.rc preload_file_list test_driver test_driver_libs retzero_rx retzero_r retzero_x retzero_ badinterp hello_r.py hello_x.py hello_rx.py hello_.py hello_l.py badlink.py
+BUILT_SOURCES = libtest10.so libtest11.so libtest12.so libtest13.so libtest14.so libtest15.so libtest16.so libtest17.so libtest18.so libtest19.so libtest20.so libtest50.so libtest100.so libtest500.so libtest1000.so libtest2000.so libtest4000.so libtest6000.so libtest8000.so libtest10000.so libtls1.c libtls2.c libtls3.c libtls4.c libtls5.c libtls6.c libtls7.c libtls8.c libtls9.c libtls10.c libtls11.c libtls12.c libtls13.c libtls14.c libtls15.c libtls16.c libtls17.c libtls18.c libtls19.c libtls20.c libsymlink.so libdepC.so libdepB.so libdepA.so libcxxexceptB.so libcxxexceptA.so origin_dir/liboriginlib.so origin_dir/origin_subdir/liborigintarget.so libtestoutput.so libfuncdict.so runTests run_driver run_driver_rm spindle.rc preload_file_list test_driver test_driver_libs retzero_rx retzero_r retzero_x retzero_ badinterp hello_r.py hello_x.py hello_rx.py hello_.py hello_l.py badlink.py spindle_exec_test spindle_deactivated.sh
 
 if BGQ_BLD
 DYNAMIC_FLAG=-dynamic
@@ -352,10 +352,17 @@ badlink.py:
 		ln -fs noexist.py $@; \
 	fi
 
+spindle_deactivated.sh: spindle_deactivated_template.sh
+	$(AM_V_GEN)cp $< $@; chmod 700 $@
+
+spindle_exec_test: spindle_exec_test.c
+	$(AM_V_CCLD)$(CC) $(CFLAGS) -o $@ $<
+
 runTests: $(srcdir)/runTests_template
 	@rm -f ./runTests
 	$(AM_V_GEN)$(SED) -e s,BLUEGENE_TEST,$(IS_BLUEGENE),g\;s,TEST_RESOURCE_MANAGER,$(TESTRM),g\;s,SPINDLE_EXEC,$(bindir)/spindle,g < $(srcdir)/runTests_template > $(top_builddir)/testsuite/runTests
 	@chmod 700 $(top_builddir)/testsuite/runTests
+
 run_driver: $(srcdir)/run_driver_template $(top_builddir)/Makefile
 	@rm -f ./run_driver
 	$(AM_V_GEN)$(SED) -e s,SPINDLE_EXEC,$(bindir)/spindle,g\;s,TEST_RUN_DIR,$(ABS_TEST_DIR),g\;s,BLUEGENE_TEST,$(IS_BLUEGENE),g < $(srcdir)/run_driver_template > $(top_builddir)/testsuite/run_driver
