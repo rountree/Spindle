@@ -123,7 +123,7 @@ static int redirect_interceptions(struct link_map *lmap)
 
 #define LOOKUP_IN_HASH(SYM, NAME, OFFSET) {                             \
       binding = lookup_in_binding_hash(NAME);                           \
-      if (binding) {                                                    \
+      if (binding && binding->spindle_func) {                           \
          addr = (void **) (OFFSET + lmap->l_addr);                      \
          ASSIGN_FPTR(addr, binding->spindle_func);                      \
       }                                                                 \
@@ -150,7 +150,7 @@ static int redirect_libspindleint_interceptions(struct link_map *lmap)
       if (SYM->st_shndx != SHN_UNDEF)                             \
          continue;                                                \
       for (binding = base; binding->name != NULL; binding++) {    \
-         if (strcmp(binding->spindle_name, NAME) == 0) {          \
+         if (binding->spindle_name && strcmp(binding->spindle_name, NAME) == 0) { \
             debug_printf3("Mapping %s in library %s to %s\n", NAME, lmap->l_name, binding->name); \
             addr = (void **) (OFFSET + lmap->l_addr);             \
             ASSIGN_FPTR(addr, binding->spindle_func);             \

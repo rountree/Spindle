@@ -120,11 +120,15 @@ static struct link_map *get_libc()
 
 int lookup_libc_symbols()
 {
+   static int lookup_libc_done = 0;
    struct link_map *libc;
    struct spindle_binding_t *binding;
    signed long result;
    int found = 0, not_found = 0;
 
+   if (lookup_libc_done)
+      return 0;
+   
    debug_printf("Looking up bindings for spindle intercepted symbols in libc\n");
    libc = get_libc();
    if (!libc) {
@@ -136,26 +140,24 @@ int lookup_libc_symbols()
       INIT_DYNAMIC(libc);
       assert(gnu_hash || elf_hash);
 
-      if (opts & OPT_SUBAUDIT) { //These bindings only need manual lookups for subaudit
-         for (binding = get_bindings(); binding->name != NULL; binding++) {
-            if (binding->name[0] == '\0' || !binding->libc_func)
-               continue;
-            
-            result = -1;
-            if (gnu_hash)
-               result = lookup_gnu_hash_symbol(binding->name, symtab, strtab, (struct gnu_hash_header *) gnu_hash);
-            if (elf_hash && result == -1)
-               result = lookup_elf_hash_symbol(binding->name, symtab, strtab, (ElfW(Word) *) elf_hash);
-            
-            if (result == -1) {
-               debug_printf3("Warning, Could not bind symbol %s in libc\n", binding->name);
-               *binding->libc_func = NULL;
-               not_found++;
-            }
-            else {
-               *binding->libc_func = (void *) (symtab[result].st_value + libc->l_addr);
-               found++;
-            }
+      for (binding = get_bindings(); binding->name != NULL; binding++) {
+         if (binding->name[0] == '\0' || !binding->libc_func)
+            continue;
+         
+         result = -1;
+         if (gnu_hash)
+            result = lookup_gnu_hash_symbol(binding->name, symtab, strtab, (struct gnu_hash_header *) gnu_hash);
+         if (elf_hash && result == -1)
+            result = lookup_elf_hash_symbol(binding->name, symtab, strtab, (ElfW(Word) *) elf_hash);
+         
+         if (result == -1) {
+            debug_printf3("Warning, Could not bind symbol %s in libc\n", binding->name);
+            *binding->libc_func = NULL;
+            not_found++;
+         }
+         else {
+            *binding->libc_func = (void *) (symtab[result].st_value + libc->l_addr);
+            found++;
          }
       }
 
@@ -195,6 +197,8 @@ int lookup_libc_symbols()
       err_printf("Could not bind any symbols in libc.\n");
       return -1;
    }
+   if (not_found == 0)
+      lookup_libc_done = 1;
 
    return 0;
 }

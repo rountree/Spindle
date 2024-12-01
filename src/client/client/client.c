@@ -281,6 +281,7 @@ void check_for_fork()
    if (!(opts & OPT_FOLLOWFORK)) {
       debug_printf("Client %d forked and is now process %d.  Not following fork.\n", cached_pid, current_pid);
       use_ldcs = 0;
+      cached_pid = current_pid;
       return;
    }
    debug_printf("Client %d forked and is now process %d.  Following.\n", cached_pid, current_pid);

@@ -44,10 +44,198 @@ int (*orig_execvp)(const char *file, char *const argv[]);
 int (*orig_execl)(const char *path, const char *arg, ...);
 int (*orig_execlp)(const char *path, const char *arg, ...);
 int (*orig_execle)(const char *path, const char *arg, ...);
+int (*orig_execvpe)(const char *file, char *const argv[], char *const envp[]);
 
 pid_t (*orig_fork)();
 pid_t (*orig_vfork)();
+
+char* (*orig_getenv)(const char *name);
+int (*orig_setenv)(const char *name, const char *value, int overwrite);
+int (*orig_unsetenv)(const char *name);
+
 extern void test_log(const char *name);
+
+static int strIsPrefix(char *prefix, char *str)
+{
+   return (strncmp(prefix, str, strlen(prefix)) == 0);
+}
+
+static int shouldPropogateSpindle(char **envp)
+{
+   int i;
+   char *spindle;
+
+   spindle = orig_getenv ? orig_getenv("SPINDLE") : getenv("SPINDLE");
+   if (spindle && (strcasecmp(spindle, "false") == 0 || strcmp("spindle", "0") == 0)) {
+      debug_printf2("Not propogating spindle through exec because getenv(\"SPINDLE\") = %s\n", spindle);
+      return 0;
+   }
+
+   if (envp) {
+      for (i = 0; envp[i] != NULL; i++) {
+         if (strIsPrefix("SPINDLE=", envp[i])) {
+            spindle = envp[i] + strlen("SPINDLE=");
+            if (strcasecmp(spindle, "false") == 0 || strcmp("spindle", "0") == 0) {
+               debug_printf2("Not propogating spindle through exec because envp[\"SPINDLE\"] = %s\n", spindle);               
+               return 0;
+            }
+            break;
+         }
+      }
+   }
+
+   debug_printf2("Decided to propogate spindle through exec\n");
+   return 1;
+}
+
+static char *allocEnvAssignmentStr(const char *name, char *value)
+{
+   int len;
+   char *str;
+   len = strlen(name) + strlen(value) + 2;
+   str = (char *) malloc(len);
+   snprintf(str, len, "%s=%s", name, value);
+   return str;
+}
+
+static int envpContains(char *const envp[], char *variable)
+{
+   int varlen = strlen(variable);
+   char *const *e;
+   for (e = envp; *e != NULL; e++) {
+      if ((strncmp(*e, variable, varlen) == 0) && ((*e)[varlen] == '='))
+         return 1;
+   }
+   return 0;
+}
+
+static void propogateEnvironmentStr(char *const orig_envp[], char **new_envp, int *pos, char *var)
+{
+   char *value;
+
+   value = orig_getenv ? orig_getenv(var) : getenv(var);
+   if (!value)
+      return;
+   if (envpContains(orig_envp, var))
+      return;
+   debug_printf3("Adding environment variable %s to env\n", var);
+   new_envp[*pos] = allocEnvAssignmentStr(var, value);
+   (*pos)++;
+}
+
+static char **removeEnvironmentStrs(char **envp)
+{
+   int num_envs, i, j;
+   char **newenv;
+
+   for (num_envs = 0; envp[num_envs] != NULL; num_envs++);
+   newenv = malloc(sizeof(char *) * (num_envs+1));
+
+   for (i = 0, j = 0; envp[i] != NULL; i++) {
+      if (strIsPrefix("SPINDLE=", envp[i]))
+         continue;
+      if (strIsPrefix("LD", envp[i])) {
+         if (strIsPrefix("LD_AUDIT=", envp[i]) ||
+             strIsPrefix("LDCS_LOCATION=", envp[i]) ||
+             strIsPrefix("LDCS_CONNECTION=", envp[i]) ||
+             strIsPrefix("LDCS_RANKINFO=", envp[i]) ||
+             strIsPrefix("LDCS_OPTIONS=", envp[i]) ||
+             strIsPrefix("LDCS_CACHESIZE=", envp[i]) ||
+             strIsPrefix("LDCS_NUMBER=", envp[i])) {
+            debug_printf3("Removing %s from exec environment\n", envp[i]);
+            continue;
+         }
+      }
+      newenv[j++] = (char *) envp[i];
+   }
+   newenv[j] = NULL;
+   return newenv;
+}
+
+static char **updateEnvironment(char **envp, int *num_modified, int propogate_spindle)
+{
+   int orig_size = 0, new_size, pos = 0;
+   char **cur, **newenv;
+   char *empty_env[1];
+   empty_env[0] = NULL;
+
+   if (num_modified && !envp) {
+      envp = empty_env;
+   }
+
+   if (!propogate_spindle) {
+      if (!envp) {
+         debug_printf2("Removing spindle from environment by unsetenv\n");
+         int (*unsetf)(const char *);
+         unsetf = orig_unsetenv ? orig_unsetenv : unsetenv;
+         unsetf("SPINDLE");
+         unsetf("LD_AUDIT");
+         unsetf("LDCS_LOCATION");
+         unsetf("LDCS_CONNECTION");
+         unsetf("LDCS_RANKINFO");
+         unsetf("LDCS_OPTIONS");
+         unsetf("LDCS_CACHESIZE");
+         unsetf("LDCS_NUMBER");
+         newenv = NULL;
+         if (num_modified)
+            *num_modified = 0;
+      }
+      else {
+         debug_printf2("Removing spindle from environment by stripping it from envp list\n");         
+         newenv = removeEnvironmentStrs(envp);
+         *num_modified = -1;
+      }
+      return newenv;
+   }
+
+   if (envp) {
+      debug_printf2("Propogating spindle environment by copying it to new envp list\n");
+      for (cur = (char **) envp; *cur; cur++, orig_size++);
+      new_size = orig_size + 9;
+      newenv = (char **) malloc(new_size * sizeof(char*));
+      
+      propogateEnvironmentStr(envp, newenv, &pos, "SPINDLE");   
+      propogateEnvironmentStr(envp, newenv, &pos, "LD_AUDIT");
+      propogateEnvironmentStr(envp, newenv, &pos, "LDCS_LOCATION");
+      propogateEnvironmentStr(envp, newenv, &pos, "LDCS_CONNECTION");
+      propogateEnvironmentStr(envp, newenv, &pos, "LDCS_RANKINFO");
+      propogateEnvironmentStr(envp, newenv, &pos, "LDCS_OPTIONS");
+      propogateEnvironmentStr(envp, newenv, &pos, "LDCS_CACHESIZE");
+      propogateEnvironmentStr(envp, newenv, &pos, "LDCS_NUMBER");
+      *num_modified = pos;
+      for (cur = (char **) envp; *cur; cur++) {
+         newenv[pos++] = *cur;
+      }
+      newenv[pos++] = NULL;
+      assert(pos <= new_size);
+      return newenv;
+   }
+   else {
+      debug_printf2("Propogating spindle environment by leaving it set\n");
+      if (num_modified)
+         *num_modified = 0;
+      return NULL;
+   }
+
+   return newenv;   
+}
+
+static void cleanEnvironment(char **envp, int num_modified) {
+   int i;
+   if (!envp)
+      return;
+   if (!num_modified)
+      return;
+   if (num_modified == -1) {
+      free(envp);
+      return;
+   }
+   
+   for (i = 0; i < num_modified; i++) {
+      free(envp[i]);
+   }
+   free(envp);
+}
 
 static int prep_exec(const char *filepath, char **argv,
                      char *newname, char *newpath, int newpath_size,
@@ -117,11 +305,14 @@ static int prep_exec(const char *filepath, char **argv,
    }
 }
 
-static int find_exec(const char *filepath, char **argv, char *newpath, int newpath_size, char ***new_argv)
+static int find_exec(const char *filepath, char **argv, char *newpath, int newpath_size, char ***new_argv, char **envp, int *propogate_spindle)
 {
    char *newname = NULL;
    int errcode, exists;
    struct stat buf;
+   int reloc_exec;
+
+   *propogate_spindle = shouldPropogateSpindle(envp);   
 
    if (!filepath) {
       newpath[0] = '\0';
@@ -129,13 +320,22 @@ static int find_exec(const char *filepath, char **argv, char *newpath, int newpa
    }
 
    check_for_fork();
-   if (ldcsid < 0 || !use_ldcs || exec_filter(filepath) != REDIRECT) {
+   if (ldcsid < 0 || !use_ldcs || exec_filter(filepath) != REDIRECT || !*propogate_spindle) {
+      reloc_exec = 0;
+   }
+   else {
+      reloc_exec = 1;
+   }
+
+   if (!reloc_exec) {
+      debug_printf2("Exec operation passing through original file %s\n", filepath);
       strncpy(newpath, filepath, newpath_size);
       newpath[newpath_size-1] = '\0';
       return 0;
    }
 
    sync_cwd();
+   
    debug_printf2("Requesting stat on exec of %s to validate file\n", filepath);
    get_stat_result(ldcsid, (char *) filepath, 0, &exists, &buf);
    if (!exists) {
@@ -153,59 +353,77 @@ static int find_exec(const char *filepath, char **argv, char *newpath, int newpa
    get_relocated_file(ldcsid, (char *) filepath, &newname, &errcode);
    debug_printf("Exec file request returned %s -> %s with errcode %d\n",
                 filepath, newname ? newname : "NULL", errcode);
-
+       
    return prep_exec(filepath, argv, newname, newpath, newpath_size, new_argv, errcode);
 }
 
-static int find_exec_pathsearch(const char *filepath, char **argv, char *newpath, int newpath_size, char ***new_argv)
+static int find_exec_pathsearch(const char *filepath, char **argv, char *newpath, int newpath_size, char ***new_argv, char **envp, int *propogate_spindle)
 {
    char *newname = NULL;
    int result;
    int errcode;
+   int reloc_exec;
+
+   *propogate_spindle = shouldPropogateSpindle(envp);
 
    if (!filepath) {
       newpath[0] = '\0';
       return 0;
    }
    if (filepath[0] == '/' || filepath[0] == '.') {
-      return find_exec(filepath, argv, newpath, newpath_size, new_argv);
+      return find_exec(filepath, argv, newpath, newpath_size, new_argv, envp, propogate_spindle);
    }
+
    check_for_fork();
-   if (ldcsid < 0 || !use_ldcs) {
-      strncpy(newpath, filepath, (newpath_size-1));
+   if (ldcsid < 0 || !use_ldcs || !*propogate_spindle) {
+      reloc_exec = 0;
+   }
+   else {
+      reloc_exec = 1;
+   }
+
+   if (!reloc_exec) {
+      debug_printf2("Exec operation passing through original file %s\n", filepath);
+      strncpy(newpath, filepath, newpath_size);
       newpath[newpath_size-1] = '\0';
       return 0;
    }
+   
    sync_cwd();
-
    result = exec_pathsearch(ldcsid, filepath, &newname, &errcode);
    if (result == -1) {
       set_errno(errcode);
       return -1;
    }
+   debug_printf("Exec file request returned %s -> %s with errcode %d\n",
+                filepath, newname ? newname : "NULL", errcode);
 
    return prep_exec(filepath, argv, newname, newpath, newpath_size, new_argv, errcode);
 }
 
 int execl_wrapper(const char *path, const char *arg0, ...)
 {
-   int error, result;
+   int error, result, propogate_spindle;
    char newpath[MAX_PATH_LEN+1];
 
    VARARG_TO_ARGV;
 
    debug_printf2("Intercepted execl on %s\n", path);
 
-   result = find_exec(path, argv, newpath, MAX_PATH_LEN+1, &new_argv);
+   result = find_exec(path, argv, newpath, MAX_PATH_LEN+1, &new_argv, NULL, &propogate_spindle);
    if (result == -1) {
       debug_printf("execl redirection of %s returning error code\n", path);
       return result;
    }
+
+   updateEnvironment(NULL, NULL, propogate_spindle);
    debug_printf("execl redirection of %s to %s\n", path, newpath);
-   if (orig_execv)
+   if (orig_execv) {
       result = orig_execv(newpath, new_argv ? new_argv : argv);
-   else
+   }
+   else {
       result = execv(newpath, new_argv ? new_argv : argv);
+   }
    error = errno;
 
    VARARG_TO_ARGV_CLEANUP;
@@ -219,14 +437,15 @@ int execv_wrapper(const char *path, char *const argv[])
 {
    char newpath[MAX_PATH_LEN+1];
    char **new_argv = NULL;
-   int result;
+   int result, propogate_spindle;
 
    debug_printf2("Intercepted execv on %s\n", path);
-   result = find_exec(path, (char **) argv, newpath, MAX_PATH_LEN+1, &new_argv);
+   result = find_exec(path, (char **) argv, newpath, MAX_PATH_LEN+1, &new_argv, NULL, &propogate_spindle);
    if (result == -1) {
       debug_printf("execv redirection of %s returning error code\n", path);      
       return result;
    }
+   updateEnvironment(NULL, NULL, propogate_spindle);   
    debug_printf("execv redirection of %s to %s\n", path, newpath);
    result = orig_execv(newpath, new_argv ? new_argv : argv);
 
@@ -234,77 +453,6 @@ int execv_wrapper(const char *path, char *const argv[])
       spindle_free(new_argv);
    
    return result;
-
-}
-
-static char *allocEnvAssignmentStr(const char *name, char *value)
-{
-   int len;
-   char *str;
-   len = strlen(name) + strlen(value) + 2;
-   str = (char *) malloc(len);
-   snprintf(str, len, "%s=%s", name, value);
-   return str;
-}
-
-static char **updateEnvironment(char *const envp[], int *num_modified)
-{
-   int modified = 0, orig_size = 0, new_size, pos = 0;
-   char *ld_audit, *ldcs_location, *ldcs_connection, *ldcs_rankinfo, *ldcs_options, *ldcs_cachesize, *ldcs_number;
-   char **cur, **newenv;
-
-   ld_audit = getenv("LD_AUDIT");
-   if (!ld_audit) {
-      *num_modified = 0;
-      return (char **) envp;
-   }
-   ldcs_location = getenv("LDCS_LOCATION");
-   ldcs_connection = getenv("LDCS_CONNECTION");
-   ldcs_rankinfo = getenv("LDCS_RANKINFO");
-   ldcs_options = getenv("LDCS_OPTIONS");
-   ldcs_cachesize = getenv("LDCS_CACHESIZE");
-   ldcs_number = getenv("LDCS_NUMBER");
-
-   if (ld_audit) modified++;
-   if (ldcs_location) modified++;
-   if (ldcs_connection) modified++;
-   if (ldcs_rankinfo) modified++;
-   if (ldcs_options) modified++;
-   if (ldcs_cachesize) modified++;
-   if (ldcs_number) modified++;
-   *num_modified = modified;
-   
-   for (cur = (char **) envp; *cur; cur++, orig_size++);
-
-   new_size = orig_size + modified + 1;
-   newenv = (char **) malloc(new_size * sizeof(char*));
-
-   if (ld_audit) newenv[pos++] = allocEnvAssignmentStr("LD_AUDIT", ld_audit);
-   if (ldcs_location) newenv[pos++] = allocEnvAssignmentStr("LDCS_LOCATION", ldcs_location);
-   if (ldcs_connection) newenv[pos++] = allocEnvAssignmentStr("LDCS_CONNECTION", ldcs_connection);
-   if (ldcs_rankinfo) newenv[pos++] = allocEnvAssignmentStr("LDCS_RANKINFO", ldcs_rankinfo);
-   if (ldcs_options) newenv[pos++] = allocEnvAssignmentStr("LDCS_OPTIONS", ldcs_options);
-   if (ldcs_cachesize) newenv[pos++] = allocEnvAssignmentStr("LDCS_CACHESIZE", ldcs_cachesize);
-   if (ldcs_number) newenv[pos++] = allocEnvAssignmentStr("LDCS_NUMBER", ldcs_number);   
-   assert(pos == modified);
-   
-   for (cur = (char **) envp; *cur; cur++) {
-      newenv[pos++] = *cur;
-   }
-   newenv[pos++] = NULL;
-   assert(pos == new_size);
-   return newenv;   
-}
-
-static void cleanEnvironment(char **envp, int num_modified) {
-   int i;
-   if (!num_modified)
-      return;
-   
-   for (i = 0; i < num_modified; i++) {
-      free(envp[i]);
-   }
-   free(envp);
 }
 
 int execle_wrapper(const char *path, const char *arg0, ...)
@@ -312,21 +460,21 @@ int execle_wrapper(const char *path, const char *arg0, ...)
    int error, result;
    char **envp;
    char **new_envp = NULL;
-   int envp_modified;
    char newpath[MAX_PATH_LEN+1];
+   int propogate_spindle, env_modified = 0;
 
    VARARG_TO_ARGV;
 
    envp = va_arg(arglist, char **);
    debug_printf2("Intercepted execle on %s\n", path);
-   new_envp = updateEnvironment(envp, &envp_modified);
-   result = find_exec(path, argv, newpath, MAX_PATH_LEN+1, &new_argv);
+   result = find_exec(path, argv, newpath, MAX_PATH_LEN+1, &new_argv, envp, &propogate_spindle);
    if (result == -1) {
       debug_printf("execle redirection of %s returning error code\n", path);      
       return result;
    }
-   debug_printf("execle redirection of %s to %s\n", path, newpath);
-   
+
+   new_envp = updateEnvironment((char **) envp, &env_modified, propogate_spindle);
+
    if (orig_execve)
       result = orig_execve(newpath, new_argv ? new_argv : argv, new_envp);
    else
@@ -334,7 +482,7 @@ int execle_wrapper(const char *path, const char *arg0, ...)
    error = errno;
 
    VARARG_TO_ARGV_CLEANUP;
-   cleanEnvironment(new_envp, envp_modified);
+   cleanEnvironment(new_envp, env_modified);
    if (!orig_execve)
       set_errno(error);
    return result;
@@ -345,21 +493,21 @@ int execve_wrapper(const char *path, char *const argv[], char *const envp[])
    char newpath[MAX_PATH_LEN+1];
    char **new_argv = NULL;
    char **new_envp = NULL;
-   int envp_modified;
+   int propogate_spindle, env_modified;
    int result;
 
-   new_envp = updateEnvironment(envp, &envp_modified);
    debug_printf2("Intercepted execve on %s\n", path);
-   result = find_exec(path, (char **) argv, newpath, MAX_PATH_LEN+1, &new_argv);
+   result = find_exec(path, (char **) argv, newpath, MAX_PATH_LEN+1, &new_argv, (char **) envp, &propogate_spindle);
    if (result == -1) {
       debug_printf("execve redirection of %s returning error code\n", path);
       return result;
    }
+   new_envp = updateEnvironment((char **) envp, &env_modified, propogate_spindle);
    debug_printf2("execve redirection of %s to %s\n", path, newpath);
    result = orig_execve(newpath, new_argv ? new_argv : argv, new_envp);
    if (new_argv)
       spindle_free(new_argv);
-   cleanEnvironment(new_envp, envp_modified);
+   cleanEnvironment(new_envp, env_modified);
    return result;
 }
 
@@ -367,14 +515,16 @@ int execlp_wrapper(const char *path, const char *arg0, ...)
 {
    int error, result;
    char newpath[MAX_PATH_LEN+1];
+   int propogate_spindle;
 
    VARARG_TO_ARGV;
    debug_printf2("Intercepted execlp on %s\n", path);
-   result = find_exec_pathsearch(path, argv, newpath, MAX_PATH_LEN+1, &new_argv);
+   result = find_exec_pathsearch(path, argv, newpath, MAX_PATH_LEN+1, &new_argv, NULL, &propogate_spindle);
    if (result == -1) {
       debug_printf("execlp redirection of %s returning error code\n", path);      
       return result;
-   }   
+   }
+   updateEnvironment(NULL, NULL, propogate_spindle);
    debug_printf2("execlp redirection of %s to %s\n", path, newpath);
    if (orig_execv)
       result = orig_execv(newpath, new_argv ? new_argv : argv);
@@ -394,19 +544,44 @@ int execvp_wrapper(const char *path, char *const argv[])
    char newpath[MAX_PATH_LEN+1];
    char **new_argv = NULL;
    int result;
+   int propogate_spindle;
 
-   debug_printf2("problem Intercepted execvp of %s\n", path);
-   result = find_exec_pathsearch(path, (char **) argv, newpath, MAX_PATH_LEN+1, &new_argv);
+   debug_printf2("Intercepted execvp of %s\n", path);
+   result = find_exec_pathsearch(path, (char **) argv, newpath, MAX_PATH_LEN+1, &new_argv, NULL, &propogate_spindle);
    if (result == -1) {
       debug_printf("execvp redirection of %s returning error code\n", path);      
       return result;
    }   
    debug_printf("execvp redirection of %s to %s\n", path, newpath);
-   
+
+   updateEnvironment(NULL, NULL, propogate_spindle);   
    result = orig_execvp(newpath, new_argv ? new_argv : argv);
    if (new_argv)
       spindle_free(new_argv);
    return result;
+}
+
+int execvpe_wrapper(const char *path, char *const argv[], char *const envp[])
+{
+   char newpath[MAX_PATH_LEN+1];
+   char **new_argv = NULL;
+   char **new_envp = NULL;
+   int propogate_spindle, env_modified;
+   int result;
+
+   debug_printf2("Intercepted execvpe on %s\n", path);
+   result = find_exec_pathsearch(path, (char **) argv, newpath, MAX_PATH_LEN+1, &new_argv, (char **) envp, &propogate_spindle);
+   if (result == -1) {
+      debug_printf("execvpe redirection of %s returning error code\n", path);
+      return result;
+   }
+   new_envp = updateEnvironment((char **) envp, &env_modified, propogate_spindle);
+   debug_printf2("execvpe redirection of %s to %s\n", path, newpath);
+   result = orig_execvpe(newpath, new_argv ? new_argv : argv, new_envp);
+   if (new_argv)
+      spindle_free(new_argv);
+   cleanEnvironment(new_envp, env_modified);
+   return result;   
 }
 
 pid_t vfork_wrapper()

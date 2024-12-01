@@ -35,6 +35,7 @@ extern int (*orig_fxstat64)(int vers, int fd, struct stat *buf);
 extern int (*orig_execv)(const char *path, char *const argv[]);
 extern int (*orig_execve)(const char *path, char *const argv[], char *const envp[]);
 extern int (*orig_execvp)(const char *file, char *const argv[]);
+extern int (*orig_execvpe)(const char *file, char *const argv[], const char *envp[]);
 extern int (*orig_execl)(const char *path, const char *arg, ...);
 extern int (*orig_execlp)(const char *path, const char *arg, ...);
 extern int (*orig_execle)(const char *path, const char *arg, ...);
@@ -47,7 +48,10 @@ extern int (*orig_open64)(const char *pathname, int flags, ...);
 extern FILE* (*orig_fopen)(const char *pathname, const char *mode);
 extern FILE* (*orig_fopen64)(const char *pathname, const char *mode);
 extern int (*orig_close)(int fd);
-
+extern char* (*orig_getenv)(const char *name);
+extern int (*orig_setenv)(const char *name, const char *value, int overwrite);
+extern int (*orig_unsetenv)(const char *name);
+              
 int rtcache_stat(const char *path, struct stat *buf);
 int rtcache_lstat(const char *path, struct stat *buf);
 int rtcache_xstat(int vers, const char *path, struct stat *buf);
@@ -70,6 +74,7 @@ int execle_wrapper(const char *path, const char *arg0, ...);
 int execve_wrapper(const char *path, char *const argv[], char *const envp[]);
 int execlp_wrapper(const char *path, const char *arg0, ...);
 int execvp_wrapper(const char *path, char *const argv[]);
+int execvpe_wrapper(const char *path, char *const argv[], const char *envp[]);
 pid_t vfork_wrapper();
 
 ssize_t readlink_wrapper(const char *path, char *buf, size_t bufsiz);

@@ -38,8 +38,10 @@ void spindle_la_activity (uintptr_t *cookie, unsigned int flag)
                  (flag == LA_ACT_ADD) ?        "LA_ACT_ADD" :
                  (flag == LA_ACT_DELETE) ?     "LA_ACT_DELETE" :
                  "???");
-   if (flag == LA_ACT_CONSISTENT)
-      patchDTV_check();   
+   if (flag == LA_ACT_CONSISTENT) {
+      patchDTV_check();
+      lookup_libc_symbols();
+   }
    return;
 }
 

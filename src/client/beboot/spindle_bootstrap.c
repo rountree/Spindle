@@ -121,6 +121,7 @@ static void setup_environment()
    setenv("LDCS_OPTIONS", opts_s, 1);
    setenv("LDCS_CACHESIZE", cachesize_s, 1);
    setenv("LDCS_BOOTSTRAPPED", "1", 1);
+   setenv("SPINDLE", "true", 1);
    if (opts & OPT_SUBAUDIT) {
       char *preload_str = spindle_interceptlib;
       char *preload_env = getenv("LD_PRELOAD");
@@ -291,8 +292,9 @@ void test_log(const char *name)
 int main(int argc, char *argv[])
 {
    int error, result;
-   char **j;
+   char **j, *spindle_env;
 
+   
    LOGGING_INIT_PREEXEC("Client");
    debug_printf("Launched Spindle Bootstrapper\n");
 
@@ -301,6 +303,19 @@ int main(int argc, char *argv[])
       fprintf(stderr, "spindle_boostrap cannot be invoked directly\n");
       return -1;
    }
+
+   spindle_env = getenv("SPINDLE");
+   if (spindle_env) {
+      if (strcasecmp(spindle_env, "false") == 0 || strcmp(spindle_env, "0") == 0) {
+         debug_printf("Turning off spindle from bootstrapper because SPINDLE is %s\n", spindle_env);
+         execvp(cmdline[0], cmdline);
+         fprintf(stderr, "%s: Command not found.\n", cmdline[0]);
+         return -1;
+      }
+   }
+
+
+      
    location = parse_location(location, number);
    if (!location) {
       return -1;
