@@ -347,7 +347,7 @@ int send_rankinfo_query(int fd, int *mylrank, int *mylsize, int *mymdrank, int *
    COMM_UNLOCK;
 
    if (message.header.type != LDCS_MSG_MYRANKINFO_QUERY_ANSWER || message.header.len != 4*sizeof(int)) {
-      err_printf("Received incorrect response to rankinfo query\n");
+      err_printf("Received incorrect response to rankinfo query %d\n", message.header.type);
       *mylrank = *mylsize = *mymdrank = *mymdsize = -1;
       assert(0);
    }

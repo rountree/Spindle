@@ -176,6 +176,13 @@ static void* cobo_malloc(size_t n, char* msg)
     return p;
 }
 
+static void setCloseOnExec(int fd) {
+   int flags = fcntl(fd, F_GETFD);
+   if (flags != -1) {
+      fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+   }
+}
+
 /* macro to free the pointer if set, then set it to NULL */
 #define cobo_free(p) { if(p) { free((void*)p); p=NULL; } }
 
@@ -197,6 +204,7 @@ static int _cobo_opt_socket(int sockfd)  {
 					  cruft */
 		      sizeof(int));    /* length of option value */
 #endif
+  setCloseOnExec(sockfd);
   return(result);
 }
 
@@ -763,6 +771,7 @@ static int cobo_open_tree()
                    errno);
         exit(1);
     }
+    setCloseOnExec(sockfd);
 
     /* TODO: could recycle over port numbers, trying to bind to one for some time */
     /* try to bind the socket to one the ports in our allowed range */

@@ -968,11 +968,12 @@ bool getRandom(void *bytes, size_t bytes_size)
       if (result == -1) {
          int error = errno;
          err_printf("Could not read from /dev/urandom or /dev/random: %s\n", strerror(error));
+         close(fd);
          return false;
       }
       bytes_read += (size_t) result;
    } while (bytes_read < bytes_size);
-
+   close(fd);
    return true;
 }
 

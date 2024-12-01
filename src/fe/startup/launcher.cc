@@ -51,6 +51,8 @@ Launcher::Launcher(spindle_args_t *params_, ConfigMap &config_) :
    jobfinish_write_fd = fds[1];
    mark_closeonexec(jobfinish_read_fd);
    mark_closeonexec(jobfinish_write_fd);
+   debug_printf3("Created launcher pipe %d and %d\n", jobfinish_read_fd, jobfinish_write_fd);
+   
    fflush(stdout);
 }
 

@@ -135,7 +135,7 @@ static int find_existing_fds(char *in_path, char *out_path, int *in_fd, int *out
       memset(fdpath, 0, sizeof(fdpath));
       (void)! readlink(dirpath, fdpath, MAX_PATH_LEN);
 
-      debug_printf("Comparing %s with in_path = %s, out_path = %s\n", fdpath, in_path, out_path);
+      debug_printf("Comparing fd %d of %s with in_path = %s, out_path = %s\n", fd, fdpath, in_path, out_path);
       if (!found_in && strcmp(fdpath, in_path) == 0) {
          *in_fd = fd;
          found_in = 1;

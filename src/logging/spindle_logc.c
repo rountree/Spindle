@@ -205,14 +205,14 @@ static void setConnectionSurvival(int fd, int survive_exec)
       int fdflags = fcntl(fd, F_GETFD, 0);
       if (fdflags < 0)
          fdflags = 0;
-      fcntl(fd, F_SETFD, fdflags | O_CLOEXEC);
+      fcntl(fd, F_SETFD, fdflags | FD_CLOEXEC);
       unsetenv("SPINDLE_DEBUG_SOCKET");
    }
    else {
       int fdflags = fcntl(fd, F_GETFD, 0);
       if (fdflags < 0)
          fdflags = 0;
-      fcntl(fd, F_SETFD, fdflags & ~O_CLOEXEC);
+      fcntl(fd, F_SETFD, fdflags & ~FD_CLOEXEC);
       char fd_str[32];
       snprintf(fd_str, 32, "%d %d", debug_fd, test_fd);
       setenv("SPINDLE_DEBUG_SOCKET", fd_str, 1);
