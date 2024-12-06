@@ -279,7 +279,7 @@ bool setOpenMPIInterceptEnv(string launcher_rel)
    char *last_slash = strrchr(real_launcher, '/');
    last_slash = last_slash ? last_slash+1 : real_launcher;
    
-   stringstream ss;
+   stringstream ss(ios_base::in | ios_base::out);
    ss << last_slash << " " << std::hex << 
       parser->getMPIRBreakpointAddr() << " " << 
       parser->getMPIRProctabAddr() << " " << 

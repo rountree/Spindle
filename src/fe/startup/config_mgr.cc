@@ -385,19 +385,19 @@ bool ConfigMap::set(SpindleConfigID name, string value, string &errstring) {
    ConfigValueType conftype = opt.conftype;
 
    if (conftype == cvBool && !strToBool(value).first) {
-      stringstream ss;
+      stringstream ss(ios_base::in | ios_base::out);
       ss << "Expected bool type for " << opt.cmdline_long << ". Got '" << value << "'.\n";
       errstring = ss.str();
       return false;      
    }
    else if (conftype == cvInteger && !strToLong(value).first) {
-      stringstream ss;
+      stringstream ss(ios_base::in | ios_base::out);
       ss << "Expected bool type for " << opt.cmdline_long << ". Got '" << value << "'.\n";
       errstring = ss.str();
       return false;
    }
    else if (conftype == cvEnum && !strToEnum(name, value).first) {
-      stringstream ss;
+      stringstream ss(ios_base::in | ios_base::out);
       ss << "Unexpected enum value for " << opt.cmdline_long << ". Got '" << value << "'. Expected: ";
       const list<const char *> &expected = opt.enum_values;
       bool first = true;
