@@ -289,6 +289,12 @@ void test_log(const char *name)
 {
 }
 
+/**
+ * Are you staring at this strange code after running TotalView (or another debugger)?
+ *
+ * If so, you're currently stopped at spindle's bootstrapper, which is providing scalable program launch on this system. 
+ * Go ahead and hit 'go'. Your regularly scheduled program will resume shortly. 
+ **/
 int main(int argc, char *argv[])
 {
    int error, result;
