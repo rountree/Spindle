@@ -53,7 +53,7 @@ static int rankinfo[4]={-1,-1,-1,-1};
 static int number;
 static int use_cache;
 static unsigned int cachesize;
-static char *location, *number_s;
+static char *location, *number_s, *orig_location, *symbolic_location;
 static char **cmdline;
 static char *executable;
 static char *client_lib;
@@ -114,6 +114,7 @@ static void setup_environment()
 
    setenv("LD_AUDIT", client_lib, 1);
    setenv("LDCS_LOCATION", location, 1);
+   setenv("LDCS_ORIG_LOCATION", orig_location, 1);
    setenv("LDCS_NUMBER", number_s, 1);
    setenv("LDCS_RANKINFO", rankinfo_str, 1);
    if (connection_str)
@@ -159,7 +160,7 @@ static int parse_cmdline(int argc, char *argv[])
       daemon_args[i - 3] = NULL;
    }
 
-   location = argv[i++];
+   symbolic_location = argv[i++];
    number_s = argv[i++];
    number = atoi(number_s);
    opts_s = argv[i++];
@@ -300,7 +301,6 @@ int main(int argc, char *argv[])
    int error, result;
    char **j, *spindle_env;
 
-   
    LOGGING_INIT_PREEXEC("Client");
    debug_printf("Launched Spindle Bootstrapper\n");
 
@@ -320,13 +320,11 @@ int main(int argc, char *argv[])
       }
    }
 
-
-      
-   location = parse_location(location, number);
-   if (!location) {
+   orig_location = parse_location(symbolic_location, number);
+   if (!orig_location) {
       return -1;
    }
-   location = realize(location);
+   location = realize(orig_location);
 
    if (daemon_args) {
       launch_daemon(location);

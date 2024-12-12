@@ -30,6 +30,7 @@
 extern int relocate_spindleapi();
 
 extern char *location;
+extern char *orig_location;
 static void get_location_tmpdir(char **tmpdir, int *tmpdir_size)
 {
    static char location_root_cached[4096];
@@ -67,15 +68,25 @@ static void get_location_tmpdir(char **tmpdir, int *tmpdir_size)
    *tmpdir_size = location_root_size;
 }
 
+int is_in_spindle_cache(const char *pathname)
+{
+   static int location_size = 0;
+   static int orig_location_size = 0;
+   if (!location_size) {
+      location_size = strlen(location);
+   }
+   if (!orig_location_size) {
+      orig_location_size = strlen(orig_location);
+   }
+   return ((strncmp(pathname, location, location_size) == 0) ||
+           (strncmp(pathname, orig_location, orig_location_size) == 0));
+}
+
 static int is_local_file(const char *pathname)
 {
    char *loctmpdir;
    int loctmpdir_size;
-   static int location_size = 0;
-   if (!location_size) {
-      location_size = strlen(location);
-   }
-   if (strncmp(pathname, location, location_size) == 0) {
+   if (is_in_spindle_cache(pathname)) {
       debug_printf3("Decided that %s is part of spindle cache %s. Sending to spindle\n",
                     pathname, location);
       return 0;

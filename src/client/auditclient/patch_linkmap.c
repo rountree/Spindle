@@ -30,19 +30,19 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 static char *last_rewritten_name = NULL;
 static char *last_orig_name = NULL;
+static char *ldso_path = NULL;
 
-void patch_on_load_success(const char *rewritten_name, const char *orig_name)
+void patch_on_load_success(const char *rewritten_name, const char *orig_name, const char *ldso_path_name)
 {
-   if (!(opts & OPT_DEBUG)) {
-      return;
-   }
-
    if (last_orig_name)
       spindle_free(last_orig_name);
+   if (ldso_path)
+      spindle_free(ldso_path);
 
    last_rewritten_name = (char *) rewritten_name;
    last_orig_name = spindle_strdup(orig_name);
-   debug_printf2("Seting up patching of link map %s -> %s\n", rewritten_name, orig_name);
+   ldso_path = spindle_strdup(ldso_path_name);
+   debug_printf2("Setting up patching of link map %s -> %s for origpath %s\n", rewritten_name, orig_name, ldso_path_name);
 }
 
 void patch_on_linkactivity(struct link_map *lmap)
@@ -50,12 +50,14 @@ void patch_on_linkactivity(struct link_map *lmap)
    size_t len;
    char *oname;
    
-   if (!(opts & OPT_DEBUG))
-      return;
    if (!last_rewritten_name || !last_orig_name)
       return;
 
-   if (lmap->l_name == last_rewritten_name || strcmp(lmap->l_name, last_rewritten_name) == 0) {
+   if (lmap->l_name == last_rewritten_name ||
+       lmap->l_name == ldso_path ||
+       strcmp(lmap->l_name, last_rewritten_name) == 0 ||
+       strcmp(lmap->l_name, ldso_path) == 0)
+   {
       debug_printf3("Replacing name %s with name %s\n", lmap->l_name, last_orig_name);
       if (strlen(lmap->l_name) >= strlen(last_orig_name)) {
          strcpy(lmap->l_name, last_orig_name);
