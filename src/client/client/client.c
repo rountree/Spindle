@@ -37,6 +37,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "client_api.h"
 #include "spindle_launch.h"
 #include "shmcache.h"
+#include "ccwarns.h"
 
 errno_location_t app_errno_location;
 
@@ -56,6 +57,7 @@ static char old_cwd[MAX_PATH_LEN+1];
 static int rankinfo[4]={-1,-1,-1,-1};
 
 extern char *parse_location(char *loc, int number);
+extern int is_in_spindle_cache(const char *pathname);
 
 /* compare the pointer top the cookie not the cookie itself, it may be changed during runtime by audit library  */
 int use_ldcs = 1;
@@ -64,14 +66,21 @@ static const char *interp_name = NULL;
 static const ElfW(Phdr) *libc_phdrs, *interp_phdrs;
 static int num_libc_phdrs, num_interp_phdrs;
 ElfW(Addr) libc_loadoffset, interp_loadoffset;
+
+/* location has the realize'd path to the local file cache. orig_location is not realized and
+ * may contain symlinks
+ */
 char *location;
+char *orig_location;
 int number;
 
 static char *concatStrings(const char *str1, const char *str2) 
 {
    static char buffer[MAX_PATH_LEN+1];
    buffer[MAX_PATH_LEN] = '\0';
+   GCC7_DISABLE_WARNING("-Wformat-truncation");
    snprintf(buffer, MAX_PATH_LEN, "%s/%s", str1, str2);
+   GCC7_ENABLE_WARNING;
    return buffer;
 }
 
@@ -186,6 +195,7 @@ static int init_server_connection()
       return 0;
 
    location = getenv("LDCS_LOCATION");
+   orig_location = getenv("LDCS_ORIG_LOCATION");
    number = atoi(getenv("LDCS_NUMBER"));
    connection = getenv("LDCS_CONNECTION");
    rankinfo_s = getenv("LDCS_RANKINFO");
@@ -202,6 +212,7 @@ static int init_server_connection()
       debug_printf("Disabling environment variables because we're not following forks\n");
       unsetenv("LD_AUDIT");
       unsetenv("LDCS_LOCATION");
+      unsetenv("LDCS_ORIG_LOCATION");
       unsetenv("LDCS_NUMBER");
       unsetenv("LDCS_CONNECTION");
       unsetenv("LDCS_RANKINFO");
@@ -364,6 +375,7 @@ char *client_library_load(const char *name)
 {
    char *newname;
    int errcode;
+   char fixed_name[MAX_PATH_LEN+1];
 
    check_for_fork();
    if (!use_ldcs || ldcsid == -1) {
@@ -383,16 +395,25 @@ char *client_library_load(const char *name)
    
    sync_cwd();
 
-   get_relocated_file(ldcsid, name, &newname, &errcode);
+   char *orig_file_name = (char *) name;
+   if (is_in_spindle_cache(name)) {
+      debug_printf2("Library %s is in spindle cache (%s). Translating request\n", name, location);
+      memset(fixed_name, 0, MAX_PATH_LEN+1);
+      send_orig_path_request(ldcsid, orig_file_name, fixed_name);
+      orig_file_name = fixed_name;      
+      debug_printf2("Spindle cache library %s translated to original path %s\n", name, orig_file_name);
+   }
+   
+   get_relocated_file(ldcsid, orig_file_name, &newname, &errcode);
  
    if(!newname) {
-      newname = concatStrings(NOT_FOUND_PREFIX, name);
+      newname = concatStrings(NOT_FOUND_PREFIX, orig_file_name);
    }
    else {
-      patch_on_load_success(newname, name);
+      patch_on_load_success(newname, orig_file_name, name);
    }
 
-   debug_printf2("la_objsearch redirecting %s to %s\n", name, newname);
+   debug_printf2("la_objsearch redirecting %s to %s\n", orig_file_name, newname);
    test_log(newname);
    return newname;
 }
