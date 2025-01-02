@@ -60,16 +60,19 @@ static char **R_to_hosts (json_t *R)
     if (json_unpack (R,
                      "{s:{s:o}}",
                      "execution",
-                     "nodelist", &nodelist) < 0)
+                     "nodelist", &nodelist) < 0){
         goto error;
+    }
 
     json_array_foreach (nodelist, index, entry) {
         const char *val = json_string_value (entry);
-        if (!val || hostlist_append (hl, val) < 0)
+        if (!val || hostlist_append (hl, val) < 0){
             goto error;
+        }
     }
-    if (!(hosts = calloc (hostlist_count (hl) + 1, sizeof (char *))))
+    if (!(hosts = calloc (hostlist_count (hl) + 1, sizeof (char *)))){
         goto error;
+    }
     host = hostlist_first (hl);
     i = 0;
     while (host) {
@@ -237,16 +240,17 @@ static void wait_for_shell_init (flux_future_t *f, void *arg)
 static int parse_yesno(opt_t *opt, opt_t flag, const char *yesno)
 {
     blr_preamble();
-   if (strcasecmp(yesno, "no") == 0 || strcasecmp(yesno, "false") == 0 || strcasecmp(yesno, "0") == 0){
-      *opt &= ~flag;
-   }else if (strcasecmp(yesno, "yes") == 0 || strcasecmp(yesno, "true") == 0 || strcasecmp(yesno, "1") == 0){
-      *opt |= 1;
-   }else{
+    if (strcasecmp(yesno, "no") == 0 || strcasecmp(yesno, "false") == 0 || strcasecmp(yesno, "0") == 0){
+        *opt &= ~flag;
+    }else if (strcasecmp(yesno, "yes") == 0 || strcasecmp(yesno, "true") == 0 || strcasecmp(yesno, "1") == 0){
+        *opt |= 1;
+    }else{
+        int rc = shell_log_errno ("Error in spindle option: Expected 'yes' or 'no', got %s", yesno);
+        blr_postamble();
+        return rc;
+    }
     blr_postamble();
-      return shell_log_errno ("Error in spindle option: Expected 'yes' or 'no', got %s", yesno);
-   }
-    blr_postamble();
-   return 0;
+    return 0;
 }
 
 static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
@@ -309,12 +313,15 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
         return shell_log_errno ("Error in spindle option: %s", error.text);
     }
 
-    if (noclean)
+    if (noclean){
         ctx->params.opts |= OPT_NOCLEAN;
-    if (nostrip)
+    }
+    if (nostrip){
         ctx->params.opts &= ~OPT_STRIP;
-    if (follow_fork)
+    }
+    if (follow_fork){
         ctx->params.opts |= OPT_FOLLOWFORK;
+    }
     if (push) {
        ctx->params.opts |= OPT_PUSH;
        ctx->params.opts &= ~OPT_PULL;
@@ -323,18 +330,24 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
        ctx->params.opts &= ~OPT_PUSH;
        ctx->params.opts |= OPT_PULL;
     }
-    if (relocaout)
+    if (relocaout){
        had_error |= parse_yesno(&ctx->params.opts, OPT_RELOCAOUT, relocaout);
-    if (followfork)
+    }
+    if (followfork){
        had_error |= parse_yesno(&ctx->params.opts, OPT_FOLLOWFORK, followfork);
-    if (reloclibs)
+    }
+    if (reloclibs){
        had_error |= parse_yesno(&ctx->params.opts, OPT_RELOCSO, reloclibs);
-    if (relocexec)
+    }
+    if (relocexec){
        had_error |= parse_yesno(&ctx->params.opts, OPT_RELOCEXEC, relocexec);
-    if (relocpython)
+    }
+    if (relocpython){
        had_error |= parse_yesno(&ctx->params.opts, OPT_RELOCPY, relocpython);
-    if (preload)
+    }
+    if (preload){
        ctx->params.preloadfile = (char *) preload;
+    }
     if (numa) {
        ctx->params.opts |= OPT_NUMA;
     }
@@ -345,8 +358,9 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
     if (pyprefix) {
         char *tmp;
         if (asprintf (&tmp, "%s:%s", ctx->params.pythonprefix, pyprefix) < 0){
+            int rc = shell_log_errno ("unable to append to pythonprefix");
             blr_postamble();
-            return shell_log_errno ("unable to append to pythonprefix");
+            return rc;
         }
         free (ctx->params.pythonprefix);
         ctx->params.pythonprefix = tmp;
@@ -391,7 +405,7 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
     }
     if (had_error){
         blr_postamble();
-       return had_error;
+        return had_error;
     }
     blr_postamble();
     return 0;
@@ -434,20 +448,23 @@ static int sp_init (flux_plugin_t *p,
     /*  If SPINDLE_DEBUG is set in the environment of the job, propagate
      *  it into the shell so we get spindle debugging for this session.
      */
-    if ((debug = flux_shell_getenv (shell, "SPINDLE_DEBUG")))
+    if ((debug = flux_shell_getenv (shell, "SPINDLE_DEBUG"))){
         setenv ("SPINDLE_DEBUG", debug, 1);
+    }
 
     /*  The spindle testsuite requires SPINDLE_TEST
      */
-    if ((test = flux_shell_getenv (shell, "SPINDLE_TEST")))
+    if ((test = flux_shell_getenv (shell, "SPINDLE_TEST"))){
        setenv ("SPINDLE_TEST", test, 1);
+    }
 
     /*  Spindle requires that TMPDIR is set. Propagate TMPDIR from job
      *  environment, or use /tmp if TMPDIR not set.
      */
     tmpdir = flux_shell_getenv (shell, "TMPDIR");
-    if (!tmpdir)
+    if (!tmpdir){
         tmpdir = "/tmp";
+    }
     setenv ("TMPDIR", tmpdir, 1);
 
     /*  Get the jobid, R, and shell rank
@@ -457,8 +474,9 @@ static int sp_init (flux_plugin_t *p,
                                 "jobid", &id,
                                 "R", &R,
                                 "rank", &shell_rank) < 0){
+        int rc = shell_log_errno ("Failed to unpack shell info");
         blr_postamble();
-        return shell_log_errno ("Failed to unpack shell info");
+        return rc;
     }
     /*  Create an object for spindle related context.
      *
@@ -471,8 +489,9 @@ static int sp_init (flux_plugin_t *p,
                                 ctx,
                                 (flux_free_f) spindle_ctx_destroy) < 0) {
         spindle_ctx_destroy (ctx);
+        int rc = shell_log_errno ("failed to create spindle ctx");
         blr_postamble();
-        return shell_log_errno ("failed to create spindle ctx");
+        return rc;
     }
 
     /*  Fill in the spindle_args_t with defaults from Spindle.
@@ -484,8 +503,11 @@ static int sp_init (flux_plugin_t *p,
                                     ctx->flags,
                                     0,
                                     NULL,
-                                    NULL) < 0)
-        return shell_log_errno ("fillInSpindleArgsCmdlineFE failed");
+                                    NULL) < 0){
+        int rc = shell_log_errno ("fillInSpindleArgsCmdlineFE failed");
+        blr_postamble();
+        return rc;
+    }
 
 
     /*  Read other spindle options from spindle option in jobspec:
@@ -498,7 +520,7 @@ static int sp_init (flux_plugin_t *p,
         blr_postamble();
        return 0;
     }
-    
+
     /*  N.B. Override unique_id with id again to be sure it wasn't changed
      *  (Occaisionally see hangs if this is not done)
      */
@@ -581,7 +603,7 @@ static int sp_exit (flux_plugin_t *p,
     struct spindle_ctx *ctx = flux_plugin_aux_get (p, "spindle");
     if (ctx->params.opts & OPT_OFF){
         blr_postamble();
-       return 0;    
+       return 0;
     }
     if (ctx && ctx->shell_rank == 0){
         blr_postamble();
