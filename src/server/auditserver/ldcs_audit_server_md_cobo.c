@@ -14,6 +14,7 @@
   Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
+#include <blr_log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -42,129 +43,143 @@ extern int ll_read(int fd, void *buf, size_t count);
 
 int read_msg(int fd, node_peer_t *peer, ldcs_message_t *msg)
 {
-   int result;
-   char *buffer = NULL;
+    blr_preamble();
+    int result;
+    char *buffer = NULL;
 
-   *peer = (node_peer_t) (long) fd;
-   
-   result = ll_read(fd, msg, sizeof(*msg));
-   if (result == -1)
-      return -1;
+    *peer = (node_peer_t) (long) fd;
 
-   if (msg->header.type == LDCS_MSG_FILE_DATA || msg->header.type == LDCS_MSG_PRELOAD_FILE) {
+    result = ll_read(fd, msg, sizeof(*msg));
+    if (result == -1){
+        blr_postamble();
+        return -1;
+    }
+
+    if (msg->header.type == LDCS_MSG_FILE_DATA || msg->header.type == LDCS_MSG_PRELOAD_FILE) {
       /* Optimization.  Don't read file data into heap, as it could be
          very large.  For these packets we'll postpone the network read
          until we have the file's mmap ready, then read it straight
          into that memory. */
-      msg->data = NULL;
-      return 0;
-   } 
+        msg->data = NULL;
+        blr_postamble();
+        return 0;
+    }
 
-   if (msg->header.len) {
-      buffer = (char *) malloc(msg->header.len);
-      if (buffer == NULL) {
-         err_printf("Error allocating space for message from network of size %lu\n", (long) msg->header.len);
-         return -1;
-      }
-      result = ll_read(fd, buffer, msg->header.len);
-      if (result == -1) {
-         free(buffer);
-         return -1;
-      }
-   }
+    if (msg->header.len) {
+        buffer = (char *) malloc(msg->header.len);
+        if (buffer == NULL) {
+            err_printf("Error allocating space for message from network of size %lu\n", (long) msg->header.len);
+            blr_postamble();
+            return -1;
+        }
+        result = ll_read(fd, buffer, msg->header.len);
+        if (result == -1) {
+            free(buffer);
+            blr_postamble();
+            return -1;
+        }
+    }
 
-   msg->data = buffer;
-   return 0;
+    msg->data = buffer;
+    blr_postamble();
+    return 0;
 }
 
-int ldcs_audit_server_md_init(unsigned int port, unsigned int num_ports, 
+int ldcs_audit_server_md_init(unsigned int port, unsigned int num_ports,
                               unique_id_t unique_id, ldcs_process_data_t *data)
 {
-   int rc=0;
-   unsigned int *portlist;
-   int my_rank, ranks, fanout;
-   int i;
+    blr_preamble();
+    int rc=0;
+    unsigned int *portlist;
+    int my_rank, ranks, fanout;
+    int i;
 
-   portlist = malloc(sizeof(unsigned int) * (num_ports + 1));
-   for (i = 0; i < num_ports; i++) {
-      portlist[i] = port + i;
-   }
-   portlist[num_ports] = 0;
+    portlist = malloc(sizeof(unsigned int) * (num_ports + 1));
+    for (i = 0; i < num_ports; i++) {
+        portlist[i] = port + i;
+    }
+    portlist[num_ports] = 0;
 
-   /* initialize the client (read environment variables) */
-   debug_printf2("Opening cobo with port %d - %d\n", portlist[0], portlist[num_ports-1]);
-   if (cobo_open(unique_id, (int *) portlist, num_ports, &my_rank, &ranks) != COBO_SUCCESS) {
-      printf("Failed to init\n");
-      exit(1);
-   }
-   debug_printf2("cobo_open complete. Cobo rank %d/%d\n", my_rank, ranks);
-   free(portlist);
+    /* initialize the client (read environment variables) */
+    debug_printf2("Opening cobo with port %d - %d\n", portlist[0], portlist[num_ports-1]);
+    if (cobo_open(unique_id, (int *) portlist, num_ports, &my_rank, &ranks) != COBO_SUCCESS) {
+        printf("Failed to init\n");
+        blr_postamble();
+        exit(1);
+    }
+    debug_printf2("cobo_open complete. Cobo rank %d/%d\n", my_rank, ranks);
+    free(portlist);
 
-   data->server_stat.md_rank = data->md_rank = my_rank;
-   data->server_stat.md_size = data->md_size = ranks;
-   data->md_listen_to_parent = 0;
+    data->server_stat.md_rank = data->md_rank = my_rank;
+    data->server_stat.md_size = data->md_size = ranks;
+    data->md_listen_to_parent = 0;
 
-   cobo_get_num_childs(&fanout);
-   data->server_stat.md_fan_out = data->md_fan_out = fanout;
+    cobo_get_num_childs(&fanout);
+    data->server_stat.md_fan_out = data->md_fan_out = fanout;
 
-   cobo_barrier();
+    cobo_barrier();
 
-   /* send ack about being ready */
-   if (data->md_rank == 0) { 
-      int root_fd, ack=13;
+    /* send ack about being ready */
+    if (data->md_rank == 0) {
+        int root_fd, ack=13;
 
-      /* send fe client signal to stop (ack)  */
-      cobo_get_parent_socket(&root_fd);
-    
-      ldcs_cobo_write_fd(root_fd, &ack, sizeof(ack));
-      debug_printf3("sent FE client signal that server are ready %d\n",ack);
-   }
-  
-   return(rc);
+        /* send fe client signal to stop (ack)  */
+        cobo_get_parent_socket(&root_fd);
+
+        ldcs_cobo_write_fd(root_fd, &ack, sizeof(ack));
+        debug_printf3("sent FE client signal that server are ready %d\n",ack);
+    }
+
+    blr_postamble();
+    return(rc);
 }
 
 int ldcs_audit_server_md_register_fd ( ldcs_process_data_t *ldcs_process_data ) {
-   int rc=0, i;
-   int parent_fd, child_fd;
-   int num_childs;
+    blr_preamble();
+    int rc=0, i;
+    int parent_fd, child_fd;
+    int num_childs;
 
-   if(cobo_get_parent_socket(&parent_fd)!=COBO_SUCCESS) {
-      err_printf("Error, could not get parent socket\n");
-      assert(0);
-   }
+    if(cobo_get_parent_socket(&parent_fd)!=COBO_SUCCESS) {
+        err_printf("Error, could not get parent socket\n");
+        blr_preamble();
+        assert(0);
+    }
 
-   debug_printf3("Registering fd %d for cobo parent connection\n",parent_fd);
-   ldcs_listen_register_fd(parent_fd, 0, &ldcs_audit_server_md_cobo_CB, (void *) ldcs_process_data);
-   ldcs_process_data->md_listen_to_parent=1;
-   
-   cobo_get_num_childs(&num_childs);
-   for (i = 0; i<num_childs; i++) {
-      cobo_get_child_socket(i, &child_fd);
-      ldcs_listen_register_fd(child_fd, 0, &ldcs_audit_server_md_cobo_CB, (void *) ldcs_process_data);
-   }
-   
-   return(rc);
+    debug_printf3("Registering fd %d for cobo parent connection\n",parent_fd);
+    ldcs_listen_register_fd(parent_fd, 0, &ldcs_audit_server_md_cobo_CB, (void *) ldcs_process_data);
+    ldcs_process_data->md_listen_to_parent=1;
+
+    cobo_get_num_childs(&num_childs);
+    for (i = 0; i<num_childs; i++) {
+        cobo_get_child_socket(i, &child_fd);
+        ldcs_listen_register_fd(child_fd, 0, &ldcs_audit_server_md_cobo_CB, (void *) ldcs_process_data);
+    }
+
+    blr_postamble();
+    return(rc);
 }
 
 int ldcs_audit_server_md_unregister_fd ( ldcs_process_data_t *ldcs_process_data ) {
-   int rc=0, i;
-   int parent_fd, child_fd;
-   int num_childs;
-   if(ldcs_process_data->md_listen_to_parent) {
-      if(cobo_get_parent_socket(&parent_fd)!=COBO_SUCCESS) {
-         _error("cobo internal error (parent socket)");
-      }
-      ldcs_process_data->md_listen_to_parent=0;
-      ldcs_listen_unregister_fd(parent_fd);
+    blr_preamble();
+    int rc=0, i;
+    int parent_fd, child_fd;
+    int num_childs;
+    if(ldcs_process_data->md_listen_to_parent) {
+        if(cobo_get_parent_socket(&parent_fd)!=COBO_SUCCESS) {
+            _error("cobo internal error (parent socket)");
+        }
+        ldcs_process_data->md_listen_to_parent=0;
+        ldcs_listen_unregister_fd(parent_fd);
 
-      cobo_get_num_childs(&num_childs);
-      for (i = 0; i<num_childs; i++) {
-         cobo_get_child_socket(i, &child_fd);
-         ldcs_listen_unregister_fd(child_fd);
-      }
-   }
-
-   return(rc);
+        cobo_get_num_childs(&num_childs);
+        for (i = 0; i<num_childs; i++) {
+            cobo_get_child_socket(i, &child_fd);
+            ldcs_listen_unregister_fd(child_fd);
+        }
+    }
+    blr_postamble();
+    return(rc);
 }
 
 int ldcs_audit_server_md_destroy ( ldcs_process_data_t *ldcs_process_data ) 

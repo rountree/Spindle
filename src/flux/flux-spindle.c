@@ -157,6 +157,7 @@ static int run_spindle_backend (struct spindle_ctx *ctx)
     if (ctx->backend_pid == 0) {
         /* N.B.: spindleRunBE() blocks, which is why we run it in a child
          */
+        blr_log("BACKEND PROCESS");
         if (spindleRunBE (ctx->params.port,
                           ctx->params.num_ports,
                           ctx->id,
