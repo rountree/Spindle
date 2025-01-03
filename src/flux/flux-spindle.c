@@ -205,7 +205,7 @@ static void wait_for_shell_init (flux_future_t *f, void *arg)
        blr_postamble();
        return;
     }
-    
+
     if (flux_job_event_watch_get (f, &event) < 0)
         shell_die_errno (1, "spindle failed waiting for shell.init event");
     if (!(o = json_loads (event, 0, NULL))

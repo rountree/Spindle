@@ -14,6 +14,7 @@ program; if not, write to the Free Software Foundation, Inc., 59 Temple
 Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
+#include <blr_log.h>
 #include "config.h"
 #include "ldcs_audit_server_process.h"
 #include "parseloc.h"
@@ -68,118 +69,132 @@ static int unpack_data(spindle_args_t *args, void *buffer, int buffer_size)
    unpack_param(args->rsh_command, buf, pos);
    assert(pos == buffer_size);
 
-   return 0;    
+   return 0;
 }
 
 static void initSecurity(int security_type, uint64_t unique_id)
 {
-   int result;
-   handshake_protocol_t handshake;
-   switch (security_type) {
-      case OPT_SEC_MUNGE:
-         debug_printf("Initializing BE with munge-based security\n");
-         handshake.mechanism = hs_munge;
-         break;
-      case OPT_SEC_KEYFILE: {
-         char *path;
-         int len;
-         debug_printf("Initializing BE with keyfile-based security\n");
-         len = MAX_PATH_LEN+1;
-         path = (char *) malloc(len);
-         get_keyfile_path(path, len, unique_id);
-         handshake.mechanism = hs_key_in_file;
-         handshake.data.key_in_file.key_filepath = path;
-         handshake.data.key_in_file.key_length_bytes = KEY_SIZE_BYTES;
-         break;
-      }
-      case OPT_SEC_KEYLMON: {
-         debug_printf("Initializing BE with launchmon-based security\n");
-         handshake.mechanism = hs_explicit_key;
-         err_printf("Error, launchmon based keys not yet implemented\n");
-         exit(-1);
-         break;
-      }
-      case OPT_SEC_NULL:
-         handshake.mechanism = hs_none;
-         debug_printf("Initializing BE with NULL security\n");
-         break;
-   }
+    blr_preamble();
+    int result;
+    handshake_protocol_t handshake;
+    switch (security_type) {
+        case OPT_SEC_MUNGE:
+            debug_printf("Initializing BE with munge-based security\n");
+            handshake.mechanism = hs_munge;
+            break;
+        case OPT_SEC_KEYFILE: {
+            char *path;
+            int len;
+            debug_printf("Initializing BE with keyfile-based security\n");
+            len = MAX_PATH_LEN+1;
+            path = (char *) malloc(len);
+            get_keyfile_path(path, len, unique_id);
+            handshake.mechanism = hs_key_in_file;
+            handshake.data.key_in_file.key_filepath = path;
+            handshake.data.key_in_file.key_length_bytes = KEY_SIZE_BYTES;
+            break;
+        }
+        case OPT_SEC_KEYLMON: {
+            debug_printf("Initializing BE with launchmon-based security\n");
+            handshake.mechanism = hs_explicit_key;
+            err_printf("Error, launchmon based keys not yet implemented\n");
+            blr_postamble();
+            exit(-1);
+            break;
+        }
+        case OPT_SEC_NULL:
+            handshake.mechanism = hs_none;
+            debug_printf("Initializing BE with NULL security\n");
+            break;
+        }
 
-   result = initialize_handshake_security(&handshake);
-   if (result == -1) {
-      err_printf("Could not initialize security\n");
-      exit(-1);
-   }
+    result = initialize_handshake_security(&handshake);
+    if (result == -1) {
+        err_printf("Could not initialize security\n");
+        blr_postamble();
+        exit(-1);
+    }
+    blr_postamble();
 }
 
 int spindleRunBE(unsigned int port, unsigned int num_ports, unique_id_t unique_id, int security_type,
                  int (*post_setup)(spindle_args_t *))
 {
-   int result;
-   spindle_args_t args;
+    blr_preamble();
+    int result;
+    spindle_args_t args;
 
-   LOGGING_INIT(const_cast<char *>("Server"));
+    LOGGING_INIT(const_cast<char *>("Server"));
 
-   initSecurity(security_type, unique_id);
+    initSecurity(security_type, unique_id);
 
-   debug_printf("Called spindleRunBE(port=%u, num_ports=%u, unique_id = %lu, security_type = %d, post_setup = %p)\n",
-                port, num_ports, unique_id, security_type, post_setup);
-   
-   /* Setup network and share setup data */
-   debug_printf3("spindleRunBE setting up network and receiving setup data\n");
-   void *setup_data;
-   int setup_data_size;
-   result = ldcs_audit_server_network_setup(port, num_ports, unique_id, &setup_data, &setup_data_size);
-   if (result == -1) {
-      err_printf("Error setting up network in spindleRunBE\n");
-      return -1;
-   }
-   unpack_data(&args, setup_data, setup_data_size);
-   free(setup_data);
-   assert(args.unique_id == unique_id);
-   assert(args.port == port);
-   
-   
-   /* Expand environment variables in location. */
-   char *new_location = parse_location(args.location, args.number);
-   if (!new_location) {
-      err_printf("Failed to convert location %s\n", args.location);
-      return -1;
-   }
-   debug_printf("Translated location from %s to %s\n", args.location, new_location);
-   free(args.location);
-   args.location = new_location;
+    debug_printf("Called spindleRunBE(port=%u, num_ports=%u, unique_id = %lu, security_type = %d, post_setup = %p)\n",
+        port, num_ports, unique_id, security_type, post_setup);
 
-   result = ldcs_audit_server_process(&args);
-   if (result == -1) {
-      err_printf("Error in ldcs_audit_server_process\n");
-      return -1;
-   }
-
-   if (post_setup) {
-      result = post_setup(&args);
-      if (result == -1) {
-         err_printf("post_setup callback errored.  Returning\n");
-         return -1;
-      }
-   }
-
-   debug_printf("Setup done.  Running server.\n");
-   ldcs_audit_server_run();
-   if (result == -1) {
-      err_printf("Error in ldcs_audit_server_process\n");
-      return -1;
-   }
+    /* Setup network and share setup data */
+    debug_printf3("spindleRunBE setting up network and receiving setup data\n");
+    void *setup_data;
+    int setup_data_size;
+    result = ldcs_audit_server_network_setup(port, num_ports, unique_id, &setup_data, &setup_data_size);
+    if (result == -1) {
+        err_printf("Error setting up network in spindleRunBE\n");
+        blr_postamble();
+        return -1;
+    }
+    unpack_data(&args, setup_data, setup_data_size);
+    free(setup_data);
+    assert(args.unique_id == unique_id);
+    assert(args.port == port);
 
 
-   if (args.startup_type == startup_external)   
-      LOGGING_FINI;
+    /* Expand environment variables in location. */
+    char *new_location = parse_location(args.location, args.number);
+    if (!new_location) {
+        err_printf("Failed to convert location %s\n", args.location);
+        blr_postamble();
+        return -1;
+    }
+    debug_printf("Translated location from %s to %s\n", args.location, new_location);
+    free(args.location);
+    args.location = new_location;
 
-   return 0;
+    result = ldcs_audit_server_process(&args);
+    if (result == -1) {
+        err_printf("Error in ldcs_audit_server_process\n");
+        blr_postamble();
+        return -1;
+    }
+
+    if (post_setup) {
+        result = post_setup(&args);
+        if (result == -1) {
+            err_printf("post_setup callback errored.  Returning\n");
+            blr_postamble();
+            return -1;
+        }
+    }
+
+    debug_printf("Setup done.  Running server.\n");
+    ldcs_audit_server_run();
+    if (result == -1) {
+        err_printf("Error in ldcs_audit_server_process\n");
+        blr_postamble();
+        return -1;
+    }
+
+
+    if (args.startup_type == startup_external){
+        LOGGING_FINI;
+    }
+
+    blr_postamble();
+    return 0;
 }
 
 int spindleExitBE(const char *location)
 {
-   debug_printf("User called spindleExitBE(%s)\n", location);
-   return pingExitNote(location);
+    blr_preamble();
+    debug_printf("User called spindleExitBE(%s)\n", location);
+    blr_postamble();
+    return pingExitNote(location);
 }
