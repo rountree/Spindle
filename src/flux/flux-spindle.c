@@ -478,6 +478,7 @@ static int sp_init (flux_plugin_t *p,
         blr_postamble();
         return rc;
     }
+    blr_log( "shell_rank = %i\n", shell_rank );
     /*  Create an object for spindle related context.
      *
      *  Set this object in the plugin context for later fetching as
