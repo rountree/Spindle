@@ -34,3 +34,5 @@ run_driver
 run_driver_rm
 preload_file_list
 build
+.*.swp
+
