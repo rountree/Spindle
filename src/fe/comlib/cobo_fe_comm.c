@@ -66,7 +66,7 @@ int ldcs_audit_server_fe_md_open ( char **hostlist, int numhosts, unsigned int p
    free(portlist);
 
    cobo_server_get_root_socket(&root_fd);
-  
+
    ldcs_cobo_read_fd(root_fd, &ack, sizeof(ack));
 
    return(rc);

@@ -1,19 +1,19 @@
 /*
-This file is part of Spindle.  For copyright information see the COPYRIGHT 
-file in the top level directory, or at 
+This file is part of Spindle.  For copyright information see the COPYRIGHT
+file in the top level directory, or at
 https://github.com/hpc/Spindle/blob/master/COPYRIGHT
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU Lesser General Public License (as published by the Free Software
 Foundation) version 2.1 dated February 1999.  This program is distributed in the
 hope that it will be useful, but WITHOUT ANY WARRANTY; without even the IMPLIED
-WARRANTY OF MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the terms 
-and conditions of the GNU Lesser General Public License for more details.  You should 
-have received a copy of the GNU Lesser General Public License along with this 
+WARRANTY OF MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the terms
+and conditions of the GNU Lesser General Public License for more details.  You should
+have received a copy of the GNU Lesser General Public License along with this
 program; if not, write to the Free Software Foundation, Inc., 59 Temple
 Place, Suite 330, Boston, MA 02111-1307 USA
 */
-
+#include <blr_log.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,13 +42,13 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #define ENV_OPTIONAL (1)
 
 /* set env variable to configure socket timeout parameters */
-#ifndef COBO_CONNECT_TIMEOUT       
+#ifndef COBO_CONNECT_TIMEOUT
 #define COBO_CONNECT_TIMEOUT (10) /* milliseconds -- wait this long before a connect() call times out*/
 #endif
 #ifndef COBO_CONNECT_BACKOFF
 #define COBO_CONNECT_BACKOFF (2) /* exponential backoff factor for timeout */
 #endif
-#ifndef COBO_CONNECT_SLEEP  
+#ifndef COBO_CONNECT_SLEEP
 #define COBO_CONNECT_SLEEP   (10) /* milliseconds -- wait this long before trying a new round of connects() */
 #endif
 #ifndef COBO_CONNECT_TIMELIMIT
@@ -126,7 +126,7 @@ static struct timeval tree_start, tree_end;
  * ==========================================================================
  * ==========================================================================
  */
-#if defined(SIONDEBUG) 
+#if defined(SIONDEBUG)
 #include "sion_debug.h"
 #endif
 
@@ -134,85 +134,101 @@ static cobo_preconnect_cb_t preconnect_cb = NULL;
 
 void cobo_register_preconnect_cb(cobo_preconnect_cb_t f)
 {
-   preconnect_cb = f;
+    blr_preamble();
+    preconnect_cb = f;
+    blr_postamble();
 }
 
 
 /* Return the number of secs as a double between two timeval structs (tv2-tv1) */
 static double cobo_getsecs(struct timeval* tv2, struct timeval* tv1)
 {
+    blr_preamble();
     struct timeval result;
     timersub(tv2, tv1, &result);
+    blr_postamble();
     return (double) result.tv_sec + (double) result.tv_usec / 1000000.0;
 }
 
 /* Fills in timeval via gettimeofday */
 static void cobo_gettimeofday(struct timeval* tv)
 {
+    blr_preamble();
     if (gettimeofday(tv, NULL) < 0) {
         err_printf("Getting time (gettimeofday() %m errno=%d)\n", errno);
     }
+    blr_postamble();
 }
 
 /* Reads environment variable, bails if not set */
 static char* cobo_getenv(char* envvar, int type)
 {
+    blr_preamble();
     char* str = getenv(envvar);
     if (str == NULL && type == ENV_REQUIRED) {
         err_printf("Missing required environment variable: %s\n", envvar);
+        blr_postamble();
         exit(1);
     }
+    blr_postamble("getenv(%s) resulted in %s", envvar, str);
     return str;
 }
 
 /* malloc n bytes, and bail out with error msg if fails */
 static void* cobo_malloc(size_t n, char* msg)
 {
+    blr_preamble();
     void* p = malloc(n);
     if (!p) {
         err_printf("Call to malloc(%lu) failed: %s (%m errno %d)\n", n, msg, errno);
+        blr_postamble();
         exit(1);
     }
+    blr_postamble();
     return p;
 }
 
 static void setCloseOnExec(int fd) {
+    blr_preamble();
    int flags = fcntl(fd, F_GETFD);
    if (flags != -1) {
       fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
    }
+   blr_postamble();
 }
 
 /* macro to free the pointer if set, then set it to NULL */
 #define cobo_free(p) { if(p) { free((void*)p); p=NULL; } }
 
 static int _cobo_opt_socket(int sockfd)  {
-  int flag = 1;
-  int result = setsockopt(sockfd,            /* socket affected */
-			  IPPROTO_TCP,     /* set option at TCP level */
-			  TCP_NODELAY,     /* name of option */
-			  (char *) &flag,  /* the cast is historical
-					      cruft */
-			  sizeof(int));    /* length of option value */
-  debug_printf3("_cobo_opt_socket (sockfd=%d) flag=%d\n",sockfd, flag);
+    blr_preamble();
+    int flag = 1;
+    int result = setsockopt(sockfd,            /* socket affected */
+        IPPROTO_TCP,     /* set option at TCP level */
+        TCP_NODELAY,     /* name of option */
+        (char *) &flag,  /* the cast is historical cruft */
+        sizeof(int));    /* length of option value */
+    debug_printf3("_cobo_opt_socket (sockfd=%d) flag=%d\n",sockfd, flag);
 #ifdef CHANGENNODELAY
-  flag=0;
-  result = setsockopt(sockfd,            /* socket affected */
-		      IPPROTO_TCP,     /* set option at TCP level */
-		      TCP_NODELAY,     /* name of option */
-		      (char *) &flag,  /* the cast is historical
-					  cruft */
-		      sizeof(int));    /* length of option value */
+    flag=0;
+    result = setsockopt(sockfd,            /* socket affected */
+        IPPROTO_TCP,     /* set option at TCP level */
+        TCP_NODELAY,     /* name of option */
+        (char *) &flag,  /* the cast is historical cruft */
+        sizeof(int));    /* length of option value */
 #endif
-  setCloseOnExec(sockfd);
-  return(result);
+    setCloseOnExec(sockfd);
+    blr_postamble();
+    return(result);
 }
 
 /* given a pointer to an array of ints, allocate and return a copy of the array */
 static int* cobo_int_dup(int* src, int n)
 {
+    blr_preamble();
     /* check that we have something to copy from */
     if (src == NULL) {
+        blr_postamble();
         return NULL;
     }
 
@@ -224,13 +240,14 @@ static int* cobo_int_dup(int* src, int n)
     if (dst != NULL) {
         memcpy(dst, src, size);
     }
-
+    blr_postamble();
     return dst;
 }
 
 /* write size bytes from buf into fd, retry if necessary */
 static int cobo_write_fd_w_suppress(int fd, void* buf, int size, int suppress)
 {
+    blr_preamble();
     int rc;
     int n = 0;
     char* offset = (char*) buf;
@@ -238,43 +255,48 @@ static int cobo_write_fd_w_suppress(int fd, void* buf, int size, int suppress)
     while (n < size) {
        rc = write(fd, offset, size - n);
 
-	if (rc < 0) {
-	    if(errno == EINTR || errno == EAGAIN) { continue; }
+    if (rc < 0) {
+        if(errno == EINTR || errno == EAGAIN) { continue; }
             if (!suppress) {
                 err_printf("Writing to file descriptor (write(fd=%d,offset=%p,size=%d) %m errno=%d %s)\n",
-                           fd, offset, size-n, errno, strerror(errno));
+                    fd, offset, size-n, errno, strerror(errno));
             } else {
                 debug_printf3("Writing to file descriptor (write(fd=%d,offset=%p,size=%d) %m errno=%d)\n",
-                           fd, offset, size-n, errno);
+                   fd, offset, size-n, errno);
             }
-	    return rc;
-	} else if(rc == 0) {
+            blr_postamble();
+            return rc;
+        } else if(rc == 0) {
             if (!suppress) {
                 err_printf("Unexpected return code of 0 from write to file descriptor (write(fd=%d,offset=%p,size=%d))\n",
-                           fd, offset, size-n);
+                    fd, offset, size-n);
             } else {
                 err_printf("Unexpected return code of 0 from write to file descriptor (write(fd=%d,offset=%p,size=%d))\n",
-                           fd, offset, size-n);
+                fd, offset, size-n);
             }
-	    return -1;
-	}
-
-	offset += rc;
-	n += rc;
+            blr_postamble();
+            return -1;
+        }
+        offset += rc;
+        n += rc;
     }
-
+    blr_postamble();
     return n;
 }
 
 /* write size bytes from buf into fd, retry if necessary */
 static int cobo_write_fd(int fd, void* buf, int size)
 {
-    return cobo_write_fd_w_suppress(fd, buf, size, 0);
+    blr_preamble();
+    int rc = cobo_write_fd_w_suppress(fd, buf, size, 0);
+    blr_postamble();
+    return rc;
 }
 
 /* read size bytes into buf from fd, retry if necessary */
 static int cobo_read_fd_w_timeout(int fd, void* buf, int size, int usecs)
 {
+    blr_preamble();
     int rc;
     int n = 0;
     char* offset = (char*) buf;
@@ -290,8 +312,10 @@ static int cobo_read_fd_w_timeout(int fd, void* buf, int size, int usecs)
         if (poll_rc < 0) {
             err_printf("Polling file descriptor for read (read(fd=%d,offset=%p,size=%d) %m errno=%d)\n",
                        fd, offset, size-n, errno);
+            blr_postamble();
             return -1;
         } else if (poll_rc == 0) {
+            blr_postamble();
             return -1;
         }
 
@@ -299,24 +323,28 @@ static int cobo_read_fd_w_timeout(int fd, void* buf, int size, int usecs)
         if (fds.revents & POLLHUP) {
             debug_printf3("Hang up error on poll for read(fd=%d,offset=%p,size=%d)\n",
                        fd, offset, size-n);
+            blr_postamble();
             return -1;
         }
 
         if (fds.revents & POLLERR) {
             debug_printf3("Error on poll for read(fd=%d,offset=%p,size=%d)\n",
                        fd, offset, size-n);
+            blr_postamble();
             return -1;
         }
 
         if (fds.revents & POLLNVAL) {
             err_printf("Invalid request on poll for read(fd=%d,offset=%p,size=%d)\n",
                        fd, offset, size-n);
+            blr_postamble();
             return -1;
         }
 
         if (!(fds.revents & POLLIN)) {
             err_printf("No errors found, but POLLIN is not set for read(fd=%d,offset=%p,size=%d)\n",
                        fd, offset, size-n);
+            blr_postamble();
             return -1;
         }
 
@@ -325,26 +353,31 @@ static int cobo_read_fd_w_timeout(int fd, void* buf, int size, int usecs)
 
 	if (rc < 0) {
 	    if(errno == EINTR || errno == EAGAIN) { continue; }
-            err_printf("Reading from file descriptor (read(fd=%d,offset=%p,size=%d) %m errno=%d)\n",
-                       fd, offset, size-n, errno);
-	    return rc;
-	} else if(rc == 0) {
-            err_printf("Unexpected return code of 0 from read from file descriptor (read(fd=%d,offset=%p,size=%d) revents=%x)\n",
-                       fd, offset, size-n, fds.revents);
+        err_printf("Reading from file descriptor (read(fd=%d,offset=%p,size=%d) %m errno=%d)\n",
+               fd, offset, size-n, errno);
+        blr_postamble();
+        return rc;
+    } else if(rc == 0) {
+        err_printf("Unexpected return code of 0 from read from file descriptor (read(fd=%d,offset=%p,size=%d) revents=%x)\n",
+               fd, offset, size-n, fds.revents);
+        blr_postamble();
 	    return -1;
 	}
 
 	offset += rc;
 	n += rc;
     }
-
+    blr_postamble();
     return n;
 }
 
 /* read size bytes into buf from fd, retry if necessary */
 static int cobo_read_fd(int fd, void* buf, int size)
 {
-    return cobo_read_fd_w_timeout(fd, buf, size, -1);
+    blr_preamble();
+    int rc = cobo_read_fd_w_timeout(fd, buf, size, -1);
+    blr_postamble();
+    return rc;
 }
 
 /* Open a connection on socket FD to peer at ADDR (which LEN bytes long).
@@ -358,6 +391,7 @@ static int cobo_read_fd(int fd, void* buf, int size)
  */
 static int cobo_connect_w_timeout(int fd, struct sockaddr const * addr, socklen_t len, int millisec)
 {
+    blr_preamble();
     int rc, flags, err;
     socklen_t err_len;
     struct pollfd ufds;
@@ -372,6 +406,7 @@ static int cobo_connect_w_timeout(int fd, struct sockaddr const * addr, socklen_
         err_printf("Nonblocking connect failed immediately (connect() %m errno=%d)\n",
                    errno);
 */
+        blr_postamble();
         return -1;
     }
     if (rc == 0) {
@@ -394,10 +429,12 @@ again:	rc = poll(&ufds, 1, millisec);
                        errno);
 */
         }
+        blr_postamble();
         return -1;
     } else if (rc == 0) {
         /* poll timed out before any socket events */
         /* perror("cobo_connect_w_timeout poll timeout"); */
+        blr_postamble();
         return -1;
     } else {
         /* poll saw some event on the socket
@@ -410,6 +447,7 @@ again:	rc = poll(&ufds, 1, millisec);
             err_printf("Failed to read event on socket (getsockopt() %m errno=%d)\n",
                        errno);
 */
+            blr_postamble();
             return -1; /* solaris pending error */
         }
     }
@@ -425,9 +463,11 @@ done:
         err_printf("Error on socket in cobo_connect_w_timeout() (getsockopt() set err=%d)\n",
                    err);
 */
+        blr_postamble();
         return -1;
     }
- 
+
+    blr_postamble();
     return 0;
 }
 
@@ -437,6 +477,7 @@ done:
  */
 static int cobo_connect(struct in_addr ip, int port, int timeout)
 {
+    blr_preamble();
     struct sockaddr_in sockaddr;
 
     /* set up address to connect to */
@@ -449,34 +490,39 @@ static int cobo_connect(struct in_addr ip, int port, int timeout)
     if (s < 0) {
         err_printf("Creating socket (socket() %m errno=%d)\n",
                    errno);
+        blr_postamble();
         return -1;
     }
 
     /* connect socket to address */
     if (cobo_connect_w_timeout(s, (struct sockaddr *) &sockaddr, sizeof(sockaddr), timeout) < 0) {
         close(s);
+        blr_postamble();
         return -1;
     }
 
     _cobo_opt_socket(s);
 
+    blr_postamble();
     return s;
 }
 
 /* Attempts to connect to a given hostname using a port list and timeouts */
 static int cobo_connect_hostname(char* hostname, int rank)
 {
+    blr_preamble();
     int s = -1;
     struct in_addr saddr;
 
     /* lookup host address by name */
     struct hostent* he = gethostbyname(hostname);
     if (!he) {
-       /* gethostbyname doesn't know how to resolve hostname, trying inet_addr */ 
+       /* gethostbyname doesn't know how to resolve hostname, trying inet_addr */
        saddr.s_addr = inet_addr(hostname);
        if (saddr.s_addr == -1) {
            err_printf("Hostname lookup failed (gethostbyname(%s) %s h_errno=%d)\n",
                 hostname, hstrerror(h_errno), h_errno);
+           blr_postamble();
            return s;
        }
     }
@@ -522,11 +568,13 @@ static int cobo_connect_hostname(char* hostname, int rank)
                       continue;
                    case HSHAKE_ABORT:
                       handle_security_error(spindle_handshake_last_error_str());
+                      blr_postamble();
                       abort();
                    default:
+                      blr_postamble();
                       assert(0 && "Unknown return value from handshake_server\n");
                 }
-                
+
                 /* write cobo service id */
                 if (!test_failed && cobo_write_fd_w_suppress(s, &cobo_serviceid, sizeof(cobo_serviceid), 1) < 0) {
                     debug_printf3("Writing service id to %s on port %d\n",
@@ -604,21 +652,25 @@ static int cobo_connect_hostname(char* hostname, int rank)
     if (s == -1) {
         err_printf("Connecting socket to %s at %s failed\n",
                    hostname, inet_ntoa(saddr));
+        blr_postamble();
         return s;
     }
 
+    blr_postamble();
     return s;
 }
 
 /* send rank id and hostlist data to specified hostname */
 static int cobo_send_hostlist(int s, char* hostname, int rank, int ranks, void* hostlist, int bytes)
 {
+    blr_preamble();
     debug_printf3("Sending hostlist to rank %d on %s\n", rank, hostname);
 
     /* check that we have an open socket */
     if (s == -1) {
         err_printf("No connection to rank %d on %s to send hostlist\n",
                    rank, hostname);
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
 
@@ -626,6 +678,7 @@ static int cobo_send_hostlist(int s, char* hostname, int rank, int ranks, void* 
     if (cobo_write_fd(s, &rank, sizeof(rank)) < 0) {
         err_printf("Writing hostname table to rank %d on %s failed\n",
                    rank, hostname);
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
 
@@ -633,6 +686,7 @@ static int cobo_send_hostlist(int s, char* hostname, int rank, int ranks, void* 
     if (cobo_write_fd(s, &ranks, sizeof(ranks)) < 0) {
         err_printf("Writing hostname table to rank %d on %s failed\n",
                    rank, hostname);
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
 
@@ -640,6 +694,7 @@ static int cobo_send_hostlist(int s, char* hostname, int rank, int ranks, void* 
     if (cobo_write_fd(s, &bytes, sizeof(bytes)) < 0) {
         err_printf("Writing hostname table to rank %d on %s failed\n",
                    rank, hostname);
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
 
@@ -647,13 +702,14 @@ static int cobo_send_hostlist(int s, char* hostname, int rank, int ranks, void* 
     if (cobo_write_fd(s, hostlist, bytes) < 0) {
         err_printf("Writing hostname table to child (rank %d) at %s failed\n",
                    rank, hostname);
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
-
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
-/* 
+/*
  * =============================
  * Functions to open/close the TCP/socket tree.
  * =============================
@@ -663,13 +719,15 @@ static int cobo_send_hostlist(int s, char* hostname, int rank, int ranks, void* 
  * The return string must be freed by the caller. */
 static char* cobo_expand_hostname(int rank)
 {
+    blr_preamble();
     if (cobo_hostlist == NULL) {
+        blr_postamble();
         return NULL;
     }
 
     int* offset = (int*) (cobo_hostlist + rank * sizeof(int));
     char* hostname = (char*) (cobo_hostlist + *offset);
-
+    blr_postamble();
     return strdup(hostname);
 }
 
@@ -677,6 +735,7 @@ static char* cobo_expand_hostname(int rank)
 static int cobo_compute_children()
 {
     /* compute the maximum number of children this task may have */
+    blr_preamble();
     int n = 1;
     int max_children = 0;
     while (n < cobo_nprocs) {
@@ -708,6 +767,7 @@ static int cobo_compute_children()
         else                { high = mid-1; }
     }
 
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
@@ -715,6 +775,7 @@ static int cobo_compute_children()
 /* given cobo_me and cobo_nprocs, fills in parent and children ranks -- currently implements a binomial tree */
 static int cobo_compute_children_root_C1()
 {
+    blr_preamble();
     /* compute the maximum number of children this task may have */
     int n = 1;
     int max_children = 0;
@@ -757,6 +818,7 @@ static int cobo_compute_children_root_C1()
         else                { high = mid-1; }
     }
 
+    blr_postamble();
     return COBO_SUCCESS;
 }
 #endif
@@ -764,13 +826,16 @@ static int cobo_compute_children_root_C1()
 /* open socket tree across tasks */
 static int cobo_open_tree()
 {
+    blr_preamble();
     /* create a socket to accept connection from parent IPPROTO_TCP */
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         err_printf("Creating parent socket (socket() %m errno=%d)\n",
                    errno);
+        blr_postamble();
         exit(1);
     }
+    blr_log("socket(2) exists on sockfd %d", sockfd);
     setCloseOnExec(sockfd);
 
     /* TODO: could recycle over port numbers, trying to bind to one for some time */
@@ -795,6 +860,7 @@ static int cobo_open_tree()
                 errno, port);
             continue;
         }
+        blr_log("bind(2) socket sockfd=%d to port=%d succeeded.", sockfd, port)
 
         struct linger slinger;
         slinger.l_onoff = 1;
@@ -807,6 +873,7 @@ static int cobo_open_tree()
                 errno, port);
            continue;
         }
+        blr_log("listen(2) sockfd=%d port=%d", sockfd, port);
 
         /* bound and listening on our port */
         debug_printf3("Opened socket on port %d\n", port);
@@ -818,6 +885,7 @@ static int cobo_open_tree()
     if (!port_is_bound) {
         /* TODO: would like to send an abort back to server */
         err_printf("Failed to open socket on any port\n");
+        blr_postamble();
         exit(1);
     }
 
@@ -828,7 +896,7 @@ static int cobo_open_tree()
         struct sockaddr parent_addr;
         socklen_t parent_len = sizeof(parent_addr);
         cobo_parent_fd = accept(sockfd, (struct sockaddr *) &parent_addr, &parent_len);
-
+        blr_log("accept(2) socketfd=%d, cobo_parent_fd=%d", socketfd, cobo_parent_fd);
         _cobo_opt_socket(cobo_parent_fd);
 
         /* handshake/authenticate our connection to make sure it one of our processes */
@@ -838,6 +906,7 @@ static int cobo_open_tree()
               break;
            case HSHAKE_INTERNAL_ERROR:
               err_printf("Internal error doing handshake: %s", spindle_handshake_last_error_str());
+              blr_postamble();
               exit(-1);
               break;
            case HSHAKE_DROP_CONNECTION:
@@ -846,8 +915,10 @@ static int cobo_open_tree()
               continue;
            case HSHAKE_ABORT:
               handle_security_error(spindle_handshake_last_error_str());
+              blr_postamble();
               abort();
            default:
+              blr_postamble();
               assert(0 && "Unknown return value from handshake_server\n");
         }
 
@@ -867,7 +938,7 @@ static int cobo_open_tree()
             continue;
         }
 
-        /* check that we got the expected sesrive and session ids */
+        /* check that we got the expected service and session ids */
         /* TODO: reply with some sort of error message if no match? */
         if (received_serviceid != cobo_serviceid || received_sessionid != cobo_sessionid) {
             close(cobo_parent_fd);
@@ -908,18 +979,21 @@ static int cobo_open_tree()
     /* read our rank number */
     if (cobo_read_fd(cobo_parent_fd, &cobo_me, sizeof(int)) < 0) {
         err_printf("Receiving my rank from parent failed\n");
+        blr_postamble();
         exit(1);
     }
 
     /* discover how many ranks are in our world */
     if (cobo_read_fd(cobo_parent_fd, &cobo_nprocs, sizeof(int)) < 0) {
         err_printf("Receiving number of tasks from parent failed\n");
+        blr_postamble();
         exit(1);
     }
 
     /* read the size of the hostlist (in bytes) */
     if (cobo_read_fd(cobo_parent_fd, &cobo_hostlist_size, sizeof(int)) < 0) {
         err_printf("Receiving size of hostname table from parent failed\n");
+        blr_postamble();
         exit(1);
     }
 
@@ -927,6 +1001,7 @@ static int cobo_open_tree()
     cobo_hostlist = (void*) cobo_malloc(cobo_hostlist_size, "Hostlist data buffer");
     if (cobo_read_fd(cobo_parent_fd, cobo_hostlist, cobo_hostlist_size) < 0) {
         err_printf("Receiving hostname table from parent failed\n");
+        blr_postamble();
         exit(1);
     }
 
@@ -941,7 +1016,7 @@ static int cobo_open_tree()
 */
 
     /* given our rank and the number of ranks, compute the ranks of our children */
-    cobo_compute_children();  
+    cobo_compute_children();
     /* cobo_compute_children_root_C1(); */
 
     char **child_names = (char **) malloc(sizeof(char *) * cobo_num_child);
@@ -970,6 +1045,7 @@ static int cobo_open_tree()
         if (cobo_child_fd[i] == -1) {
             err_printf("Failed to connect to child (rank %d) on %s failed\n",
                        c, child_hostname);
+            blr_postamble();
             exit(1);
         }
 
@@ -979,6 +1055,7 @@ static int cobo_open_tree()
         if (forward != COBO_SUCCESS) {
             err_printf("Failed to forward hostname table to child (rank %d) on %s failed\n",
                        c, child_hostname);
+            blr_postamble();
             exit(1);
         }
 
@@ -990,7 +1067,7 @@ static int cobo_open_tree()
 
     /* we've got the connection to our parent, so close the listening socket */
     close(sockfd);
-    
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
@@ -1000,6 +1077,7 @@ static int cobo_open_tree()
  */
 static int cobo_close_tree()
 {
+    blr_preamble();
     /* close socket connection with parent */
     close(cobo_parent_fd);
 
@@ -1015,10 +1093,11 @@ static int cobo_close_tree()
     cobo_free(cobo_child_incl);
     cobo_free(cobo_hostlist);
 
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
-/* 
+/*
  * =============================
  * Functions to bcast/gather/scatter with root as rank 0 using the TCP/socket tree.
  * =============================
@@ -1034,6 +1113,7 @@ static int cobo_bcast_tree(void* buf, int size)
     if (cobo_me != 0) {
         if (cobo_read_fd(cobo_parent_fd, buf, size) < 0) {
             err_printf("Receiving broadcast data from parent failed\n");
+            blr_postamble();
             exit(1);
         }
     }
@@ -1043,31 +1123,37 @@ static int cobo_bcast_tree(void* buf, int size)
         if (cobo_write_fd(cobo_child_fd[i], buf, size) < 0) {
             err_printf("Broadcasting data to child (rank %d) failed\n",
                        cobo_child[i]);
+            blr_postamble();
             exit(1);
         }
     }
 
+    blr_postamble();
     return rc;
 }
 
 int cobo_bcast_down(void* buf, int size)
 {
-   int rc = COBO_SUCCESS;
+    blr_preamble();
+    int rc = COBO_SUCCESS;
    int i;
-   /* for each child, forward data */
-   for(i=0; i<cobo_num_child; i++) {
-      if (cobo_write_fd(cobo_child_fd[i], buf, size) < 0) {
-         err_printf("Broadcasting data to child (rank %d) failed\n",
-                    cobo_child[i]);
-         exit(1);
-      }
-   }   
-   return rc;
+    /* for each child, forward data */
+    for(i=0; i<cobo_num_child; i++) {
+        if (cobo_write_fd(cobo_child_fd[i], buf, size) < 0) {
+            err_printf("Broadcasting data to child (rank %d) failed\n",
+            cobo_child[i]);
+            blr_postamble();
+            exit(1);
+        }
+    }
+    blr_postamble();
+    return rc;
 }
 
 /* reduce maximum integer to rank 0 */
 static int cobo_allreduce_max_int_tree(int* sendbuf, int* recvbuf)
 {
+    blr_preamble();
     int rc = COBO_SUCCESS;
 
     /* init our current maximum to our own value */
@@ -1081,6 +1167,7 @@ static int cobo_allreduce_max_int_tree(int* sendbuf, int* recvbuf)
         if (cobo_read_fd(cobo_child_fd[i], &child_val, sizeof(child_val)) < 0) {
             err_printf("Reducing data from child (rank %d) failed\n",
                        cobo_child[i]);
+            blr_postamble();
             exit(1);
         }
 
@@ -1095,6 +1182,7 @@ static int cobo_allreduce_max_int_tree(int* sendbuf, int* recvbuf)
         /* not the root, so forward our reduction result to our parent */
         if (cobo_write_fd(cobo_parent_fd, &max_val, sizeof(max_val)) < 0) {
             err_printf("Sending reduced data to parent failed\n");
+            blr_postamble();
             exit(1);
         }
     } else {
@@ -1105,12 +1193,14 @@ static int cobo_allreduce_max_int_tree(int* sendbuf, int* recvbuf)
     /* broadcast result of reduction from rank 0 to all tasks */
     cobo_bcast_tree(recvbuf, sizeof(int));
 
+    blr_postamble();
     return rc;
 }
 
 /* gather sendcount bytes from sendbuf on each task into recvbuf on rank 0 */
 static int cobo_gather_tree(void* sendbuf, int sendcount, void* recvbuf)
 {
+    blr_preamble();
     int rc = COBO_SUCCESS;
     int bigcount = (cobo_num_child_incl+1) * sendcount;
     void* bigbuf = recvbuf;
@@ -1130,6 +1220,7 @@ static int cobo_gather_tree(void* sendbuf, int sendcount, void* recvbuf)
         if (cobo_read_fd(cobo_child_fd[i], (char*)bigbuf + offset, sendcount * cobo_child_incl[i]) < 0) {
             err_printf("Gathering data from child (rank %d) failed\n",
                        cobo_child[i]);
+            blr_postamble();
             exit(1);
         }
         offset += sendcount * cobo_child_incl[i];
@@ -1139,17 +1230,20 @@ static int cobo_gather_tree(void* sendbuf, int sendcount, void* recvbuf)
     if (cobo_me != 0) {
         if (cobo_write_fd(cobo_parent_fd, bigbuf, bigcount) < 0) {
             err_printf("Sending gathered data to parent failed\n");
+            blr_postamble();
             exit(1);
         }
         cobo_free(bigbuf);
     }
 
+    blr_postamble();
     return rc;
 }
 
 /* scatter sendcount byte chunks from sendbuf on rank 0 to recvbuf on each task */
 static int cobo_scatter_tree(void* sendbuf, int sendcount, void* recvbuf)
 {
+    blr_preamble();
     int rc = COBO_SUCCESS;
     int bigcount = (cobo_num_child_incl+1) * sendcount;
     void* bigbuf = sendbuf;
@@ -1159,6 +1253,7 @@ static int cobo_scatter_tree(void* sendbuf, int sendcount, void* recvbuf)
         bigbuf = (void*) cobo_malloc(bigcount, "Temporary scatter buffer in cobo_scatter_tree");
         if (cobo_read_fd(cobo_parent_fd, bigbuf, bigcount) < 0) {
             err_printf("Receiving scatter data from parent failed\n");
+            blr_postamble();
             exit(1);
         }
     }
@@ -1170,6 +1265,7 @@ static int cobo_scatter_tree(void* sendbuf, int sendcount, void* recvbuf)
         if (cobo_write_fd(cobo_child_fd[i], (char*)bigbuf + offset, sendcount * cobo_child_incl[i]) < 0) {
             err_printf("Scattering data to child (rank %d) failed\n",
                        cobo_child[i]);
+            blr_postamble();
             exit(1);
         }
         offset += sendcount * cobo_child_incl[i];
@@ -1183,14 +1279,17 @@ static int cobo_scatter_tree(void* sendbuf, int sendcount, void* recvbuf)
         cobo_free(bigbuf);
     }
 
+    blr_postamble();
     return rc;
 }
 
 int cobo_get_child_socket(int num, int *fd)
 {
-   assert(num < cobo_num_child);
-   *fd = cobo_child_fd[num];
-   return COBO_SUCCESS;
+    blr_preamble();
+    assert(num < cobo_num_child);
+    *fd = cobo_child_fd[num];
+    blr_postamble();
+    return COBO_SUCCESS;
 }
 
 /*
@@ -1203,8 +1302,10 @@ int cobo_get_child_socket(int num, int *fd)
 
 /* NEW */
 int cobo_get_num_childs(int* num_childs) {
-  *num_childs=cobo_num_child;
-  return COBO_SUCCESS;
+    blr_preamble();
+    *num_childs=cobo_num_child;
+    blr_postamble("cobo_num_child=%d", cobo_num_child);
+    return COBO_SUCCESS;
 }
 
 
@@ -1215,17 +1316,21 @@ int cobo_get_num_childs(int* num_childs) {
  * and forces sockets */
 int cobo_get_parent_socket(int* fd)
 {
+    blr_preamble();
     if (cobo_parent_fd != -1) {
        *fd = cobo_parent_fd;
+       blr_postamble("cobo_parent_fd=%d", cobo_parent_fd);
        return COBO_SUCCESS;
     }
 
-    return -1; /* failure RCs? */ 
+    blr_postamble();
+    return -1; /* failure RCs? */
 }
 
 /* Perform barrier, each task writes an int then waits for an int */
 int cobo_barrier()
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_barrier()\n");
@@ -1237,6 +1342,7 @@ int cobo_barrier()
 
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_barrier(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
@@ -1246,6 +1352,7 @@ int cobo_barrier()
  */
 int cobo_bcast(void* buf, int sendcount, int root)
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_bcast()");
@@ -1258,11 +1365,13 @@ int cobo_bcast(void* buf, int sendcount, int root)
         rc = cobo_bcast_tree(buf, sendcount);
     } else {
         err_printf("Cannot execute bcast from non-zero root\n");
+        blr_postamble();
         exit(1);
     }
 
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_bcast(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
+    blr_postamble();
     return rc;
 }
 
@@ -1272,6 +1381,7 @@ int cobo_bcast(void* buf, int sendcount, int root)
  */
 int cobo_gather(void* sendbuf, int sendcount, void* recvbuf, int root)
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_gather()");
@@ -1284,11 +1394,13 @@ int cobo_gather(void* sendbuf, int sendcount, void* recvbuf, int root)
         rc = cobo_gather_tree(sendbuf, sendcount, recvbuf);
     } else {
         err_printf("Cannot execute gather to non-zero root\n");
+        blr_postamble();
         exit(1);
     }
 
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_gather(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
+    blr_postamble();
     return rc;
 }
 
@@ -1298,6 +1410,7 @@ int cobo_gather(void* sendbuf, int sendcount, void* recvbuf, int root)
  */
 int cobo_scatter(void* sendbuf, int sendcount, void* recvbuf, int root)
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_scatter()");
@@ -1310,11 +1423,13 @@ int cobo_scatter(void* sendbuf, int sendcount, void* recvbuf, int root)
         rc = cobo_scatter_tree(sendbuf, sendcount, recvbuf);
     } else {
         err_printf("Cannot execute scatter from non-zero root\n");
+        blr_postamble();
         exit(1);
     }
 
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_scatter(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
+    blr_postamble();
     return rc;
 }
 
@@ -1324,6 +1439,7 @@ int cobo_scatter(void* sendbuf, int sendcount, void* recvbuf, int root)
  */
 int cobo_allgather(void* sendbuf, int sendcount, void* recvbuf)
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_allgather()");
@@ -1336,6 +1452,7 @@ int cobo_allgather(void* sendbuf, int sendcount, void* recvbuf)
 
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_allgather(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
@@ -1343,8 +1460,10 @@ int cobo_allgather(void* sendbuf, int sendcount, void* recvbuf)
  * Perform MPI-like Alltoall, each task writes N*sendcount bytes from sendbuf
  * then recieves N*sendcount bytes into recvbuf
  */
+#if 0 // cannot succeed.  --blr
 int cobo_alltoall(void* sendbuf, int sendcount, void* recvbuf)
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_alltoall()");
@@ -1358,12 +1477,14 @@ int cobo_alltoall(void* sendbuf, int sendcount, void* recvbuf)
     debug_printf3("Exiting cobo_alltoall(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
     return rc;
 }
+#endif
 
 /*
  * Perform MPI-like Allreduce maximum of a single int from each task
  */
 static int cobo_allreduce_max_int(int* sendint, int* recvint)
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_allreducemaxint()");
@@ -1373,6 +1494,7 @@ static int cobo_allreduce_max_int(int* sendint, int* recvint)
 
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_allreducemaxint(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
@@ -1396,6 +1518,7 @@ static int cobo_allreduce_max_int(int* sendint, int* recvint)
  */
 int cobo_allgather_str(char* sendstr, char*** recvstr, char** recvbuf)
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_allgatherstr()");
@@ -1429,12 +1552,14 @@ int cobo_allgather_str(char* sendstr, char*** recvstr, char** recvbuf)
 
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_allgatherstr(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
 /* provide list of ports and number of ports as input, get number of tasks and my rank as output */
 int cobo_open(uint64_t sessionid, int* portlist, int num_ports, int* rank, int* num_ranks)
 {
+    blr_preamble();
     setvbuf(stdout, NULL, _IONBF, 0);
     char *value;
 
@@ -1480,6 +1605,7 @@ int cobo_open(uint64_t sessionid, int* portlist, int num_ports, int* rank, int* 
     cobo_ports = cobo_int_dup(portlist, num_ports);
     if (cobo_ports == NULL) {
         err_printf("Failed to copy port list\n");
+        blr_postamble();
         exit(1);
     }
 
@@ -1489,6 +1615,7 @@ int cobo_open(uint64_t sessionid, int* portlist, int num_ports, int* rank, int* 
     /* need to check that tree opened successfully before returning, so do a barrier */
     if (cobo_barrier() != COBO_SUCCESS) {
         err_printf("Failed to open tree\n");
+        blr_postamble();
         exit(1);
     }
 
@@ -1503,12 +1630,14 @@ int cobo_open(uint64_t sessionid, int* portlist, int num_ports, int* rank, int* 
 
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_init(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
 /* shut down the connections between tasks and free data structures */
 int cobo_close()
 {
+    blr_preamble();
     struct timeval start, end;
     cobo_gettimeofday(&start);
     debug_printf3("Starting cobo_close()");
@@ -1524,6 +1653,7 @@ int cobo_close()
     debug_printf3("Exiting cobo_close(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
     debug_printf3("Total time from cobo_open() to cobo_close() took %f seconds for %d procs\n",
         cobo_getsecs(&time_close, &time_open), cobo_nprocs);
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
@@ -1541,17 +1671,21 @@ int cobo_close()
  * and forces sockets */
 int cobo_server_get_root_socket(int* fd)
 {
+    blr_preamble();
     if (cobo_root_fd != -1) {
         *fd = cobo_root_fd;
+        blr_postamble();
         return COBO_SUCCESS;
     }
 
+    blr_postamble();
     return -1;
 }
 
 /* given a hostlist and portlist where clients are running, open the tree and assign ranks to clients */
 int cobo_server_open(uint64_t sessionid, char** hostlist, int num_hosts, int* portlist, int num_ports)
 {
+    blr_preamble();
     /* at this point, we know this process is the server, so set its rank */
     cobo_me = -2;
     cobo_nprocs = num_hosts;
@@ -1575,6 +1709,7 @@ int cobo_server_open(uint64_t sessionid, char** hostlist, int num_hosts, int* po
     if (cobo_hostlist == NULL) {
         err_printf("Failed to allocate hostname table of %lu bytes\n",
                    (unsigned long) cobo_hostlist_size);
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
 
@@ -1590,12 +1725,13 @@ int cobo_server_open(uint64_t sessionid, char** hostlist, int num_hosts, int* po
        spawn daemons */
     if (preconnect_cb)
        preconnect_cb(hostlist[0]);
-            
+
     /* copy the portlist */
     cobo_num_ports = num_ports;
     cobo_ports = cobo_int_dup(portlist, num_ports);
     if (cobo_ports == NULL) {
         err_printf("Failed to copy port list\n");
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
 
@@ -1604,6 +1740,7 @@ int cobo_server_open(uint64_t sessionid, char** hostlist, int num_hosts, int* po
     if (cobo_root_fd == -1) {
         err_printf("Failed to connect to child (rank %d) on %s failed\n",
                    0, hostlist[0]);
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
 
@@ -1612,15 +1749,18 @@ int cobo_server_open(uint64_t sessionid, char** hostlist, int num_hosts, int* po
     if (forward != COBO_SUCCESS) {
         err_printf("Failed to forward hostname table to child (rank %d) on %s failed\n",
                    0, hostlist[0]);
+        blr_postamble();
         return (!COBO_SUCCESS);
     }
 
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
 /* shut down the tree connections (leaves processes running) */
 int cobo_server_close()
 {
+    blr_preamble();
     /* close the socket to our child */
     if (cobo_root_fd != -1) {
         close(cobo_root_fd);
@@ -1630,10 +1770,13 @@ int cobo_server_close()
     cobo_free(cobo_ports);
     cobo_free(cobo_hostlist);
 
+    blr_postamble();
     return COBO_SUCCESS;
 }
 
 void cobo_set_handshake(handshake_protocol_t *hs)
 {
-   cobo_handshake = *hs;
+    blr_preamble();
+    cobo_handshake = *hs;
+    blr_postamble();
 }

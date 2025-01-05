@@ -605,10 +605,9 @@ static int sp_exit (flux_plugin_t *p,
     struct spindle_ctx *ctx = flux_plugin_aux_get (p, "spindle");
     if (ctx->params.opts & OPT_OFF){
         blr_postamble();
-       return 0;
+        return 0;
     }
     if (ctx && ctx->shell_rank == 0){
-        blr_postamble();
         spindleCloseFE (&ctx->params);
     }
     blr_postamble();
