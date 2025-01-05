@@ -860,7 +860,7 @@ static int cobo_open_tree()
                 errno, port);
             continue;
         }
-        blr_log("bind(2) socket sockfd=%d to port=%d succeeded.", sockfd, port)
+        blr_log("bind(2) socket sockfd=%d to port=%d succeeded.", sockfd, port);
 
         struct linger slinger;
         slinger.l_onoff = 1;
@@ -896,7 +896,7 @@ static int cobo_open_tree()
         struct sockaddr parent_addr;
         socklen_t parent_len = sizeof(parent_addr);
         cobo_parent_fd = accept(sockfd, (struct sockaddr *) &parent_addr, &parent_len);
-        blr_log("accept(2) socketfd=%d, cobo_parent_fd=%d", socketfd, cobo_parent_fd);
+        blr_log("accept(2) socketfd=%d, cobo_parent_fd=%d", sockfd, cobo_parent_fd);
         _cobo_opt_socket(cobo_parent_fd);
 
         /* handshake/authenticate our connection to make sure it one of our processes */
