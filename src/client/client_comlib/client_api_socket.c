@@ -1,21 +1,22 @@
 /*
-  This file is part of Spindle.  For copyright information see the COPYRIGHT 
-  file in the top level directory, or at 
+  This file is part of Spindle.  For copyright information see the COPYRIGHT
+  file in the top level directory, or at
   https://github.com/hpc/Spindle/blob/master/COPYRIGHT
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU Lesser General Public License (as published by the Free Software
   Foundation) version 2.1 dated February 1999.  This program is distributed in the
   hope that it will be useful, but WITHOUT ANY WARRANTY; without even the IMPLIED
-  WARRANTY OF MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the terms 
-  and conditions of the GNU Lesser General Public License for more details.  You should 
-  have received a copy of the GNU Lesser General Public License along with this 
+  WARRANTY OF MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the terms
+  and conditions of the GNU Lesser General Public License for more details.  You should
+  have received a copy of the GNU Lesser General Public License along with this
   program; if not, write to the Free Software Foundation, Inc., 59 Temple
   Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
 #define _GNU_SOURCE
 
+#include <blr_log.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -47,7 +48,7 @@ static int _ldcs_read_socket(int fd, void *data, int bytes, ldcs_read_block_t bl
   int         left,bsumread;
   ssize_t      btoread, bread;
   char       *dataptr;
-  
+
   left      = bytes;
   bsumread  = 0;
   dataptr   = (char*) data;
@@ -60,7 +61,7 @@ static int _ldcs_read_socket(int fd, void *data, int bytes, ldcs_read_block_t bl
 	debug_printf3("read from socket: got EAGAIN or EWOULDBLOCK\n");
 	if(block==LDCS_READ_NO_BLOCK) return(0);
 	else continue;
-      } else { 
+      } else {
          debug_printf3("read from socket: %ld bytes ... errno=%d (%s)\n",bread,errno,strerror(errno));
       }
     } else {
@@ -83,7 +84,7 @@ static int _ldcs_write_socket(int fd, const void *data, int bytes ) {
   int         left,bsumwrote;
   size_t      bwrite, bwrote;
   char       *dataptr;
-  
+
   left      = bytes;
   bsumwrote = 0;
   dataptr   = (char*) data;
@@ -101,16 +102,22 @@ static int _ldcs_write_socket(int fd, const void *data, int bytes ) {
 
 int client_open_connection_socket(char* hostname, int portno)
 {
+   blr_preamble();
    int sockfd, fd;
    struct sockaddr_in serv_addr;
    struct hostent *server;
 
    fd=get_new_fd_socket();
-   if(fd<0) return(-1);
+   if(fd<0){
+       blr_postamble();
+       return(-1);
+   }
    ldcs_socket_fdlist[fd].type=LDCS_SOCKET_FD_TYPE_CONN;
 
    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-   if (sockfd < 0) _error("ERROR opening socket");
+   if (sockfd < 0){
+       _error("ERROR opening socket");
+    }
 
    debug_printf3("after socket: -> sockfd=%d\n",sockfd);
 
@@ -118,6 +125,7 @@ int client_open_connection_socket(char* hostname, int portno)
    debug_printf3("after gethostbyname: -> server=%p\n",server);
    if (server == NULL) {
       fprintf(stderr,"ERROR, no such host\n");
+      blr_postamble();
       exit(0);
    }
 
@@ -125,7 +133,7 @@ int client_open_connection_socket(char* hostname, int portno)
 
    bzero((char *) &serv_addr, sizeof(serv_addr));
    serv_addr.sin_family = AF_INET;
-   bcopy((char *)server->h_addr, 
+   bcopy((char *)server->h_addr,
          (char *)&serv_addr.sin_addr.s_addr,
          server->h_length);
    serv_addr.sin_port = htons(portno);
@@ -135,13 +143,14 @@ int client_open_connection_socket(char* hostname, int portno)
 
 
    if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) {
+       blr_postamble();
       return(-1);
    }
-  
+
    debug_printf3("after connect: -> port=%d\n",portno);
-  
+    blr_postamble();
    return(fd);
-  
+
 }
 
 char *client_get_connection_string_socket(int fd)
@@ -159,7 +168,7 @@ char *client_get_connection_string_socket(int fd)
 int client_register_connection_socket(char *connection_str)
 {
    int sockfd, result;
-   
+
    result = sscanf(connection_str, "%d", &sockfd);
    if (result != 1)
       return -1;
@@ -174,7 +183,7 @@ int client_register_connection_socket(char *connection_str)
    return fd;
 }
 
-int client_close_connection_socket(int fd) 
+int client_close_connection_socket(int fd)
 {
    int rc=0;
    int sockfd;
@@ -184,7 +193,7 @@ int client_close_connection_socket(int fd)
    sockfd=ldcs_socket_fdlist[fd].fd;
 
    if(sockfd<0) return(-1);
-   
+
    rc=close(sockfd);
 
    return(rc);
@@ -209,8 +218,8 @@ int client_send_msg_socket(int fd, ldcs_message_t * msg) {
     n = _ldcs_write_socket(connfd,(void *) msg->data,msg->header.len);
     if (n < 0) _error("ERROR writing data to socket");
   }
-  
-  
+
+
   return(0);
 }
 
@@ -230,7 +239,7 @@ int client_recv_msg_static_socket(int fd, ldcs_message_t *msg,  ldcs_read_block_
 
     msg->data = (char *) spindle_malloc(msg->header.len);
     if (!msg)  _error("could not allocate memory for message data");
-    
+
     n = _ldcs_read_socket(connfd,msg->data,msg->header.len, LDCS_READ_BLOCK);
     if (n == 0) return(rc);
     if (n < 0) _error("ERROR reading message data from socket");
@@ -244,6 +253,6 @@ int client_recv_msg_static_socket(int fd, ldcs_message_t *msg,  ldcs_read_block_
   debug_printf3("received message of type: %s len=%d data=%s ...\n",
 	       _message_type_to_str(msg->header.type),
 	       msg->header.len,help );
-  
+
   return(0);
 }
