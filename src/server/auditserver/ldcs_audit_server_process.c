@@ -133,6 +133,63 @@ void stopprofile()
 }
 #endif
 
+static char* determine_location( spindle_args_t *args ){
+    //static char test_path[ 4096 ];
+    char *loc[] = { args->primary_cache_path,
+                    args->secondary_cache_path,
+                    args->location,
+                    getenv("TMPDIR"),
+                    getenv("TEMPDIR"),
+                    "/tmp" };
+    for( size_t i = 0; i < (sizeof( loc ) / sizeof( char * )); i++ ){
+        if( loc[i] ){
+            // Does the path exist?
+            struct stat statbuf;
+            debug_printf3( "QQQ examining candidate location path '%s'\n", loc[i] );
+            int rc = stat( loc[i], &statbuf );
+            if( -1 == rc ){
+                if( ENOENT == errno ){
+                    // Some part of the directory doesn't exist.  Try creating it.
+                    rc = mkdir( loc[i], S_IRWXU );
+                    if( -1 == rc ){
+                        debug_printf3( "QQQ Cache path candidate '%s' does not exist and cannot be created.  errno=%d, strerror='%s'\n",
+                                loc[i], errno, strerror( errno ) );
+                        continue;
+                    }else{
+                        // Successfully created the directory.
+                        debug_printf3( "QQQ Successfully created direcotry %s.\n", loc[i] );
+                        stat( loc[i], &statbuf );
+                    }
+                } else {
+                    debug_printf3( "QQQ Cache path candidate '%s' not usable, errno=%d, strerror='%s'\n",
+                            loc[i], errno, strerror( errno ) );
+                    continue;
+                }
+            } else {
+                // The path exists, is it a directory?
+                if( ! S_ISDIR( statbuf.st_mode ) ){
+                    debug_printf3( "QQQ Cache path candidate '%s' exists but is not a directory.\n", loc[i] );
+                    continue;
+                }
+            }
+
+            // The directory exists, do we have the right permissions?
+            if( !( statbuf.st_mode & S_IRUSR ) || !( statbuf.st_mode & S_IWUSR ) || !( statbuf.st_mode & S_IXUSR ) ){
+                debug_printf3( "QQQ Cache path candidate '%s' must have user rwx permissions.\n", loc[i] );
+                continue;
+            }else{
+                debug_printf3( "QQQ cache location set to %s.\n", loc[i] );
+                return loc[i];
+            }
+        }
+    }
+    // Should never get here.
+    fprintf( stderr, "No viable paths for spindle cache.\n" );
+    exit(-1);
+    return NULL;
+}
+
+
 int ldcs_audit_server_process(spindle_args_t *args)
 {
    int serverid, fd;
@@ -140,7 +197,7 @@ int ldcs_audit_server_process(spindle_args_t *args)
    startprofile(args);
 
    debug_printf3("Initializing server data structures\n");
-   ldcs_process_data.location = args->location;
+   ldcs_process_data.location = determine_location( args );
    ldcs_process_data.number = args->number;
    ldcs_process_data.pythonprefix = args->pythonprefix;
    ldcs_process_data.numa_substrs = args->numa_files;

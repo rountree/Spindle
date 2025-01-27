@@ -56,6 +56,30 @@ using namespace std;
 #define SPINDLE_LOC_STR "$TMPDIR"
 #endif
 
+#if defined(SPINDLE_PRIMARY_CACHE_PATH)
+#define SPINDLE_PRIMARY_CACHE_PATH_STR SPINDLE_PRIMARY_CACHE_PATH
+#else
+#define SPINDLE_PRIMARY_CACHE_PATH_STR "$TMPDIR"
+#endif
+
+#if defined(SPINDLE_SECONDARY_CACHE_PATH)
+#define SPINDLE_SECONDARY_CACHE_PATH_STR SPINDLE_SECONDARY_CACHE_PATH
+#else
+#define SPINDLE_SECONDARY_CACHE_PATH_STR "$TMPDIR"
+#endif
+
+#if defined(SPINDLE_PRIMARY_FIFO_PATH)
+#define SPINDLE_PRIMARY_FIFO_PATH_STR SPINDLE_PRIMARY_FIFO_PATH
+#else
+#define SPINDLE_PRIMARY_FIFO_PATH_STR "$TMPDIR"
+#endif
+
+#if defined(SPINDLE_SECONDARY_FIFO_PATH)
+#define SPINDLE_SECONDARY_FIFO_PATH_STR SPINDLE_SECONDARY_FIFO_PATH
+#else
+#define SPINDLE_SECONDARY_FIFO_PATH_STR "$TMPDIR"
+#endif
+
 #if defined(TESTRM)
 #  define DEFAULT_LAUNCHER_STR TESTRM
 #else
@@ -234,6 +258,14 @@ const list<SpindleOption> Options = {
      "Strip debug and symbol information from binaries before distributing them." },
    { confLocation, "location", shortLocation, groupMisc, cvString, {}, SPINDLE_LOC_STR,
      "Back-end directory for storing relocated files.  Should be a non-shared location such as a ramdisk." },
+   { confPrimaryCachePath, "primary-cache-path", shortPrimaryCachePath, groupMisc, cvString, {}, SPINDLE_PRIMARY_CACHE_PATH_STR,
+     "First preference for local-disk path where Spindle will store its cache." },
+   { confSecondaryCachePath, "secondary-cache-path", shortSecondaryCachePath, groupMisc, cvString, {}, SPINDLE_SECONDARY_CACHE_PATH_STR,
+     "Second preference for local-disk path where Spindle will store its cache." },
+   { confPrimaryFifoPath, "primary-fifo-path", shortPrimaryFifoPath, groupMisc, cvString, {}, SPINDLE_PRIMARY_FIFO_PATH_STR,
+     "First preference for local-disk path where Spindle will store its cache." },
+   { confSecondaryFifoPath, "secondary-fifo-path", shortSecondaryFifoPath, groupMisc, cvString, {}, SPINDLE_SECONDARY_FIFO_PATH_STR,
+     "Second preference for local-disk path where Spindle will store its cache." },
    { confNoclean, "noclean", shortNoClean, groupMisc, cvBool, {}, "false",
      "Don't remove local file cache after execution." },
    { confDisableLogging, "disable-logging", shortDisableLogging, groupMisc, cvBool, {}, DISABLE_LOGGING_STR,
@@ -672,8 +704,29 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
             args.num_ports = numresult;
             break;
          case confLocation: {
-            string loc = strresult + "/spindle.$NUMBER";
+            //string loc = strresult + "/spindle.$NUMBER";
+            string loc = strresult;
             args.location = strdup(loc.c_str());
+            break;
+         }
+         case confPrimaryCachePath: {
+            string s = strresult;
+            args.primary_cache_path = strdup(s.c_str());
+            break;
+         }
+         case confSecondaryCachePath: {
+            string s = strresult;
+            args.secondary_cache_path = strdup(s.c_str());
+            break;
+         }
+         case confPrimaryFifoPath: {
+            string s = strresult;
+            args.primary_fifo_path = strdup(s.c_str());
+            break;
+         }
+         case confSecondaryFifoPath: {
+            string s = strresult;
+            args.secondary_fifo_path = strdup(s.c_str());
             break;
          }
          case confCachePrefix:

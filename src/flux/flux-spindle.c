@@ -234,6 +234,8 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
     const char *followfork = NULL, *preload = NULL, *level = NULL;
     const char *pyprefix = NULL;
     char *numafiles = NULL;
+    const char *primary_cache_path=NULL, *secondary_cache_path=NULL,
+          *primary_fifo_path=NULL, *secondary_fifo_path=NULL, *location=NULL;
 
     if (flux_shell_getopt_unpack (shell, "spindle", "o", &opts) < 0)
         return -1;
@@ -255,7 +257,12 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
      *  supplied by the user, but not unpacked (This handles typos, etc).
      */
     if (json_unpack_ex (opts, &error, JSON_STRICT,
-                        "{s?i s?i s?i s?i s?s s?s s?s s?s s?s s?s s?i s?s s?s s?s}",
+                        "{s?s s?s s?s s?s s?s s?i s?i s?i s?i s?s s?s s?s s?s s?s s?s s?i s?s s?s s?s}",
+                        "primary-cache-path", &primary_cache_path,
+                        "secondary-cache-path", &secondary_cache_path,
+                        "primary-fifo-path", &primary_fifo_path,
+                        "secondary-fifo-path", &secondary_fifo_path,
+                        "location", &location,
                         "noclean", &noclean,
                         "nostrip", &nostrip,
                         "push", &push,
@@ -269,8 +276,9 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
                         "numa", &numa,
                         "numa-files", &numafiles,
                         "preload", &preload,
-                        "level", &level) < 0)
+                        "level", &level) < 0){
         return shell_log_errno ("Error in spindle option: %s", error.text);
+    }
 
     if (noclean)
         ctx->params.opts |= OPT_NOCLEAN;
@@ -298,6 +306,16 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
        had_error |= parse_yesno(&ctx->params.opts, OPT_RELOCPY, relocpython);
     if (preload)
        ctx->params.preloadfile = (char *) preload;
+    if (primary_cache_path)
+        ctx->params.primary_cache_path = (char *) primary_cache_path;
+    if (secondary_cache_path)
+        ctx->params.secondary_cache_path = (char *) secondary_cache_path;
+    if (primary_fifo_path)
+        ctx->params.primary_fifo_path = (char *) primary_fifo_path;
+    if (secondary_fifo_path)
+        ctx->params.secondary_fifo_path = (char *) secondary_fifo_path;
+    if (location)
+        ctx->params.location = (char *) location;
     if (numa) {
        ctx->params.opts |= OPT_NUMA;
     }

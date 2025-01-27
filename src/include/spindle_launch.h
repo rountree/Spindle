@@ -123,6 +123,24 @@ typedef struct {
    /* The local-disk location where Spindle will store its cache */
    char *location;
 
+   /* The first preference for the local-disk path where Spindle will store its cache.
+    * Default is ${TMPDIR}. */
+   char *primary_cache_path;
+
+   /* The second preference for the local-disk path where Spindle will store its cache.
+    * This will only be used if there is an error accessing primary_cache_path.
+    * Default is ${TMPDIR}. */
+   char *secondary_cache_path;
+
+   /* The first preference for the local-disk path where Spindle will place FIFOs.
+    * Default is ${TMPDIR}. */
+   char *primary_fifo_path;
+
+   /* The second preference for the local-disk path where Spindle will place FIFOs.
+    * This will only be used if there is an error accessing primary_fifo_path.
+    * Default is ${TMPDIR}. */
+   char *secondary_fifo_path;
+
    /* Colon-seperated list of directories where Python is installed */
    char *pythonprefix;
 

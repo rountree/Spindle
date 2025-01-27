@@ -1,0 +1,28 @@
+To add a new command-line option (assuming running under flux):
+
+1) spindle_launch.h
+    Update the spindle_args_t struct
+
+2) Update sp_getopts() in flux-spindle.c:
+    Add a temporary variable
+    Populate the variable in the call to json_unpack_ex()
+    Move the value into ctx->params
+
+3) Update config_mgr.h
+    Add option name to the SpindleConfigID enum
+    Add a short option in the CmdlineShortOptions enum
+
+4) Update config_mgr.cc
+    In ConfigMap::toSpindleArgs(), add a case for the SpindleConfigID
+    Add a description in list<SpindleOption> Options
+    At the top of the file, add a #if stanza to handle the default case
+
+5) Update spindle_fe.cc
+    Add a buffer_size term and a call to pack_param in pack_data()
+    Update the debug_printf() in spindleInitFE()
+
+6) Update spindle_be.cc
+    Add unpack_param() to unpack_data()
+
+
+
