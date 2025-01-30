@@ -234,6 +234,7 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
     const char *followfork = NULL, *preload = NULL, *level = NULL;
     const char *pyprefix = NULL;
     char *numafiles = NULL;
+    const char *location = NULL, *cache_path = NULL, *fifo_path = NULL, *daemon_path = NULL;
 
     if (flux_shell_getopt_unpack (shell, "spindle", "o", &opts) < 0)
         return -1;
@@ -255,7 +256,11 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
      *  supplied by the user, but not unpacked (This handles typos, etc).
      */
     if (json_unpack_ex (opts, &error, JSON_STRICT,
-                        "{s?i s?i s?i s?i s?s s?s s?s s?s s?s s?s s?i s?s s?s s?s}",
+                        "{s?s s?s s?s s?s s?i s?i s?i s?i s?s s?s s?s s?s s?s s?s s?i s?s s?s s?s}",
+                        "location", &location,
+                        "cache-path", &cache_path,
+                        "fifo-path", &fifo_path,
+                        "daemon-path", &daemon_path,
                         "noclean", &noclean,
                         "nostrip", &nostrip,
                         "push", &push,
@@ -298,6 +303,14 @@ static int sp_getopts (flux_shell_t *shell, struct spindle_ctx *ctx)
        had_error |= parse_yesno(&ctx->params.opts, OPT_RELOCPY, relocpython);
     if (preload)
        ctx->params.preloadfile = (char *) preload;
+    if (location)
+        ctx->params.location = (char *) location;
+    if (cache_path)
+        ctx->params.cache_path = ( char * ) cache_path;
+    if(fifo_path)
+        ctx->params.fifo_path = ( char * ) fifo_path;
+    if(daemon_path)
+        ctx->params.daemon_path = ( char * ) daemon_path;
     if (numa) {
        ctx->params.opts |= OPT_NUMA;
     }
