@@ -54,6 +54,7 @@ static int number;
 static int use_cache;
 static unsigned int cachesize;
 static char *location, *number_s, *orig_location, *symbolic_location;
+static char *cache_path, *fifo_path, *daemon_path;
 static char **cmdline;
 static char *executable;
 static char *client_lib;
@@ -161,6 +162,9 @@ static int parse_cmdline(int argc, char *argv[])
    }
 
    symbolic_location = argv[i++];
+   cache_path = argv[i++];
+   fifo_path = argv[i++];
+   daemon_path = argv[i++];
    number_s = argv[i++];
    number = atoi(number_s);
    opts_s = argv[i++];

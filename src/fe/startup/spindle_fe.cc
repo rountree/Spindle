@@ -206,7 +206,7 @@ int getApplicationArgsFE(spindle_args_t *params, int *spindle_argc, char ***spin
    snprintf(uniqueid_s, sizeof(uniqueid_s), "%lu", params->unique_id);
    snprintf(daemonargc_s, sizeof(daemonargc_s), "6");
    
-   #define MAX_ARGS 16
+   #define MAX_ARGS 32
    *spindle_argv = (char **) malloc(sizeof(char*) * MAX_ARGS);
    (*spindle_argv)[n++] = strdup(spindle_bootstrap);
    if (params->opts & OPT_SELFLAUNCH) {
@@ -220,6 +220,9 @@ int getApplicationArgsFE(spindle_args_t *params, int *spindle_argc, char ***spin
       (*spindle_argv)[n++] = strdup(uniqueid_s);
    }
    (*spindle_argv)[n++] = strdup(params->location);
+   (*spindle_argv)[n++] = strdup(params->cache_path);
+   (*spindle_argv)[n++] = strdup(params->fifo_path);
+   (*spindle_argv)[n++] = strdup(params->daemon_path);
    (*spindle_argv)[n++] = strdup(number_s);
    (*spindle_argv)[n++] = strdup(opt_s);
    (*spindle_argv)[n++] = strdup(cachesize_s);
