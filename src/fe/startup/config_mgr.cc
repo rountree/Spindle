@@ -56,6 +56,24 @@ using namespace std;
 #define SPINDLE_LOC_STR "$TMPDIR"
 #endif
 
+#if defined(SPINDLE_CACHE_PATH)
+#define SPINDLE_CACHEPATH_STR SPINDLE_CACHE_PATH
+#else
+#define SPINDLE_CACHEPATH_STR "$TMPDIR"
+#endif
+
+#if defined(SPINDLE_FIFO_PATH)
+#define SPINDLE_FIFOPATH_STR SPINDLE_FIFO_PATH
+#else
+#define SPINDLE_FIFOPATH_STR "$TMPDIR"
+#endif
+
+#if defined(SPINDLE_CACHE_PATH)
+#define SPINDLE_DAEMONPATH_STR SPINDLE_DAEMON_PATH
+#else
+#define SPINDLE_DAEMONPATH_STR "$TMPDIR"
+#endif
+
 #if defined(TESTRM)
 #  define DEFAULT_LAUNCHER_STR TESTRM
 #else
@@ -233,7 +251,13 @@ const list<SpindleOption> Options = {
    { confStrip, "strip", shortStrip, groupMisc, cvBool, {}, "true", 
      "Strip debug and symbol information from binaries before distributing them." },
    { confLocation, "location", shortLocation, groupMisc, cvString, {}, SPINDLE_LOC_STR,
-     "Back-end directory for storing relocated files.  Should be a non-shared location such as a ramdisk." },
+     "Back-end default directory for storing cache, fifos, and daemon files.  Should be a non-shared location such as a ramdisk." },
+   { confCachePath, "cache-patch", shortCachePath, groupMisc, cvString, {}, SPINDLE_CACHEPATH_STR,
+     "Colon-separated list of local paths to be used for relocated file caching.  Will use the first path in the list that has rwx permissions." },
+   { confFifoPath, "fifo-patch", shortFifoPath, groupMisc, cvString, {}, SPINDLE_FIFOPATH_STR,
+     "Colon-separated list of local paths to be used for fifo files.  Will use the first path in the list that has rwx permissions." },
+   { confDaemonPath, "daemon-patch", shortDaemonPath, groupMisc, cvString, {}, SPINDLE_DAEMONPATH_STR,
+     "Colon-separated list of local paths to be used for daemon bookkeeping files.  Will use the first path in the list that has rwx permissions." },
    { confNoclean, "noclean", shortNoClean, groupMisc, cvBool, {}, "false",
      "Don't remove local file cache after execution." },
    { confDisableLogging, "disable-logging", shortDisableLogging, groupMisc, cvBool, {}, DISABLE_LOGGING_STR,
@@ -671,11 +695,18 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
          case confNumPorts:
             args.num_ports = numresult;
             break;
-         case confLocation: {
-            string loc = strresult + "/spindle.$NUMBER";
-            args.location = strdup(loc.c_str());
+         case confLocation:
+            args.location = getstr(strresult, alloc_strs);
             break;
-         }
+         case confCachePath:
+            args.cache_path = getstr(strresult, alloc_strs);
+            break;
+         case confFifoPath:
+            args.fifo_path = getstr(strresult, alloc_strs);
+            break;
+         case confDaemonPath:
+            args.daemon_path = getstr(strresult, alloc_strs);
+            break;
          case confCachePrefix:
          case confPythonPrefix:
             args.pythonprefix = getstr(strresult, alloc_strs);
