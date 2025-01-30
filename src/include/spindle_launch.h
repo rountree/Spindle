@@ -120,8 +120,13 @@ typedef struct {
    /* Size of client shared memory cache */
    unsigned int shm_cache_size;
 
-   /* The local-disk location where Spindle will store its cache */
+   /* Default local-disk path for the Spindle cache, fifos, and daemons. */
    char *location;
+
+   /* Colon-speparated lists of local-disk paths for caches, fifos, and daemons */
+   char *cache_path;
+   char *fifo_path;
+   char *daemon_path;
 
    /* Colon-seperated list of directories where Python is installed */
    char *pythonprefix;
