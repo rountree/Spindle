@@ -84,6 +84,9 @@ static int pack_data(spindle_args_t *args, void* &buffer, unsigned &buffer_size)
    pack_param(args->startup_type, buf, pos);
    pack_param(args->shm_cache_size, buf, pos);
    pack_param(args->location, buf, pos);
+   pack_param(args->cache_path, buf, pos);
+   pack_param(args->fifo_path, buf, pos);
+   pack_param(args->daemon_path, buf, pos);
    pack_param(args->pythonprefix, buf, pos);
    pack_param(args->preloadfile, buf, pos);
    pack_param(args->bundle_timeout_ms, buf, pos);
