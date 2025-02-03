@@ -43,6 +43,8 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <gperftools/profiler.h>
 #endif
 
+extern  char* instantiate_directory( char *pathlist, char *defaultpath, int number );
+
 ldcs_process_data_t ldcs_process_data;
 unsigned int opts;
 
@@ -140,7 +142,6 @@ int ldcs_audit_server_process(spindle_args_t *args)
    startprofile(args);
 
    debug_printf3("Initializing server data structures\n");
-   ldcs_process_data.location = args->location;
    ldcs_process_data.number = args->number;
    ldcs_process_data.pythonprefix = args->pythonprefix;
    ldcs_process_data.numa_substrs = args->numa_files;
@@ -159,7 +160,38 @@ int ldcs_audit_server_process(spindle_args_t *args)
    ldcs_process_data.completed_ldso_requests = new_requestor_list();
    ldcs_process_data.handling_bundle = 0;
    ldcs_process_data.exit_note_done = 0;
-   
+
+
+   debug_printf("QQQ Candidate cache paths:  %s:%s\n", args->cache_path, args->location );
+   ldcs_process_data.instantiated_cache_path  = instantiate_directory( args->cache_path, args->location, args->number );
+   if( NULL == ldcs_process_data.instantiated_cache_path ){
+        fprintf( stderr, "None of the following cache path directory candidates could be instantiated.\n");
+        fprintf( stderr, "%s:%s\n", args->cache_path, args->location );
+        exit(-1);
+   }else{
+       debug_printf("QQQ Instantiated cache path:  %s\n", ldcs_process_data.instantiated_cache_path);
+   }
+
+   debug_printf("QQQ Candidate fifo paths:  %s:%s\n", args->fifo_path, args->location );
+   ldcs_process_data.instantiated_fifo_path  = instantiate_directory( args->fifo_path, args->location, args->number );
+   if( NULL == ldcs_process_data.instantiated_fifo_path ){
+        fprintf( stderr, "None of the following fifo path directory candidates could be instantiated.\n");
+        fprintf( stderr, "%s:%s\n", args->fifo_path, args->location );
+        exit(-1);
+   }else{
+       debug_printf("QQQ Instantiated fifo path:  %s\n", ldcs_process_data.instantiated_fifo_path);
+   }
+
+   debug_printf("QQQ Candidate daemon paths:  %s:%s\n", args->daemon_path, args->location );
+   ldcs_process_data.instantiated_daemon_path  = instantiate_directory( args->daemon_path, args->location, args->number );
+   if( NULL == ldcs_process_data.instantiated_daemon_path ){
+        fprintf( stderr, "None of the following daemon path directory candidates could be instantiated.\n");
+        fprintf( stderr, "%s:%s\n", args->daemon_path, args->location );
+        exit(-1);
+   }else{
+       debug_printf("QQQ Instantiated daemon path:  %s\n", ldcs_process_data.instantiated_daemon_path);
+   }
+
    if (ldcs_process_data.opts & OPT_PULL) {
       debug_printf("Using PULL model\n");
       ldcs_process_data.dist_model = LDCS_PULL;
@@ -182,14 +214,14 @@ int ldcs_audit_server_process(spindle_args_t *args)
    }
    ldcs_process_data.server_stat.hostname=ldcs_process_data.hostname;
 
-   debug_printf3("Initializing file cache location %s\n", ldcs_process_data.location);
-   ldcs_audit_server_filemngt_init(ldcs_process_data.location);
+   debug_printf3("Initializing file cache location %s\n", ldcs_process_data.instantiated_cache_path);
+   ldcs_audit_server_filemngt_init(ldcs_process_data.instantiated_cache_path);
    if (ldcs_process_data.opts & OPT_PROCCLEAN)
-      init_cleanup_proc(ldcs_process_data.location);
+      init_cleanup_proc(ldcs_process_data.instantiated_cache_path);
 
    debug_printf3("Initializing connections for clients at %s and %u\n",
-                 ldcs_process_data.location, ldcs_process_data.number);
-   serverid = ldcs_create_server(ldcs_process_data.location, ldcs_process_data.number);
+                 ldcs_process_data.instantiated_fifo_path, ldcs_process_data.number);
+   serverid = ldcs_create_server(ldcs_process_data.instantiated_fifo_path, ldcs_process_data.number);
    if (serverid == -1) {
       err_printf("Unable to setup area for client connections\n");
       return -1;
@@ -205,7 +237,7 @@ int ldcs_audit_server_process(spindle_args_t *args)
       ldcs_listen_register_fd(fd, serverid, &_ldcs_server_CB, (void *) &ldcs_process_data);
 
    if (args->opts & OPT_BEEXIT) {
-      fd = createExitNote(args->location);
+      fd = createExitNote(args->fifo_path);
       if (fd != -1) {
          ldcs_listen_register_fd(fd, serverid, exit_note_cb, (void *) &ldcs_process_data);
       }
@@ -235,7 +267,7 @@ int ldcs_audit_server_run()
 
    _ldcs_server_stat_print(&ldcs_process_data.server_stat);
   
-   debug_printf("destroy server (%s,%d)\n", ldcs_process_data.location, ldcs_process_data.number);
+   debug_printf("destroy server (%s,%d)\n", ldcs_process_data.instantiated_cache_path, ldcs_process_data.number);
    ldcs_destroy_server(ldcs_process_data.serverid);
   
    /* destroy md support (multi-daemon) */

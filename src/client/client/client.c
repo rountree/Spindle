@@ -220,14 +220,14 @@ static int init_server_connection()
 #else
       shm_cache_limit = shm_cachesize;
 #endif
-      shmcache_init(instantiated_cache_location, number, shm_cachesize, shm_cache_limit);
+      shmcache_init(instantiated_cache_path, number, shm_cachesize, shm_cache_limit);
    }
 
    if (connection) {
       /* boostrapper established the connection for us.  Reuse it. */
       debug_printf("Recreating existing connection to server\n");
-      debug_printf3("location = %s, number = %d, connection = %s, rankinfo = %s\n",
-                    location, number, connection, rankinfo_s);
+      debug_printf3("instantiated_fifo_path = %s, number = %d, connection = %s, rankinfo = %s\n",
+                    instantiated_fifo_path, number, connection, rankinfo_s);
       ldcsid  = client_register_connection(connection);
       if (ldcsid == -1)
          return -1;
@@ -237,13 +237,13 @@ static int init_server_connection()
    }
    else {
       /* Establish a new connection */
-      debug_printf("open connection to ldcs %s %d\n", instantiated_fifo_connection, number);
-      ldcsid = client_open_connection(location, number);
+      debug_printf("open connection to ldcs %s %d\n", instantiated_fifo_path, number);
+      ldcsid = client_open_connection(instantiated_fifo_path, number);
       if (ldcsid == -1)
          return -1;
 
       send_pid(ldcsid);
-      send_location(ldcsid, instantiated_fifo_location);
+      send_location(ldcsid, instantiated_fifo_path);
       send_rankinfo_query(ldcsid, rankinfo+0, rankinfo+1, rankinfo+2, rankinfo+3);
 #if defined(LIBNUMA)      
       if (opts & OPT_NUMA)
@@ -391,7 +391,7 @@ char *client_library_load(const char *name)
 
    char *orig_file_name = (char *) name;
    if (is_in_spindle_cache(name)) {
-      debug_printf2("Library %s is in spindle cache (%s). Translating request\n", name, instantiated_cache_location);
+      debug_printf2("Library %s is in spindle cache (%s). Translating request\n", name, instantiated_cache_path);
       memset(fixed_name, 0, MAX_PATH_LEN+1);
       send_orig_path_request(ldcsid, orig_file_name, fixed_name);
       orig_file_name = fixed_name;      

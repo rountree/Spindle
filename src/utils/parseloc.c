@@ -207,7 +207,7 @@ char* instantiate_directory( char *pathlist, char *defaultpath, int number ){
         full_pathlist = pathlist;
     }else{
         full_pathlist = calloc( strlen( pathlist ) + strlen( defaultpath ) + 2, sizeof( char ) );
-        sprintf( full_pathlist, "%s:%s\0", pathlist, defaultpath );
+        sprintf( full_pathlist, "%s:%s", pathlist, defaultpath );
     }
 
 

@@ -142,17 +142,6 @@ int spindleRunBE(unsigned int port, unsigned int num_ports, unique_id_t unique_i
    assert(args.unique_id == unique_id);
    assert(args.port == port);
    
-   
-   /* Expand environment variables in location. */
-   char *new_location = parse_location(args.location, args.number);
-   if (!new_location) {
-      err_printf("Failed to convert location %s\n", args.location);
-      return -1;
-   }
-   debug_printf("Translated location from %s to %s\n", args.location, new_location);
-   free(args.location);
-   args.location = new_location;
-
    result = ldcs_audit_server_process(&args);
    if (result == -1) {
       err_printf("Error in ldcs_audit_server_process\n");

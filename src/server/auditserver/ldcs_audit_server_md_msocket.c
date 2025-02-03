@@ -62,7 +62,9 @@ int ldcs_audit_server_md_init ( ldcs_process_data_t *ldcs_process_data ) {
   int rc=0;
 
   char* ldcs_nportsstr=getenv("LDCS_NPORTS");
+#ifdef BLR_FIXME
   char* ldcs_locmodstr=getenv("LDCS_LOCATION_MOD");
+#endif
 
   int usedport;
   int serverfd, serverid, i;
@@ -78,7 +80,7 @@ int ldcs_audit_server_md_init ( ldcs_process_data_t *ldcs_process_data ) {
   }
   
   /* open listening port for bootstrapping startup  */
-  serverid=ldcs_audit_server_md_msocket_create_server(ldcs_process_data->location, 
+  serverid=ldcs_audit_server_md_msocket_create_server(ldcs_process_data->instantiated_fifo_path, 
 						      ldcs_msocket_data.default_portlist, ldcs_msocket_data.default_num_ports, 
 						      &usedport);
   if (serverid<0) {
@@ -128,7 +130,7 @@ int ldcs_audit_server_md_init ( ldcs_process_data_t *ldcs_process_data ) {
 
   ldcs_listen_unregister_fd(serverfd);
 
-  
+#ifdef BLR_FIXME
   if(ldcs_locmodstr) {
     int ldcs_locmod=atoi(ldcs_locmodstr);
     if(ldcs_locmod>0) {
@@ -142,7 +144,7 @@ int ldcs_audit_server_md_init ( ldcs_process_data_t *ldcs_process_data ) {
       } else _error("location path too long");
     }
   } 
-  
+#endif
   return(rc);
 }
 

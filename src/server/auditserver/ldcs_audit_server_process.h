@@ -123,7 +123,9 @@ struct ldcs_process_data_struct
   int exit_readys_recvd;
   ldcs_dist_model_t dist_model;
   ldcs_client_t* client_table;
-  char *location;
+  char *instantiated_cache_path;
+  char *instantiated_fifo_path;
+  char *instantiated_daemon_path;
   char *hostname;
   char *pythonprefix;
   char *numa_substrs;

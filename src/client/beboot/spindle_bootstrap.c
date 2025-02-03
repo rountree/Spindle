@@ -36,12 +36,16 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "config.h"
 
+
+
 #if !defined(LIBEXECDIR)
 #error Expected to be built with libdir defined
 #endif
 #if !defined(PROGLIBDIR)
 #error Expected to be built with proglib defined
 #endif
+
+extern  char* instantiate_directory( char *pathlist, char *defaultpath, int number );
 
 char spindle_daemon[] = LIBEXECDIR "/spindle_be";
 char spindle_interceptlib[] = PROGLIBDIR "/libspindleint.so";
@@ -57,7 +61,7 @@ static char *client_lib;
 static char **daemon_args;
 
 // Initialized via parse_cmdline()
-static *symbolic_location;
+static char *symbolic_location;
 static char *cache_path, *fifo_path, *daemon_path; // potentially multiple colon-separated paths
 static char *number_s;
 static int number;
@@ -328,7 +332,7 @@ int main(int argc, char *argv[])
    }
 
    debug_printf("QQQ Candidate cache paths:  %s:%s\n", cache_path, symbolic_location );
-   instantiated_cache_path  = instatiate_directory( cache_path, symbolic_location );
+   instantiated_cache_path  = instantiate_directory( cache_path, symbolic_location, number );
    if( NULL == cache_path ){
         fprintf( stderr, "None of the following cache path directory candidates could be instantiated.\n");
         fprintf( stderr, "%s:%s\n", cache_path, symbolic_location );
@@ -338,7 +342,7 @@ int main(int argc, char *argv[])
    }
 
    debug_printf("QQQ Candidate fifo paths:   %s:%s\n", fifo_path, symbolic_location );
-   instantiated_fifo_path  = instatiate_directory( fifo_path, symbolic_location );
+   instantiated_fifo_path  = instantiate_directory( fifo_path, symbolic_location, number );
    if( NULL == fifo_path ){
         fprintf( stderr, "None of the following fifo path directory candidates could be instantiated.\n");
         fprintf( stderr, "%s:%s\n", fifo_path, symbolic_location );
@@ -348,7 +352,7 @@ int main(int argc, char *argv[])
    }
 
    debug_printf("QQQ Candidate daemon paths: %s:%s\n", daemon_path, symbolic_location );
-   instantiated_daemon_path  = instatiate_directory( daemon_path, symbolic_location );
+   instantiated_daemon_path  = instantiate_directory( daemon_path, symbolic_location, number );
    if( NULL == daemon_path ){
         fprintf( stderr, "None of the following daemon path directory candidates could be instantiated.\n");
         fprintf( stderr, "%s:%s", daemon_path, symbolic_location );
