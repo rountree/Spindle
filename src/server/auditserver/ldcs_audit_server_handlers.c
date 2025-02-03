@@ -2727,7 +2727,7 @@ int exit_note_cb(int fd, int serverid, void *data)
       eresult = -1;
    }
 
-   result = handleExitNote(fd, procdata->location);
+   result = handleExitNote(fd, procdata->instantiated_fifo_path);
    if (result == -1) {
       debug_printf("handleExitNote failed\n");
       eresult = -1;
