@@ -94,8 +94,6 @@ static char *default_subaudit_libstr = libstr_biter_subaudit;
 #endif
 
 extern int spindle_mkdir(char *path);
-extern char *parse_location(char *loc, int number);
-extern char *realize(char *path);
 
 static int establish_connection()
 {
@@ -330,7 +328,7 @@ int main(int argc, char *argv[])
    }
 
    debug_printf("QQQ Candidate cache paths:  %s:%s\n", cache_path, symbolic_location );
-   instantiated_cache_path  = instatiate_directory( cache_path, location );
+   instantiated_cache_path  = instatiate_directory( cache_path, symbolic_location );
    if( NULL == cache_path ){
         fprintf( stderr, "None of the following cache path directory candidates could be instantiated.\n");
         fprintf( stderr, "%s:%s\n", cache_path, symbolic_location );
@@ -340,23 +338,23 @@ int main(int argc, char *argv[])
    }
 
    debug_printf("QQQ Candidate fifo paths:   %s:%s\n", fifo_path, symbolic_location );
-   instantiated_fifo_path  = instatiate_directory( fifo_path, location );
+   instantiated_fifo_path  = instatiate_directory( fifo_path, symbolic_location );
    if( NULL == fifo_path ){
         fprintf( stderr, "None of the following fifo path directory candidates could be instantiated.\n");
         fprintf( stderr, "%s:%s\n", fifo_path, symbolic_location );
         exit(-1);
    }else{
-       debug_printf("QQQ Instantiated fifo path:  %s\n", instantiated_cache_path);
+       debug_printf("QQQ Instantiated fifo path:  %s\n", instantiated_fifo_path);
    }
 
    debug_printf("QQQ Candidate daemon paths: %s:%s\n", daemon_path, symbolic_location );
-   instantiated_daemon_path  = instatiate_directory( daemon_path, location );
+   instantiated_daemon_path  = instatiate_directory( daemon_path, symbolic_location );
    if( NULL == daemon_path ){
         fprintf( stderr, "None of the following daemon path directory candidates could be instantiated.\n");
         fprintf( stderr, "%s:%s", daemon_path, symbolic_location );
         exit(-1);
    }else{
-       debug_printf("QQQ Instantiated cache path:  %s\n", instantiated_cache_path);
+       debug_printf("QQQ Instantiated cache path:  %s\n", instantiated_daemon_path);
    }
 
    if (daemon_args) {
