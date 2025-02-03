@@ -136,8 +136,9 @@ static char **removeEnvironmentStrs(char **envp)
          continue;
       if (strIsPrefix("LD", envp[i])) {
          if (strIsPrefix("LD_AUDIT=", envp[i]) ||
-             strIsPrefix("LDCS_LOCATION=", envp[i]) ||
-             strIsPrefix("LDCS_ORIG_LOCATION=", envp[i]) ||
+             strIsPrefix("LDCS_INSTANTIATED_CACHE_PATH=", envp[i]) ||
+             strIsPrefix("LDCS_INSTANTIATED_FIFO_PATH=", envp[i]) ||
+             strIsPrefix("LDCS_INSTANTIATED_DAEMON_PATH=", envp[i]) ||
              strIsPrefix("LDCS_CONNECTION=", envp[i]) ||
              strIsPrefix("LDCS_RANKINFO=", envp[i]) ||
              strIsPrefix("LDCS_OPTIONS=", envp[i]) ||
@@ -171,8 +172,9 @@ static char **updateEnvironment(char **envp, int *num_modified, int propogate_sp
          unsetf = orig_unsetenv ? orig_unsetenv : unsetenv;
          unsetf("SPINDLE");
          unsetf("LD_AUDIT");
-         unsetf("LDCS_LOCATION");
-         unsetf("LDCS_ORIG_LOCATION");
+         unsetf("LDCS_INSTANTIATED_CACHE_PATH");
+         unsetf("LDCS_INSTANTIATED_FIFO_PATH");
+         unsetf("LDCS_INSTANTIATED_DAEMON_PATH");
          unsetf("LDCS_CONNECTION");
          unsetf("LDCS_RANKINFO");
          unsetf("LDCS_OPTIONS");

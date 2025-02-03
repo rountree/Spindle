@@ -56,7 +56,6 @@ static char debugging_name[32];
 static char old_cwd[MAX_PATH_LEN+1];
 static int rankinfo[4]={-1,-1,-1,-1};
 
-extern char *parse_location(char *loc, int number);
 extern int is_in_spindle_cache(const char *pathname);
 
 /* compare the pointer top the cookie not the cookie itself, it may be changed during runtime by audit library  */
@@ -67,11 +66,9 @@ static const ElfW(Phdr) *libc_phdrs, *interp_phdrs;
 static int num_libc_phdrs, num_interp_phdrs;
 ElfW(Addr) libc_loadoffset, interp_loadoffset;
 
-/* location has the realize'd path to the local file cache. orig_location is not realized and
- * may contain symlinks
- */
-char *location;
-char *orig_location;
+static char *instantiated_cache_path;
+static char *instantiated_fifo_path;
+static char *instantiated_daemon_path;
 int number;
 
 static char *concatStrings(const char *str1, const char *str2) 
@@ -194,8 +191,9 @@ static int init_server_connection()
    if (!use_ldcs)
       return 0;
 
-   location = getenv("LDCS_LOCATION");
-   orig_location = getenv("LDCS_ORIG_LOCATION");
+   instantiated_cache_path = getenv("LDCS_INSTANTIATED_CACHE_PATH");
+   instantiated_fifo_path = getenv("LDCS_INSTANTIATED_FIFO_PATH");
+   instantiated_daemon_path = getenv("LDCS_INSTANTIATED_DAEMON_PATH");
    number = atoi(getenv("LDCS_NUMBER"));
    connection = getenv("LDCS_CONNECTION");
    rankinfo_s = getenv("LDCS_RANKINFO");
@@ -203,10 +201,6 @@ static int init_server_connection()
    cachesize_s = getenv("LDCS_CACHESIZE");
    opts = atol(opts_s);
    shm_cachesize = atoi(cachesize_s) * 1024;
-
-   if (strchr(location, '$')) {
-      location = parse_location(location, number);
-   }
 
    if (!(opts & OPT_FOLLOWFORK)) {
       debug_printf("Disabling environment variables because we're not following forks\n");
@@ -226,7 +220,7 @@ static int init_server_connection()
 #else
       shm_cache_limit = shm_cachesize;
 #endif
-      shmcache_init(location, number, shm_cachesize, shm_cache_limit);
+      shmcache_init(instantiated_cache_location, number, shm_cachesize, shm_cache_limit);
    }
 
    if (connection) {
@@ -243,13 +237,13 @@ static int init_server_connection()
    }
    else {
       /* Establish a new connection */
-      debug_printf("open connection to ldcs %s %d\n", location, number);
+      debug_printf("open connection to ldcs %s %d\n", instantiated_fifo_connection, number);
       ldcsid = client_open_connection(location, number);
       if (ldcsid == -1)
          return -1;
 
       send_pid(ldcsid);
-      send_location(ldcsid, location);
+      send_location(ldcsid, instantiated_fifo_location);
       send_rankinfo_query(ldcsid, rankinfo+0, rankinfo+1, rankinfo+2, rankinfo+3);
 #if defined(LIBNUMA)      
       if (opts & OPT_NUMA)
@@ -397,7 +391,7 @@ char *client_library_load(const char *name)
 
    char *orig_file_name = (char *) name;
    if (is_in_spindle_cache(name)) {
-      debug_printf2("Library %s is in spindle cache (%s). Translating request\n", name, location);
+      debug_printf2("Library %s is in spindle cache (%s). Translating request\n", name, instantiated_cache_location);
       memset(fixed_name, 0, MAX_PATH_LEN+1);
       send_orig_path_request(ldcsid, orig_file_name, fixed_name);
       orig_file_name = fixed_name;      

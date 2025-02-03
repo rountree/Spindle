@@ -50,19 +50,27 @@ int ldcsid;
 unsigned int shm_cachesize;
 
 static int rankinfo[4]={-1,-1,-1,-1};
-static int number;
 static int use_cache;
-static unsigned int cachesize;
-static char *location, *number_s, *orig_location, *symbolic_location;
-static char *cache_path, *fifo_path, *daemon_path;
-static char **cmdline;
+
 static char *executable;
 static char *client_lib;
-static char *opts_s;
 static char **daemon_args;
-static char *cachesize_s;
 
+// Initialized via parse_cmdline()
+static *symbolic_location;
+static char *cache_path, *fifo_path, *daemon_path; // potentially multiple colon-separated paths
+static char *number_s;
+static int number;
+static char *opts_s;
 opt_t opts;
+static char *cachesize_s;
+static unsigned int cachesize;
+static char **cmdline;
+
+// Initialized via main()
+static char *instantiated_cache_path;
+static char *instantiated_fifo_path;
+static char *instantiated_daemon_path;
 
 char libstr_socket_subaudit[] = PROGLIBDIR "/libspindle_subaudit_socket.so";
 char libstr_pipe_subaudit[] = PROGLIBDIR "/libspindle_subaudit_pipe.so";
@@ -92,7 +100,7 @@ extern char *realize(char *path);
 static int establish_connection()
 {
    debug_printf2("Opening connection to server\n");
-   ldcsid = client_open_connection(location, number);
+   ldcsid = client_open_connection(instantiated_fifo_path, number);
    if (ldcsid == -1) 
       return -1;
 
@@ -114,8 +122,9 @@ static void setup_environment()
       connection_str = client_get_connection_string(ldcsid);
 
    setenv("LD_AUDIT", client_lib, 1);
-   setenv("LDCS_LOCATION", location, 1);
-   setenv("LDCS_ORIG_LOCATION", orig_location, 1);
+   setenv("LDCS_INSTANTIATED_CACHE_PATH", instantiated_cache_path, 1);
+   setenv("LDCS_INSTANTIATED_FIFO_PATH", instantiated_fifo_path, 1);
+   setenv("LDCS_INSTANTIATED_DAEMON_PATH", instantiated_daemon_path, 1);
    setenv("LDCS_NUMBER", number_s, 1);
    setenv("LDCS_RANKINFO", rankinfo_str, 1);
    if (connection_str)
@@ -177,7 +186,7 @@ static int parse_cmdline(int argc, char *argv[])
    return 0;
 }
 
-static void launch_daemon(char *location)
+static void launch_daemon()
 {
    /*grand-child fork, then execv daemon.  By grand-child forking we ensure that
      the app won't get confused by seeing an unknown process as a child. */
@@ -187,12 +196,7 @@ static void launch_daemon(char *location)
    char unique_file[MAX_PATH_LEN+1];
    char buffer[32];
 
-   result = spindle_mkdir(location);
-   if (result == -1) {
-      debug_printf("Exiting due to spindle_mkdir error\n");
-      exit(-1);
-   }
-   snprintf(unique_file, MAX_PATH_LEN, "%s/spindle_daemon_pid", location);
+   snprintf(unique_file, MAX_PATH_LEN, "%s/spindle_daemon_pid", instantiated_daemon_path);
    unique_file[MAX_PATH_LEN] = '\0';
    fd = open(unique_file, O_CREAT | O_EXCL | O_WRONLY, 0600);
    if (fd == -1) {
@@ -306,13 +310,6 @@ int main(int argc, char *argv[])
    char **j, *spindle_env;
 
    LOGGING_INIT_PREEXEC("Client");
-   debug_printf("Launched Spindle Bootstrapper\n");
-
-   result = parse_cmdline(argc, argv);
-   if (result == -1) {
-      fprintf(stderr, "spindle_boostrap cannot be invoked directly\n");
-      return -1;
-   }
 
    spindle_env = getenv("SPINDLE");
    if (spindle_env) {
@@ -324,16 +321,48 @@ int main(int argc, char *argv[])
       }
    }
 
-   orig_location = parse_location(symbolic_location, number);
-   if (!orig_location) {
+   debug_printf("Launched Spindle Bootstrapper\n");
+
+   result = parse_cmdline(argc, argv);
+   if (result == -1) {
+      fprintf(stderr, "spindle_boostrap cannot be invoked directly\n");
       return -1;
    }
-   location = realize(orig_location);
+
+   debug_printf("QQQ Candidate cache paths:  %s:%s\n", cache_path, symbolic_location );
+   instantiated_cache_path  = instatiate_directory( cache_path, location );
+   if( NULL == cache_path ){
+        fprintf( stderr, "None of the following cache path directory candidates could be instantiated.\n");
+        fprintf( stderr, "%s:%s\n", cache_path, symbolic_location );
+        exit(-1);
+   }else{
+       debug_printf("QQQ Instantiated cache path:  %s\n", instantiated_cache_path);
+   }
+
+   debug_printf("QQQ Candidate fifo paths:   %s:%s\n", fifo_path, symbolic_location );
+   instantiated_fifo_path  = instatiate_directory( fifo_path, location );
+   if( NULL == fifo_path ){
+        fprintf( stderr, "None of the following fifo path directory candidates could be instantiated.\n");
+        fprintf( stderr, "%s:%s\n", fifo_path, symbolic_location );
+        exit(-1);
+   }else{
+       debug_printf("QQQ Instantiated fifo path:  %s\n", instantiated_cache_path);
+   }
+
+   debug_printf("QQQ Candidate daemon paths: %s:%s\n", daemon_path, symbolic_location );
+   instantiated_daemon_path  = instatiate_directory( daemon_path, location );
+   if( NULL == daemon_path ){
+        fprintf( stderr, "None of the following daemon path directory candidates could be instantiated.\n");
+        fprintf( stderr, "%s:%s", daemon_path, symbolic_location );
+        exit(-1);
+   }else{
+       debug_printf("QQQ Instantiated cache path:  %s\n", instantiated_cache_path);
+   }
 
    if (daemon_args) {
-      launch_daemon(location);
+      launch_daemon();
    }
-   
+
    if (opts & OPT_RELOCAOUT) {
       result = establish_connection();
       if (result == -1) {
@@ -350,7 +379,7 @@ int main(int argc, char *argv[])
 #else
       shm_cache_limit = cachesize;
 #endif
-      shmcache_init(location, number, cachesize, shm_cache_limit);
+      shmcache_init(instantiated_cache_path, number, cachesize, shm_cache_limit);
       use_cache = 1;
    }      
    

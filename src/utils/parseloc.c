@@ -45,6 +45,8 @@ extern char *custom_getenv();
 #endif
 #define IS_ENVVAR_CHAR(X) ((X >= 'a' && X <= 'z') || (X >= 'A' && X <= 'Z') || (X == '_'))
 
+extern int spindle_mkdir(char *path);
+
 /* Expand the user specified location with environment variable values */
 char *parse_location(char *loc, int number)
 {
@@ -189,3 +191,44 @@ char *realize(char *path)
    debug_printf2("Realized %s to %s\n", path, newpath);
    return strdup(newpath);
 }
+
+char* instantiate_directory( char *pathlist, char *defaultpath, int number ){
+    /* Test each colon-separated path in pathlist until we find one that passes
+     * parse_location(), realize(), and spindle_mkdir() successfully.  Returns
+     * with a path of a created/confirmed directory, or NULL.*/
+
+    char *full_pathlist = NULL;
+    char *instantiated_path = NULL;
+    if( NULL == pathlist && NULL == defaultpath ){
+        return NULL;
+    }else if ( NULL == pathlist ){
+        full_pathlist = defaultpath;
+    }else if ( NULL == defaultpath ){
+        full_pathlist = pathlist;
+    }else{
+        full_pathlist = calloc( strlen( pathlist ) + strlen( defaultpath ) + 2, sizeof( char ) );
+        sprintf( full_pathlist, "%s:%s\0", pathlist, defaultpath );
+    }
+
+
+    int success = -1;
+    char *saveptr;
+    char *candidate_path = strtok_r( full_pathlist, ":", &saveptr );
+    while( candidate_path ){
+        char *parsed_candidate = parse_location( candidate_path, number );
+        if( parsed_candidate ){
+            char *realized_candidate = realize( parsed_candidate );
+            success = spindle_mkdir( realized_candidate );
+        }
+        if( 0 == success ){
+            instantiated_path = strdup( candidate_path );
+            break;
+        }
+        candidate_path = strtok_r( NULL, ":", &saveptr );
+    }
+
+    free( full_pathlist );
+    return instantiated_path;
+}
+
+
