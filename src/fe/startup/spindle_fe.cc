@@ -67,6 +67,9 @@ static int pack_data(spindle_args_t *args, void* &buffer, unsigned &buffer_size)
    buffer_size += sizeof(opt_t);
    buffer_size += sizeof(unique_id_t);
    buffer_size += args->location ? strlen(args->location) + 1 : 1;
+   buffer_size += args->cache_path ? strlen(args->cache_path) + 1 : 1;
+   buffer_size += args->fifo_path ? strlen(args->fifo_path) + 1 : 1;
+   buffer_size += args->daemon_path ? strlen(args->daemon_path) + 1 : 1;
    buffer_size += args->pythonprefix ? strlen(args->pythonprefix) + 1 : 1;
    buffer_size += args->preloadfile ? strlen(args->preloadfile) + 1 : 1;
    buffer_size += args->numa_files ? strlen(args->numa_files) + 1 : 1;
