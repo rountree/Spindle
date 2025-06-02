@@ -63,6 +63,7 @@ static int write_pipe(int fd, const void *data, int bytes)
   int left,bsumwrote;
   ssize_t bwrite, bwrote;
   char *dataptr;
+  int retries = 5;
   
   left      = bytes;
   bsumwrote = 0;
@@ -75,6 +76,14 @@ static int write_pipe(int fd, const void *data, int bytes)
         err_printf("Failed to wrote bytes to pipe: %s\n", strerror(errno));
         return -1;
      }
+     if (bwrote == 0) {
+        if (retries-- > 0)
+           continue;
+        else {
+           err_printf("Error writing to pipe: zero ret\n");
+           return -1;
+        }
+     }     
      left      -= bwrote;
      dataptr   += bwrote;
      bsumwrote += bwrote;
@@ -85,6 +94,7 @@ static int write_pipe(int fd, const void *data, int bytes)
 static int read_pipe(int fd, void *data, int bytes)
 {
    int         left;
+   int retries = 5;
    ssize_t     btoread, bread;
    char       *dataptr;
   
@@ -97,6 +107,14 @@ static int read_pipe(int fd, void *data, int bytes)
       if (bread == -1) {
          err_printf("Error reading data from pipe: %s\n", strerror(errno));
          return -1;
+      }
+      if (bread == 0) {
+         if (retries-- > 0)
+            continue;
+         else {
+            err_printf("Error reading from pipe: zero ret\n");
+            return -1;
+         }
       }
       left      -= bread;
       dataptr   += bread;

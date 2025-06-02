@@ -19,7 +19,12 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 int ldcs_listen_register_fd( int fd, 
 			     int id, 
-			     int _ldcs_server_CB ( int fd, int id, void *data ), 
+			     int cb_func ( int fd, int id, void *data ), 
+			     void * data);
+
+int ldcs_listen_register_err_fd( int fd, 
+			     int id, 
+			     int cb_func ( int fd, int id, void *data ), 
 			     void * data);
 
 int ldcs_listen_register_exit_loop_cb( int cb_func ( int num_fds, void *data ), 

@@ -34,6 +34,8 @@
 #include "config.h"
 
 int ldcs_audit_server_md_cobo_CB ( int fd, int nc, void *data );
+static int newconnection_CB(int fd, int id, void *data);
+static int fderror_CB(int fd, int id, void *data);
 int ldcs_audit_server_md_cobo_send_msg ( int fd, ldcs_message_t *msg );
 
 extern unique_id_t unique_id;
@@ -125,7 +127,7 @@ int ldcs_audit_server_md_init(unsigned int port, unsigned int num_ports,
 
 int ldcs_audit_server_md_register_fd ( ldcs_process_data_t *ldcs_process_data ) {
    int rc=0, i;
-   int parent_fd, child_fd;
+   int parent_fd, child_fd, newconn_fd;
    int num_childs;
 
    if(cobo_get_parent_socket(&parent_fd)!=COBO_SUCCESS) {
@@ -134,13 +136,23 @@ int ldcs_audit_server_md_register_fd ( ldcs_process_data_t *ldcs_process_data ) 
    }
 
    debug_printf3("Registering fd %d for cobo parent connection\n",parent_fd);
-   ldcs_listen_register_fd(parent_fd, 0, &ldcs_audit_server_md_cobo_CB, (void *) ldcs_process_data);
+   ldcs_listen_register_fd(parent_fd, 0, ldcs_audit_server_md_cobo_CB, (void *) ldcs_process_data);
+   ldcs_listen_register_err_fd(parent_fd, 0, fderror_CB, (void *) ldcs_process_data);
+   
    ldcs_process_data->md_listen_to_parent=1;
+
+   newconn_fd = cobo_get_new_connection_socket();
+   if (newconn_fd) {
+      debug_printf3("Registering fd %d for new connections\n", newconn_fd);
+      ldcs_listen_register_fd(newconn_fd, 0, newconnection_CB, (void *) ldcs_process_data);
+   }
    
    cobo_get_num_childs(&num_childs);
    for (i = 0; i<num_childs; i++) {
       cobo_get_child_socket(i, &child_fd);
-      ldcs_listen_register_fd(child_fd, 0, &ldcs_audit_server_md_cobo_CB, (void *) ldcs_process_data);
+      debug_printf3("Registering fd %d as child %d\n", newconn_fd, i);
+      ldcs_listen_register_fd(child_fd, 0, ldcs_audit_server_md_cobo_CB, (void *) ldcs_process_data);
+      ldcs_listen_register_err_fd(child_fd, 0, fderror_CB, (void *) ldcs_process_data);      
    }
    
    return(rc);
@@ -308,6 +320,17 @@ int ldcs_audit_server_md_cobo_CB(int fd, int nc, void *data)
    return(rc);
 }
 
+static int newconnection_CB(int fd, int id, void *data)
+{
+   int rc;
+   ldcs_process_data_t *ldcs_process_data = ( ldcs_process_data_t *) data ;
+   rc = handle_server_newconnection(ldcs_process_data);
+   if (rc == -1) {
+      debug_printf("Failure establishing new connection\n");
+   }
+   return 0;
+}
+
 int ldcs_audit_server_md_send(ldcs_process_data_t *ldcs_process_data, ldcs_message_t *msg, node_peer_t peer)
 {
    int fd = (int) (long) peer;
@@ -396,4 +419,64 @@ int ldcs_audit_server_md_get_num_children(ldcs_process_data_t *procdata)
    int num_childs = 0;
    cobo_get_num_childs(&num_childs);
    return num_childs;
+}
+
+node_peer_t ldcs_audit_server_md_handle_new_child_connection(ldcs_process_data_t *procdata)
+{
+   int result = cobo_accept_new_child();
+   int fd;
+   node_peer_t peer;
+   if (result == NC_ERROR)
+      return NODE_PEER_ERROR;
+   if (result == NC_SOFT_ERROR)
+      return NODE_PEER_SOFTERROR;
+   fd = result;
+   peer = (node_peer_t) (long) result;
+
+   debug_printf3("Registering fd %d as new child\n", fd);
+   ldcs_listen_register_fd(fd, 0, ldcs_audit_server_md_cobo_CB, (void *) procdata);
+   ldcs_listen_register_err_fd(fd, 0, fderror_CB, (void *) procdata);
+
+   return peer;
+}
+
+node_peer_t ldcs_audit_server_md_establish_new_parent(ldcs_process_data_t *procdata)
+{
+   int fd, result, oldparent_fd;
+   node_peer_t peer;
+
+   cobo_get_parent_socket(&oldparent_fd);
+   ldcs_listen_unregister_fd(oldparent_fd);
+   
+   result = cobo_establish_new_parent();
+   if (result == -1) {
+      debug_printf("Not selecting new parent because of failure in cobo layer\n");
+      return NODE_PEER_ERROR;
+   }
+   fd = result;
+   peer = (node_peer_t) (long) result;
+
+   debug_printf3("Registering fd %d as new parent\n", fd);
+   ldcs_listen_register_fd(fd, 0, ldcs_audit_server_md_cobo_CB, (void *) procdata);
+   ldcs_listen_register_err_fd(fd, 0, fderror_CB, (void *) procdata);
+
+   return peer;
+}
+
+static int fderror_CB(int fd, int id, void *data)
+{
+   node_peer_t peer;
+   ldcs_process_data_t *procdata;
+
+   debug_printf("Recieved error cb on fd %d\n", fd);
+   procdata = ( ldcs_process_data_t *) data;
+   peer = (node_peer_t) (long) fd;
+   return handle_server_error(procdata, peer);
+}
+
+int ldcs_audit_server_md_handle_child_exit(ldcs_process_data_t *procdata, node_peer_t peer)
+{
+   int fd = (int) (long) peer;
+   ldcs_listen_unregister_fd(fd);
+   return 0;
 }

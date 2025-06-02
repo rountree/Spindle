@@ -30,13 +30,19 @@ typedef enum {
    LDCS_LISTEN_STATUS_ERROR
 } ldcs_listen_data_item_status_t;
 
+typedef enum {
+   LDCS_LISTEN_UNSET,
+   LISTEN_READ,
+   LISTEN_ERROR
+} ldcs_listen_data_type_t;
 
 struct ldcs_listen_data_item_struct
 {
-   int                            fd;
-   int                            id;
-   int                            (*cb_func) ( int fd, int id, void *data );
-   void*                          data;
+   int fd;
+   int id;
+   int (*cb_func) ( int fd, int id, void *data );
+   ldcs_listen_data_type_t fdtype;
+   void *data;
    ldcs_listen_data_item_status_t state;
 };
 typedef struct ldcs_listen_data_item_struct ldcs_listen_data_item_t;
@@ -67,10 +73,12 @@ int ldcs_listen_register_exit_loop_cb( int cb_func ( int num_fds, void *data ),
    return(rc);
 }
 
-int ldcs_listen_register_fd( int fd, 
-                             int id, 
-                             int cb_func ( int fd, int id, void *data ), 
-                             void * data) {
+static int do_ldcs_listen_register_fd( int fd, 
+                                       int id, 
+                                       int cb_func ( int fd, int id, void *data ), 
+                                       void * data,
+                                       int is_err_fd)
+{
    int rc=0;
    int c;
 
@@ -95,6 +103,7 @@ int ldcs_listen_register_fd( int fd,
    ldcs_listen_data.item_table[c].fd    = fd;
    ldcs_listen_data.item_table[c].id    = id;
    ldcs_listen_data.item_table[c].data  = data;
+   ldcs_listen_data.item_table[c].fdtype = is_err_fd ? LISTEN_ERROR : LISTEN_READ;
    ldcs_listen_data.item_table[c].cb_func = cb_func;
 
    debug_printf3("registered fd %d id=%d  c=%d\n",fd,id,c);
@@ -102,24 +111,42 @@ int ldcs_listen_register_fd( int fd,
    return(rc);
 }
 
+int ldcs_listen_register_fd( int fd, 
+			     int id, 
+			     int cb_func(int fd, int id, void *data),
+			     void * data)
+{
+   return do_ldcs_listen_register_fd(fd, id, cb_func, data, 0);
+}
+
+int ldcs_listen_register_err_fd( int fd, 
+			     int id, 
+			     int cb_func(int fd, int id, void *data),
+			     void * data)
+{
+   return do_ldcs_listen_register_fd(fd, id, cb_func, data, 1);
+}
+
 int ldcs_listen_unregister_fd( int fd ) {
-   int rc=0;
-   int c;
-   debug_printf3("unregister fd %d ..\n",fd);
-   for(c=0;(c<ldcs_listen_data.item_table_size);c++) {
-      if ( ( ldcs_listen_data.item_table[c].state == LDCS_LISTEN_STATUS_ACTIVE ) &&
-           ( ldcs_listen_data.item_table[c].fd==fd) ) break;
-   }
-   if(c<ldcs_listen_data.item_table_size) {
+   int c, did_clean = 0;
+   debug_printf3("unregister fd %d ..\n",fd);   
+   for (c = 0; c < ldcs_listen_data.item_table_size; c++) {
+      if (ldcs_listen_data.item_table[c].fd != fd)
+         continue;
+      if (ldcs_listen_data.item_table[c].state != LDCS_LISTEN_STATUS_ACTIVE)
+         continue;
       debug_printf3("unregister fd %d c=%d\n",fd,c);
       ldcs_listen_data.item_table[c].state = LDCS_LISTEN_STATUS_FREE;
       ldcs_listen_data.item_table_used--;
-   } else {
-      printf("ldcs_listen_unregister_fd: entry not found\n");
-      rc=-1;
+      did_clean = 1;
+   }
+
+   if (!did_clean) {
+      err_printf("ldcs_listen_unregister_fd: entry not found\n");
+      return -1;
    } 
 
-   return(rc);
+   return 0;
 }
 
 int ldcs_listen_signal_end_listen_loop( ) {
@@ -132,10 +159,11 @@ int ldcs_listen_signal_end_listen_loop( ) {
 #define max(x,y) ((x) > (y) ? (x) : (y))
 
 int ldcs_listen() {
-   int rc=-1;
-   int r, nfds, fd, c;
+   int rc=-1, result;
+   int r, nfds, fd, c, d;
    fd_set rd, wr, er;
    int do_listen=0;
+   int in_read, in_err;
 
    debug_printf2("Listening for data\n");
    do_listen=(ldcs_listen_data.item_table_used>0);
@@ -147,9 +175,16 @@ int ldcs_listen() {
     
       /* collect all fds */
       for(c=0;c<ldcs_listen_data.item_table_size;c++) {
-         if ( ldcs_listen_data.item_table[c].state == LDCS_LISTEN_STATUS_ACTIVE ) {
+         if (ldcs_listen_data.item_table[c].state != LDCS_LISTEN_STATUS_ACTIVE)
+            continue;
+         if (ldcs_listen_data.item_table[c].fdtype == LISTEN_READ) {
             fd = ldcs_listen_data.item_table[c].fd;
             FD_SET(fd, &rd);
+            nfds = max(nfds, fd);  
+         }
+         if (ldcs_listen_data.item_table[c].fdtype == LISTEN_ERROR) {
+            fd = ldcs_listen_data.item_table[c].fd;
+            FD_SET(fd, &er);
             nfds = max(nfds, fd);  
          }
       }
@@ -168,20 +203,29 @@ int ldcs_listen() {
          if (r == -1)  _error("in listen");
       
          /* call callback function for all active fds */
-         for(c=0;c<ldcs_listen_data.item_table_size;c++) {
-            if ( ldcs_listen_data.item_table[c].state == LDCS_LISTEN_STATUS_ACTIVE ) {
-               fd     = ldcs_listen_data.item_table[c].fd;
-               if(FD_ISSET(fd, &rd)) {
-                  debug_printf3("Select returned data.  Calling callback for fd %d id=%d\n",fd, ldcs_listen_data.item_table[c].id);
-                  int result = ldcs_listen_data.item_table[c].cb_func(ldcs_listen_data.item_table[c].fd,
-                                                                      ldcs_listen_data.item_table[c].id,
-                                                                      ldcs_listen_data.item_table[c].data);
-                  if (result == -1) {
-                     debug_printf("Marking fd %d in error\n", ldcs_listen_data.item_table[c].fd);
-                     ldcs_listen_data.item_table[c].state = LDCS_LISTEN_STATUS_ERROR;
+         for(c = 0; c <ldcs_listen_data.item_table_size; c++) {
+            fd = ldcs_listen_data.item_table[c].fd;
+            in_read = FD_ISSET(fd, &rd) && ldcs_listen_data.item_table[c].fdtype == LISTEN_READ;
+            in_err = FD_ISSET(fd, &er) && ldcs_listen_data.item_table[c].fdtype == LISTEN_ERROR;
+            if (!in_read && !in_err)
+               continue;
+            
+            if (in_read)
+               debug_printf3("Select returned read data.  Calling callback for fd %d id=%d\n",fd, ldcs_listen_data.item_table[c].id);
+            if (in_err)
+               debug_printf3("Select returned error data.  Calling callback for fd %d id=%d\n",fd, ldcs_listen_data.item_table[c].id);
+            result = ldcs_listen_data.item_table[c].cb_func(ldcs_listen_data.item_table[c].fd,
+                                                            ldcs_listen_data.item_table[c].id,
+                                                            ldcs_listen_data.item_table[c].data);
+            if (result == -1) {
+               debug_printf2("Marking all entries with fd %d in error\n", fd);
+               for(d = 0; d < ldcs_listen_data.item_table_size; d++) {
+                  if (ldcs_listen_data.item_table[d].fd == fd) {
+                     debug_printf("Marking fd %d in table rank %d in error\n", ldcs_listen_data.item_table[d].fd, d);
+                     ldcs_listen_data.item_table[d].state = LDCS_LISTEN_STATUS_ERROR;
                   }
                }
-            }
+            }            
          }
       }
 

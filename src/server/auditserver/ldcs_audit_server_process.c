@@ -136,6 +136,7 @@ void stopprofile()
 int ldcs_audit_server_process(spindle_args_t *args)
 {
    int serverid, fd;
+   char *env_spindle_test;
 
    startprofile(args);
 
@@ -167,6 +168,7 @@ int ldcs_audit_server_process(spindle_args_t *args)
    ldcs_process_data.num_exited_children_peers = 0;
    ldcs_process_data.num_exited_parents = 0;
    ldcs_process_data.num_alives = 0;
+   ldcs_process_data.reliability_test = 0;
    
    if (ldcs_process_data.opts & OPT_PULL) {
       debug_printf("Using PULL model\n");
@@ -227,6 +229,12 @@ int ldcs_audit_server_process(spindle_args_t *args)
    fd = getForceExitFd();
    if (fd != -1) {
       ldcs_listen_register_fd(fd, serverid, forceExitCB, (void *) &ldcs_process_data);
+   }
+
+   env_spindle_test = getenv("SPINDLE_TEST");
+   if (env_spindle_test && strcmp(env_spindle_test, "TEST_RELIABILITY") == 0) {
+      debug_printf("Enabling reliability test mode in server\n");
+      ldcs_process_data.reliability_test = 1;      
    }
    return 0;
 }  

@@ -36,6 +36,10 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "ldcs_cobo.h"
 #include "spindle_debug.h"
+#include "config.h"
+#include "fileutil.h"
+
+#define SPINDLE_ENABLE_RELIABILITY 1
 
 /* Reads environment variable, bails if not set */
 #define ENV_REQUIRED (0)
@@ -85,12 +89,11 @@ static int cobo_connect_backoff       = COBO_CONNECT_BACKOFF;   /* exponential b
 static int cobo_connect_sleep         = COBO_CONNECT_SLEEP;     /* milliseconds to sleep before rescanning ports */
 static double cobo_connect_timelimit  = COBO_CONNECT_TIMELIMIT; /* seconds */
 
-/* to establish a connection, the service and session ids must match
- * the sessionid will be provided by the user, it should be a random
- * number which associate processes with the same session */
+/* random ids that establish what type of operation we're doing upcon connection */
 static unsigned int cobo_serviceid = 3059238577u;
 static uint64_t cobo_sessionid = 0;
 static unsigned int cobo_acceptid  = 2348104830u;
+static unsigned int cobo_newchild_id = 0xfa172db4;
 
 /* number of ports and list of ports in the available port range */
 static int  cobo_num_ports = 0;
@@ -101,14 +104,13 @@ static int   cobo_hostlist_size = 0;
 static void* cobo_hostlist      = NULL;
 
 /* tree data structures */
+static int  cobo_incoming_sockfd = -1;    /* socket for accepting connections  */
 static int  cobo_parent     = -3;    /* rank of parent */
 static int  cobo_parent_fd  = -1;    /* socket to parent */
 static int* cobo_child      = NULL;  /* ranks of children */
 static int* cobo_child_fd   = NULL;  /* sockets to children */
 static int  cobo_num_child  = 0;     /* number of children */
-static int* cobo_child_incl = NULL;  /* number of children each child is responsible for (includes itself) */
-static int  cobo_num_child_incl = 0; /* total number of children this node is responsible for */
-
+static int  cobo_max_children = 0;
 static int cobo_root_fd = -1;
 
 static handshake_protocol_t cobo_handshake;
@@ -678,19 +680,17 @@ static int cobo_compute_children()
 {
     /* compute the maximum number of children this task may have */
     int n = 1;
-    int max_children = 0;
+    cobo_max_children = 0;
     while (n < cobo_nprocs) {
         n <<= 1;
-        max_children++;
+        cobo_max_children++;
     }
 
     /* prepare data structures to store our parent and children */
     cobo_parent = 0;
     cobo_num_child = 0;
-    cobo_num_child_incl = 0;
-    cobo_child      = (int*) cobo_malloc(max_children * sizeof(int), "Child rank array");
-    cobo_child_fd    = (int*) cobo_malloc(max_children * sizeof(int), "Child socket fd array");
-    cobo_child_incl = (int*) cobo_malloc(max_children * sizeof(int), "Child children count array");
+    cobo_child      = (int*) cobo_malloc(cobo_max_children * sizeof(int), "Child rank array");
+    cobo_child_fd    = (int*) cobo_malloc(cobo_max_children * sizeof(int), "Child socket fd array");
 
     /* find our parent rank and the ranks of our children */
     int low  = 0;
@@ -699,9 +699,7 @@ static int cobo_compute_children()
         int mid = (high - low) / 2 + (high - low) % 2 + low;
         if (low == cobo_me) {
             cobo_child[cobo_num_child] = mid;
-            cobo_child_incl[cobo_num_child] = high - mid + 1;
             cobo_num_child++;
-            cobo_num_child_incl += (high - mid + 1);
         }
         if (mid == cobo_me) { cobo_parent = low; }
         if (mid <= cobo_me) { low  = mid; }
@@ -711,67 +709,127 @@ static int cobo_compute_children()
     return COBO_SUCCESS;
 }
 
-#ifdef __COBO_CURRENTLY_NOT_USED
-/* given cobo_me and cobo_nprocs, fills in parent and children ranks -- currently implements a binomial tree */
-static int cobo_compute_children_root_C1()
+#define ACCEPT_AND_HANDSHAKE_AGAIN -1
+#define ACCEPT_AND_HANDSHAKE_ERROR -2
+
+static int accept_connection_and_handshake(int reply_timeout)
 {
-    /* compute the maximum number of children this task may have */
-    int n = 1;
-    int max_children = 0;
-    while (n < cobo_nprocs) {
-        n <<= 1;
-        max_children++;
-    }
+   struct sockaddr parent_addr;
+   socklen_t parent_len = sizeof(parent_addr);
+   int new_connection_fd;
+   int error;
+   int retries = 16;
 
-    /* prepare data structures to store our parent and children */
-    cobo_parent = 0;
-    cobo_num_child = 0;
-    cobo_num_child_incl = 0;
-    cobo_child      = (int*) cobo_malloc(max_children * sizeof(int), "Child rank array");
-    cobo_child_fd    = (int*) cobo_malloc(max_children * sizeof(int), "Child socket fd array");
-    cobo_child_incl = (int*) cobo_malloc(max_children * sizeof(int), "Child children count array");
+   for (;;) {
+      new_connection_fd = accept(cobo_incoming_sockfd, (struct sockaddr *) &parent_addr, &parent_len);
+      if (new_connection_fd != -1)
+         break;
+      error = errno;
+      if (--retries <= 0) {
+         err_printf("Too many errors retries accepting new socket: %s\n", strerror(error));
+         return ACCEPT_AND_HANDSHAKE_ERROR;
+      }
+      switch (error) {
+         case ENETDOWN:
+         case EPROTO:
+         case ENOPROTOOPT:
+         case EHOSTDOWN:
+         case ENONET:
+         case EHOSTUNREACH:
+         case EOPNOTSUPP:
+         case ENETUNREACH:
+         case EAGAIN:
+         case EINTR:
+            debug_printf3("Again-type error accepting new socket. Retrying. Error was %s\n", strerror(error));
+            continue;
+         default:
+            err_printf("Error accepting new socket: %s\n", strerror(error));
+            return ACCEPT_AND_HANDSHAKE_ERROR;
+      }
+   } 
+   
+   _cobo_opt_socket(new_connection_fd);
+   
+   /* handshake/authenticate our connection to make sure it one of our processes */
+   int result = spindle_handshake_server(new_connection_fd, &cobo_handshake, cobo_sessionid);
+   switch (result) {
+      case HSHAKE_SUCCESS:
+         break;
+      case HSHAKE_INTERNAL_ERROR:
+         err_printf("Internal error doing handshake: %s", spindle_handshake_last_error_str());
+         exit(-1);
+         break;
+      case HSHAKE_DROP_CONNECTION:
+         debug_printf3("Handshake said to drop connection\n");
+         close(new_connection_fd);
+         return ACCEPT_AND_HANDSHAKE_AGAIN;
+      case HSHAKE_ABORT:
+         handle_security_error(spindle_handshake_last_error_str());
+         abort();
+      default:
+         assert(0 && "Unknown return value from handshake_server\n");
+   }
+   
+   /* read the service id */
+   unsigned int received_serviceid = 0;
+   if (cobo_read_fd_w_timeout(new_connection_fd, &received_serviceid, sizeof(received_serviceid), reply_timeout) < 0) {
+      debug_printf3("Receiving service id from new connection failed\n");
+      close(new_connection_fd);
+      return ACCEPT_AND_HANDSHAKE_AGAIN;
+   }
+   
+   /* read the session id */
+   uint64_t received_sessionid = 0;
+   if (cobo_read_fd_w_timeout(new_connection_fd, &received_sessionid, sizeof(received_sessionid), reply_timeout) < 0) {
+      debug_printf3("Receiving session id from new connection failed\n");
+      close(new_connection_fd);
+      return ACCEPT_AND_HANDSHAKE_AGAIN;
+   }
+   
+   /* check that we got the expected service and session ids */
+   /* TODO: reply with some sort of error message if no match? */
+   if (received_serviceid != cobo_serviceid || received_sessionid != cobo_sessionid) {
+      close(new_connection_fd);
+      return ACCEPT_AND_HANDSHAKE_AGAIN;
+   }
+   
+   /* write our service id back as a reply */
+   if (cobo_write_fd_w_suppress(new_connection_fd, &cobo_serviceid, sizeof(cobo_serviceid), 1) < 0) {
+      debug_printf3("Writing service id to new connection failed\n");
+      close(new_connection_fd);
+      return ACCEPT_AND_HANDSHAKE_AGAIN;
+   }
+   
+   /* write our accept id back as a reply */
+   if (cobo_write_fd_w_suppress(new_connection_fd, &cobo_acceptid, sizeof(cobo_acceptid), 1) < 0) {
+      debug_printf3("Writing accept id to new connection failed\n");
+      close(new_connection_fd);
+      return ACCEPT_AND_HANDSHAKE_AGAIN;
+   }
+   
+   /* our parent may have dropped us if he was too impatient waiting for our reply,
+    * read his ack to know that he completed the connection */
+   unsigned int ack = 0;
+   if (cobo_read_fd_w_timeout(new_connection_fd, &ack, sizeof(ack), reply_timeout) < 0) {
+      debug_printf3("Receiving ack to finalize connection\n");
+      close(new_connection_fd);
+      return ACCEPT_AND_HANDSHAKE_AGAIN;
+   }
 
-
-    /* find our parent rank and the ranks of our children */
-    int low  = 0;
-    int high = cobo_nprocs - 1;
-
-    if(cobo_me==0) {
-      cobo_child[cobo_num_child] = 1;
-      cobo_child_incl[cobo_num_child] = high - 1 + 1;
-      cobo_num_child_incl += (high - 1 + 1);
-      cobo_num_child++;
-      return COBO_SUCCESS;
-    }
-
-    while (high - low > 0) {
-        int mid = (high - low) / 2 + (high - low) % 2 + low;
-        if (low == cobo_me) {
-            cobo_child[cobo_num_child] = mid;
-            cobo_child_incl[cobo_num_child] = high - mid + 1;
-            cobo_num_child++;
-            cobo_num_child_incl += (high - mid + 1);
-        }
-        if (mid == cobo_me) { cobo_parent = low; }
-        if (mid <= cobo_me) { low  = mid; }
-        else                { high = mid-1; }
-    }
-
-    return COBO_SUCCESS;
+   return new_connection_fd;
 }
-#endif
 
 /* open socket tree across tasks */
 static int cobo_open_tree()
 {
     /* create a socket to accept connection from parent IPPROTO_TCP */
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
+   cobo_incoming_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (cobo_incoming_sockfd < 0) {
         err_printf("Creating parent socket (socket() %m errno=%d)\n",
                    errno);
         exit(1);
     }
-    setCloseOnExec(sockfd);
+    setCloseOnExec(cobo_incoming_sockfd);
 
     /* TODO: could recycle over port numbers, trying to bind to one for some time */
     /* try to bind the socket to one the ports in our allowed range */
@@ -790,7 +848,7 @@ static int cobo_open_tree()
         sin.sin_port = htons(port);
 
         /* attempt to bind a socket on this port */
-        if (bind(sockfd, (struct sockaddr *) &sin, sizeof(sin)) < 0) {
+        if (bind(cobo_incoming_sockfd, (struct sockaddr *) &sin, sizeof(sin)) < 0) {
             debug_printf3("Binding parent socket (bind() %m errno=%d) port=%d\n",
                 errno, port);
             continue;
@@ -799,10 +857,10 @@ static int cobo_open_tree()
         struct linger slinger;
         slinger.l_onoff = 1;
         slinger.l_linger = 0;
-        setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &slinger, sizeof(slinger));
+        setsockopt(cobo_incoming_sockfd, SOL_SOCKET, SO_LINGER, &slinger, sizeof(slinger));
 
         /* set the socket to listen for connections */
-        if (listen(sockfd, 1) < 0) {
+        if (listen(cobo_incoming_sockfd, 1) < 0) {
            debug_printf3("Setting parent socket to listen (listen() %m errno=%d) port=%d\n",
                 errno, port);
            continue;
@@ -825,78 +883,12 @@ static int cobo_open_tree()
     int reply_timeout = cobo_connect_timeout * 100;
     int have_parent = 0;
     while (!have_parent) {
-        struct sockaddr parent_addr;
-        socklen_t parent_len = sizeof(parent_addr);
-        cobo_parent_fd = accept(sockfd, (struct sockaddr *) &parent_addr, &parent_len);
-
-        _cobo_opt_socket(cobo_parent_fd);
-
-        /* handshake/authenticate our connection to make sure it one of our processes */
-        int result = spindle_handshake_server(cobo_parent_fd, &cobo_handshake, cobo_sessionid);
-        switch (result) {
-           case HSHAKE_SUCCESS:
-              break;
-           case HSHAKE_INTERNAL_ERROR:
-              err_printf("Internal error doing handshake: %s", spindle_handshake_last_error_str());
-              exit(-1);
-              break;
-           case HSHAKE_DROP_CONNECTION:
-              debug_printf3("Handshake said to drop connection\n");
-              close(cobo_parent_fd);
-              continue;
-           case HSHAKE_ABORT:
-              handle_security_error(spindle_handshake_last_error_str());
-              abort();
-           default:
-              assert(0 && "Unknown return value from handshake_server\n");
-        }
-
-        /* read the service id */
-        unsigned int received_serviceid = 0;
-        if (cobo_read_fd_w_timeout(cobo_parent_fd, &received_serviceid, sizeof(received_serviceid), reply_timeout) < 0) {
-            debug_printf3("Receiving service id from new connection failed\n");
-            close(cobo_parent_fd);
-            continue;
-        }
-
-        /* read the session id */
-        uint64_t received_sessionid = 0;
-        if (cobo_read_fd_w_timeout(cobo_parent_fd, &received_sessionid, sizeof(received_sessionid), reply_timeout) < 0) {
-            debug_printf3("Receiving session id from new connection failed\n");
-            close(cobo_parent_fd);
-            continue;
-        }
-
-        /* check that we got the expected sesrive and session ids */
-        /* TODO: reply with some sort of error message if no match? */
-        if (received_serviceid != cobo_serviceid || received_sessionid != cobo_sessionid) {
-            close(cobo_parent_fd);
-            continue;
-        }
-
-        /* write our service id back as a reply */
-        if (cobo_write_fd_w_suppress(cobo_parent_fd, &cobo_serviceid, sizeof(cobo_serviceid), 1) < 0) {
-            debug_printf3("Writing service id to new connection failed\n");
-            close(cobo_parent_fd);
-            continue;
-        }
-
-        /* write our accept id back as a reply */
-        if (cobo_write_fd_w_suppress(cobo_parent_fd, &cobo_acceptid, sizeof(cobo_acceptid), 1) < 0) {
-            debug_printf3("Writing accept id to new connection failed\n");
-            close(cobo_parent_fd);
-            continue;
-        }
-
-        /* our parent may have dropped us if he was too impatient waiting for our reply,
-         * read his ack to know that he completed the connection */
-        unsigned int ack = 0;
-        if (cobo_read_fd_w_timeout(cobo_parent_fd, &ack, sizeof(ack), reply_timeout) < 0) {
-            debug_printf3("Receiving ack to finalize connection\n");
-            close(cobo_parent_fd);
-            continue;
-        }
-
+       cobo_parent_fd = accept_connection_and_handshake(reply_timeout);
+       if (cobo_parent_fd == ACCEPT_AND_HANDSHAKE_AGAIN)
+          continue;
+       if (cobo_parent_fd == ACCEPT_AND_HANDSHAKE_ERROR)
+          return -1;
+       
         /* if we get here, we've got a good connection to our parent */
         have_parent = 1;
     }
@@ -988,9 +980,13 @@ static int cobo_open_tree()
 
     free(child_names);
 
+#if defined(SPINDLE_ENABLE_RELIABILITY)
+    debug_printf3("Leaving cobo_incoming_sockfd = %d open for new children after failure\n", cobo_incoming_sockfd);
+#else
     /* we've got the connection to our parent, so close the listening socket */
-    close(sockfd);
-    
+    close(cobo_incoming_sockfd);
+    cobo_incoming_sockfd = -1;
+#endif
     return COBO_SUCCESS;
 }
 
@@ -1012,7 +1008,6 @@ static int cobo_close_tree()
     /* free data structures */
     cobo_free(cobo_child);
     cobo_free(cobo_child_fd);
-    cobo_free(cobo_child_incl);
     cobo_free(cobo_hostlist);
 
     return COBO_SUCCESS;
@@ -1108,84 +1103,6 @@ static int cobo_allreduce_max_int_tree(int* sendbuf, int* recvbuf)
     return rc;
 }
 
-/* gather sendcount bytes from sendbuf on each task into recvbuf on rank 0 */
-static int cobo_gather_tree(void* sendbuf, int sendcount, void* recvbuf)
-{
-    int rc = COBO_SUCCESS;
-    int bigcount = (cobo_num_child_incl+1) * sendcount;
-    void* bigbuf = recvbuf;
-
-    /* if i'm not rank 0, create a temporary buffer to gather child data */
-    if (cobo_me != 0) {
-        bigbuf = (void*) cobo_malloc(bigcount, "Temporary gather buffer in cobo_gather_tree");
-    }
-
-    /* copy my own data into buffer */
-    memcpy(bigbuf, sendbuf, sendcount);
-
-    /* if i have any children, receive their data */
-    int i;
-    int offset = sendcount;
-    for(i=cobo_num_child-1; i>=0; i--) {
-        if (cobo_read_fd(cobo_child_fd[i], (char*)bigbuf + offset, sendcount * cobo_child_incl[i]) < 0) {
-            err_printf("Gathering data from child (rank %d) failed\n",
-                       cobo_child[i]);
-            exit(1);
-        }
-        offset += sendcount * cobo_child_incl[i];
-    }
-
-    /* if i'm not rank 0, send to parent and free temporary buffer */
-    if (cobo_me != 0) {
-        if (cobo_write_fd(cobo_parent_fd, bigbuf, bigcount) < 0) {
-            err_printf("Sending gathered data to parent failed\n");
-            exit(1);
-        }
-        cobo_free(bigbuf);
-    }
-
-    return rc;
-}
-
-/* scatter sendcount byte chunks from sendbuf on rank 0 to recvbuf on each task */
-static int cobo_scatter_tree(void* sendbuf, int sendcount, void* recvbuf)
-{
-    int rc = COBO_SUCCESS;
-    int bigcount = (cobo_num_child_incl+1) * sendcount;
-    void* bigbuf = sendbuf;
-
-    /* if i'm not rank 0, create a temporary buffer to receive child data, and receive data from parent */
-    if (cobo_me != 0) {
-        bigbuf = (void*) cobo_malloc(bigcount, "Temporary scatter buffer in cobo_scatter_tree");
-        if (cobo_read_fd(cobo_parent_fd, bigbuf, bigcount) < 0) {
-            err_printf("Receiving scatter data from parent failed\n");
-            exit(1);
-        }
-    }
-
-    /* if i have any children, receive their data */
-    int i;
-    int offset = sendcount;
-    for(i=0; i<cobo_num_child; i++) {
-        if (cobo_write_fd(cobo_child_fd[i], (char*)bigbuf + offset, sendcount * cobo_child_incl[i]) < 0) {
-            err_printf("Scattering data to child (rank %d) failed\n",
-                       cobo_child[i]);
-            exit(1);
-        }
-        offset += sendcount * cobo_child_incl[i];
-    }
-
-    /* copy my data into buffer */
-    memcpy(recvbuf, bigbuf, sendcount);
-
-    /* if i'm not rank 0, free temporary buffer */
-    if (cobo_me != 0) {
-        cobo_free(bigbuf);
-    }
-
-    return rc;
-}
-
 int cobo_get_child_socket(int num, int *fd)
 {
    assert(num < cobo_num_child);
@@ -1264,172 +1181,6 @@ int cobo_bcast(void* buf, int sendcount, int root)
     cobo_gettimeofday(&end);
     debug_printf3("Exiting cobo_bcast(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
     return rc;
-}
-
-/*
- * Perform MPI-like Gather, each task writes sendcount bytes from sendbuf
- * then root receives N*sendcount bytes into recvbuf
- */
-int cobo_gather(void* sendbuf, int sendcount, void* recvbuf, int root)
-{
-    struct timeval start, end;
-    cobo_gettimeofday(&start);
-    debug_printf3("Starting cobo_gather()");
-
-    int rc = COBO_SUCCESS;
-
-    /* if root is rank 0 and gather tree is enabled, use it */
-    /* (this is a common case) */
-    if (root == 0) {
-        rc = cobo_gather_tree(sendbuf, sendcount, recvbuf);
-    } else {
-        err_printf("Cannot execute gather to non-zero root\n");
-        exit(1);
-    }
-
-    cobo_gettimeofday(&end);
-    debug_printf3("Exiting cobo_gather(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
-    return rc;
-}
-
-/*
- * Perform MPI-like Scatter, root writes N*sendcount bytes from sendbuf
- * then each task receives sendcount bytes into recvbuf
- */
-int cobo_scatter(void* sendbuf, int sendcount, void* recvbuf, int root)
-{
-    struct timeval start, end;
-    cobo_gettimeofday(&start);
-    debug_printf3("Starting cobo_scatter()");
-
-    int rc = COBO_SUCCESS;
-
-    /* if root is rank 0 and gather tree is enabled, use it */
-    /* (this is a common case) */
-    if (root == 0) {
-        rc = cobo_scatter_tree(sendbuf, sendcount, recvbuf);
-    } else {
-        err_printf("Cannot execute scatter from non-zero root\n");
-        exit(1);
-    }
-
-    cobo_gettimeofday(&end);
-    debug_printf3("Exiting cobo_scatter(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
-    return rc;
-}
-
-/*
- * Perform MPI-like Allgather, each task writes sendcount bytes from sendbuf
- * then receives N*sendcount bytes into recvbuf
- */
-int cobo_allgather(void* sendbuf, int sendcount, void* recvbuf)
-{
-    struct timeval start, end;
-    cobo_gettimeofday(&start);
-    debug_printf3("Starting cobo_allgather()");
-
-    /* gather data to rank 0 */
-    cobo_gather_tree(sendbuf, sendcount, recvbuf);
-
-    /* broadcast data from rank 0 */
-    cobo_bcast_tree(recvbuf, sendcount * cobo_nprocs);
-
-    cobo_gettimeofday(&end);
-    debug_printf3("Exiting cobo_allgather(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
-    return COBO_SUCCESS;
-}
-
-/*
- * Perform MPI-like Alltoall, each task writes N*sendcount bytes from sendbuf
- * then recieves N*sendcount bytes into recvbuf
- */
-int cobo_alltoall(void* sendbuf, int sendcount, void* recvbuf)
-{
-    struct timeval start, end;
-    cobo_gettimeofday(&start);
-    debug_printf3("Starting cobo_alltoall()");
-
-    int rc = COBO_SUCCESS;
-
-    err_printf("Cannot execute alltoall\n");
-    exit(1);
-
-    cobo_gettimeofday(&end);
-    debug_printf3("Exiting cobo_alltoall(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
-    return rc;
-}
-
-/*
- * Perform MPI-like Allreduce maximum of a single int from each task
- */
-static int cobo_allreduce_max_int(int* sendint, int* recvint)
-{
-    struct timeval start, end;
-    cobo_gettimeofday(&start);
-    debug_printf3("Starting cobo_allreducemaxint()");
-
-    /* compute allreduce via tree */
-    cobo_allreduce_max_int_tree(sendint, recvint);
-
-    cobo_gettimeofday(&end);
-    debug_printf3("Exiting cobo_allreducemaxint(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
-    return COBO_SUCCESS;
-}
-
-/*
- * Perform MPI-like Allgather of NULL-terminated strings (whose lengths may vary
- * from task to task).
- *
- * Each task provides a pointer to its NULL-terminated string as input.
- * Each task then receives an array of pointers to strings indexed by rank number
- * and also a pointer to the buffer holding the string data.
- * When done with the strings, both the array of string pointers and the
- * buffer should be freed.
- *
- * Example Usage:
- *   char host[256], **hosts, *buf;
- *   gethostname(host, sizeof(host));
- *   cobo_allgatherstr(host, &hosts, &buf);
- *   for(int i=0; i<nprocs; i++) { printf("rank %d runs on host %s\n", i, hosts[i]); }
- *   free(hosts);
- *   free(buf);
- */
-int cobo_allgather_str(char* sendstr, char*** recvstr, char** recvbuf)
-{
-    struct timeval start, end;
-    cobo_gettimeofday(&start);
-    debug_printf3("Starting cobo_allgatherstr()");
-
-    /* determine max length of send strings */
-    int mylen  = strlen(sendstr) + 1;
-    int maxlen = 0;
-    cobo_allreduce_max_int(&mylen, &maxlen);
-
-    /* pad my string to match max length */
-    char* mystr = (char*) cobo_malloc(maxlen, "Padded String");
-    memset(mystr, '\0', maxlen);
-    strcpy(mystr, sendstr);
-
-    /* allocate enough buffer space to receive a maxlen string from all tasks */
-    char* stringbuf = (char*) cobo_malloc(cobo_nprocs * maxlen, "String Buffer");
-
-    /* gather strings from everyone */
-    cobo_allgather((void*) mystr, maxlen, (void*) stringbuf);
-
-    /* set up array and free temporary maxlen string */
-    char** strings = (char **) cobo_malloc(cobo_nprocs * sizeof(char*), "Array of String Pointers");
-    int i;
-    for (i=0; i<cobo_nprocs; i++) {
-        strings[i] = stringbuf + i*maxlen;
-    }
-    cobo_free(mystr);
-
-    *recvstr = strings;
-    *recvbuf = stringbuf;
-
-    cobo_gettimeofday(&end);
-    debug_printf3("Exiting cobo_allgatherstr(), took %f seconds for %d procs\n", cobo_getsecs(&end,&start), cobo_nprocs);
-    return COBO_SUCCESS;
 }
 
 /* provide list of ports and number of ports as input, get number of tasks and my rank as output */
@@ -1636,4 +1387,175 @@ int cobo_server_close()
 void cobo_set_handshake(handshake_protocol_t *hs)
 {
    cobo_handshake = *hs;
+}
+
+static int get_random_int(int with_mod)
+{
+   int fd, result, error;
+   int randnum;
+
+   fd = open("/dev/random", O_RDONLY);
+   if (fd == -1) {
+      error = errno;
+      err_printf("Could not open /dev/random: %s\n", strerror(error));
+      return -1;
+   }
+
+   result = read_n_bytes("/dev/random", fd, &randnum, sizeof(randnum));
+   if (result == -1) {
+      close(fd);
+      return -1;
+   }
+
+   close(fd);
+   if (with_mod)
+      return randnum % with_mod;
+   else
+      return randnum;
+
+}
+
+static int select_random_parent_rank(int *ranks_to_avoid)
+{
+   int new_parent, i;
+   int attempts, num_attempts = 10;
+
+   for (attempts = 0; attempts < num_attempts; attempts++) {
+      //Make sure parent is always a smaller rank than me. This prevents cycles.
+      new_parent = get_random_int(cobo_me);
+      if (new_parent == -1) {
+         err_printf("Could not pick random number for new parent rank\n");
+         return -1;
+      }
+
+      for (i = 0; ranks_to_avoid[i] != -1 && new_parent != ranks_to_avoid[i]; i++);
+      if (new_parent == ranks_to_avoid[i]) {
+         debug_printf3("During new parent selection picked random parent %d from ranks_to_avoid list\n", new_parent);
+         continue;
+      }
+      //TODO track dead ranks
+      return new_parent;
+   }
+   
+   err_printf("Could not find a random parent within %d attempts\n", num_attempts);
+   return -1;
+}
+
+#define NEW_PARENT_RETRIES 8
+int cobo_establish_new_parent()
+{
+   int new_parent, new_parent_fd, old_parent;
+   int i, cur = 0, result;
+   char *hostname;
+   int ranks_to_avoid[NEW_PARENT_RETRIES + 3];
+   int retries = NEW_PARENT_RETRIES;
+
+   close(cobo_parent_fd);
+   old_parent = cobo_parent;
+   for (i = 0; i < NEW_PARENT_RETRIES + 3; i++) ranks_to_avoid[i] = -1;
+   ranks_to_avoid[cur++] = cobo_me;
+   ranks_to_avoid[cur++] = old_parent;
+
+  again:
+   {
+      new_parent = select_random_parent_rank(ranks_to_avoid);
+      if (new_parent == -1) {
+         err_printf("Aborting attempt to find new parent\n");
+         return -1;
+      }
+
+      hostname = cobo_expand_hostname(new_parent);
+
+      debug_printf3("Attempting new parent connection to rank %d/host %s from rank %d\n",
+                    new_parent, hostname, cobo_me);
+      new_parent_fd = cobo_connect_hostname(hostname, new_parent);
+      if (new_parent_fd == -1) {
+         debug_printf3("Tried and failed to connect to rank %d on %s\n", new_parent, hostname);
+         free(hostname);
+         if (--retries <= 0) {
+            err_printf("Failed to connect too many (%d) times. Aborting\n", NEW_PARENT_RETRIES);
+            return -1;
+         }
+         assert(cur < sizeof(ranks_to_avoid)/sizeof(ranks_to_avoid[0]));
+         ranks_to_avoid[cur++] = new_parent;
+         goto again;
+      }
+   }
+
+   cobo_parent = new_parent;
+   cobo_parent_fd = new_parent_fd;
+
+   result = cobo_write_fd(cobo_parent_fd, &cobo_newchild_id, sizeof(cobo_newchild_id));
+   if (result == -1) {
+      err_printf("Failed to write cobo_newchild_id to parent\n");
+      close(cobo_parent_fd);
+      cobo_parent = cobo_parent_fd = -1;
+      return -1;
+   }
+   result = cobo_write_fd(cobo_parent_fd, &cobo_me, sizeof(cobo_me));
+   if (result == -1) {
+      err_printf("Failed to write my rank to new parent\n");
+      close(cobo_parent_fd);
+      cobo_parent = cobo_parent_fd = -1;      
+      return -1;
+   }
+   debug_printf3("Connection to %s as new parent successful\n", hostname);
+   return cobo_parent_fd;
+}
+
+int cobo_accept_new_child()
+{
+   int result;
+   int new_child_rank, new_child_fd;
+   unsigned int newchild_id;
+   
+   int reply_timeout = cobo_connect_timeout * 100;
+   
+   new_child_fd = accept_connection_and_handshake(reply_timeout);
+   if (new_child_fd == ACCEPT_AND_HANDSHAKE_AGAIN) {
+      debug_printf3("Soft error on child attempting to connect\n");
+      return NC_SOFT_ERROR;
+   }
+   if (new_child_fd == ACCEPT_AND_HANDSHAKE_ERROR) {
+      err_printf("Error during new child connection attempt\n");
+      return NC_ERROR;
+   }   
+
+   result = cobo_read_fd_w_timeout(new_child_fd, &newchild_id, sizeof(newchild_id), reply_timeout);
+   if (result == -1) {
+      err_printf("Failure communicating new child id\n");
+      close(new_child_fd);
+      return NC_SOFT_ERROR;
+   }
+   if (newchild_id != cobo_newchild_id) {
+      err_printf("New child provided incorrect id = %ud (%x)\n", newchild_id, cobo_newchild_id);
+      close(new_child_fd);
+      return NC_SOFT_ERROR;
+   }
+   
+   result = cobo_read_fd_w_timeout(new_child_fd, &new_child_rank, sizeof(new_child_rank), reply_timeout);
+   if (result == -1) {
+      err_printf("Failure communicating with new child. Dropping them.\n");
+      close(new_child_fd);
+      return NC_ERROR;
+   }
+   if (new_child_rank < 0 || new_child_rank >= cobo_nprocs) {
+      err_printf("Recvd junk child rank from new child: %d. Dropping them.\n", new_child_rank);
+      close(new_child_fd);
+      return NC_ERROR;      
+   }
+   
+   if (cobo_num_child == cobo_max_children) {
+      cobo_max_children *= 2;
+      cobo_child = (int*) realloc(cobo_child, cobo_max_children * sizeof(int));
+      cobo_child_fd = (int*) realloc(cobo_child_fd, cobo_max_children * sizeof(int));
+   }
+   cobo_child[cobo_num_child] = new_child_rank;
+   cobo_child_fd[cobo_num_child] = new_child_fd;
+   return new_child_fd;
+}
+
+int cobo_get_new_connection_socket()
+{
+   return cobo_incoming_sockfd;
 }

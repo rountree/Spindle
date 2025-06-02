@@ -55,6 +55,8 @@ typedef void* node_peer_t;
 #define NODE_PEER_CLIENT ((node_peer_t) 1)
 #define NODE_PEER_ALL ((node_peer_t) 2)
 #define NODE_PEER_NULL NULL
+#define NODE_PEER_ERROR NULL
+#define NODE_PEER_SOFTERROR ((node_peer_t) 3)
 
 /* Any initialization can be done here. */
 int ldcs_audit_server_md_init(unsigned int port, unsigned int num_ports, unique_id_t unique_id, ldcs_process_data_t *data);
@@ -107,6 +109,16 @@ int ldcs_audit_server_md_broadcast_noncontig(ldcs_process_data_t *ldcs_process_d
 int ldcs_audit_server_md_get_num_children(ldcs_process_data_t *procdata);
 
 int ldcs_audit_server_md_is_parent(node_peer_t peer);
+
+/* Accepts a new connection from a child, which was likely orphanes by node failure.
+   Returns a hard or soft error, or the new child rank on success */
+node_peer_t ldcs_audit_server_md_handle_new_child_connection(ldcs_process_data_t *procdata);
+
+/* Our parent has disappeared, perhaps through node failure. Look for a new parent. */
+node_peer_t ldcs_audit_server_md_establish_new_parent(ldcs_process_data_t *procdata);
+
+/* Child exited. Handle it */
+int ldcs_audit_server_md_handle_child_exit(ldcs_process_data_t *procdata, node_peer_t peer);
    
 #if defined(__cplusplus)
 }

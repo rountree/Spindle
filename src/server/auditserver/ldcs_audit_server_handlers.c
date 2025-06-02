@@ -40,6 +40,8 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "parse_mounts.h"
 #include "exitnote.h"
 
+#define SPINDLE_ENABLE_RELIABILITY 1
+
 /** 
  * This file contains the "brains" of Spindle.  It's public interface,
  * declared in the handlers header, is invoked when a packet is received
@@ -178,6 +180,8 @@ static int handle_setup_alias(ldcs_process_data_t *procdata, char *pathname, cha
 static int handle_client_dirlists_req(ldcs_process_data_t *procdata, int nc);
 static int handle_close_client_query(ldcs_process_data_t *procdata, int nc);
 static int handle_alive_msg(ldcs_process_data_t *procdata, ldcs_message_t *msg);
+static int handle_establish_new_parent(ldcs_process_data_t *procdata);
+static int handle_server_child_exit(ldcs_process_data_t *procdata, node_peer_t child);
 
 /**
  * Query from client to server.  Returns info about client's rank in server data structures. 
@@ -347,7 +351,14 @@ static int handle_client_file_request(ldcs_process_data_t *procdata, int nc, ldc
             client->query_dirname, client->query_filename);
    GCC7_ENABLE_WARNING;
    GCC7_ENABLE_WARNING;
-   
+
+   if (procdata->reliability_test &&
+       strcmp(client->query_filename, "libtrigger_spindle_server_exit_8WgNSgb0.so") == 0)
+   {
+      debug_printf("Running spindle reliability test. Simulating node failure by hard exiting server\n");
+      _exit(-1);
+   }
+      
    client->query_localpath = NULL;
    
    client->query_open = 1;
@@ -1924,10 +1935,20 @@ static int handle_msgbundle(ldcs_process_data_t *procdata, node_peer_t peer, ldc
  **/
 int handle_server_error(ldcs_process_data_t *procdata, node_peer_t peer)
 {
-   if (ldcs_audit_server_md_is_parent(peer))
+   int do_recovery = SPINDLE_ENABLE_RELIABILITY;
+   
+   if (ldcs_audit_server_md_is_parent(peer)) {
       procdata->num_exited_parents++;
-   else
+      if (!do_recovery)
+         return 0;
+      return handle_establish_new_parent(procdata);
+   }
+   else {
       procdata->num_exited_children_peers++;
+      if (!do_recovery)
+         return 0;
+      return handle_server_child_exit(procdata, peer);
+   }
    return 0;
 }
 
@@ -3163,4 +3184,55 @@ int set_exit_on_client_close(ldcs_process_data_t *procdata)
       return -1;
    }
    return 0;
+}
+
+/**
+ * A new child is knocking on our door. This likely comes from an orphaned node after
+ * a node failure.
+ **/
+int handle_server_newconnection(ldcs_process_data_t *procdata)
+{
+   node_peer_t newchild;
+   
+   debug_printf2("A new connection has been requested\n");
+
+   newchild = ldcs_audit_server_md_handle_new_child_connection(procdata);
+   if (newchild == NODE_PEER_ERROR) {
+      err_printf("Failure accepting new connection from client\n");
+      return 0;
+   }
+   if (newchild == NODE_PEER_SOFTERROR) {
+      debug_printf2("Dropping new connection\n");
+      return 0;
+   }
+   
+   return 0;
+}
+
+/**
+ * We've lost our parent process, perhaps to node failure. Find and establish a connection
+ * to a new parent
+ **/
+static int handle_establish_new_parent(ldcs_process_data_t *procdata)
+{
+   node_peer_t peer;
+
+   debug_printf2("Looking for new parent after connection failure\n");
+
+   peer = ldcs_audit_server_md_establish_new_parent(procdata);
+   if (peer == NODE_PEER_ERROR) {
+      err_printf("Failed to establish new parent.\n");
+      return -1;
+   }
+
+   return 0;
+}
+
+/**
+ * A child has exited and we're doing resliancy recovery. 
+ **/
+static int handle_server_child_exit(ldcs_process_data_t *procdata, node_peer_t child)
+{
+   debug_printf2("Child server exited. Handling it\n");
+   return ldcs_audit_server_md_handle_child_exit(procdata, child);
 }

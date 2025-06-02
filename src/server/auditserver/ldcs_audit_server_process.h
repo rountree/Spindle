@@ -143,6 +143,7 @@ struct ldcs_process_data_struct
   int num_exited_children_peers;
   int num_exited_parents;
   int num_alives;
+  int reliability_test;
   opt_t opts;
   requestor_list_t dso_requests;
   requestor_list_t file_requests;   

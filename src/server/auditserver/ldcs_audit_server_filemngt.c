@@ -613,7 +613,7 @@ static int filemngt_ldso_elfX(unsigned char *base, ldso_info_t *ldsoinfo) \
                }                                                        \
             }                                                           \
          }                                                              \
-         if (!errno_offset) {                                          \
+         if (!errno_offset) {                                           \
             for (k = 0; errno_names[k]; k++) {                          \
                if (strcmp(name, errno_names[k]) == 0) {                 \
                   errno_offset = cur->st_value;                         \

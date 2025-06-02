@@ -6,7 +6,13 @@ if [ "x$LD_LIBRARY_PATH" != "x" ] ; then
 else
     export LD_LIBRARY_PATH=`pwd`
 fi
-export SPINDLE_TEST=1
+
+if  [ $1 == --reliability ] ; then
+    export SPINDLE_TEST=TEST_RELIABILITY
+else
+    export SPINDLE_TEST=1
+fi
+
 export SPINDLE=SPINDLE_EXEC
 export PATH=$PATH:.
 

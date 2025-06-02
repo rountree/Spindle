@@ -22,6 +22,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 int handle_server_message(ldcs_process_data_t *procdata, node_peer_t peer, ldcs_message_t *msg);
 int handle_server_error(ldcs_process_data_t *procdata, node_peer_t peer);
+int handle_server_newconnection(ldcs_process_data_t *procdata);
 int handle_client_message(ldcs_process_data_t *procdata, int nc, ldcs_message_t *msg);
 int handle_client_start(ldcs_process_data_t *procdata, int nc);
 int handle_client_end(ldcs_process_data_t *procdata, int nc);

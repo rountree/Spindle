@@ -75,7 +75,11 @@ int handle_stat(const char *path, struct stat *buf, int flags)
       debug_printf3("Allowing original stat on %s\n", path);
       return ORIG_STAT;
    }
-   if (result == -1) {
+   else if (result == DISCONNECT) {
+      debug_printf3("Disconnected. Using riginal stat on %s\n", path);
+      return ORIG_STAT;
+   }
+   else if (result == -1) {
       /* Spindle level error */
       debug_printf3("Allowing original stat on %s\n", path);
       return ORIG_STAT;

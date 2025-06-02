@@ -50,11 +50,6 @@ extern "C" {
 #define cobo_get_parent_socket COMBINE(COBO_NAMESPACE, cobo_get_parent_socket)
 #define cobo_barrier COMBINE(COBO_NAMESPACE, cobo_barrier)
 #define cobo_bcast COMBINE(COBO_NAMESPACE, cobo_bcast)
-#define cobo_gather COMBINE(COBO_NAMESPACE, cobo_gather)
-#define cobo_scatter COMBINE(COBO_NAMESPACE, cobo_scatter)
-#define cobo_allgather COMBINE(COBO_NAMESPACE, cobo_allgather)
-#define cobo_alltoall  COMBINE(COBO_NAMESPACE, cobo_alltoall )
-#define cobo_allgather_str COMBINE(COBO_NAMESPACE, cobo_allgather_str)
 #define cobo_server_open COMBINE(COBO_NAMESPACE, cobo_server_open)
 #define cobo_server_close COMBINE(COBO_NAMESPACE, cobo_server_close)
 #define cobo_server_get_root_socket COMBINE(COBO_NAMESPACE, cobo_server_get_root_socket)
@@ -86,6 +81,7 @@ int cobo_close();
  * communication tree, but the downside is that it exposes the implementation
  * and forces sockets */
 int cobo_get_parent_socket(int* fd);
+int cobo_get_parent_rank();
 
 /* sync point, no task makes it past until all have reached */
 int cobo_barrier();
@@ -95,38 +91,6 @@ int cobo_bcast    (void* buf, int sendcount, int root);
 
 /* like bcast, but every task takes a message rather than receives one */
 int cobo_bcast_down(void *buf, int sendcount);
-
-/* each task sends sendcount bytes from buf, root receives N*sendcount bytes into recvbuf */
-int cobo_gather   (void* sendbuf, int sendcount, void* recvbuf, int root);
-
-/* root sends blocks of sendcount bytes to each task indexed from sendbuf */
-int cobo_scatter  (void* sendbuf, int sendcount, void* recvbuf, int root);
-
-/* each task sends sendcount bytes from sendbuf and receives N*sendcount bytes into recvbuf */
-int cobo_allgather(void* sendbuf, int sendcount, void* recvbuf);
-
-/* each task sends N*sendcount bytes from sendbuf and receives N*sendcount bytes into recvbuf */
-int cobo_alltoall (void* sendbuf, int sendcount, void* recvbuf);
-   
-/*
- * Perform MPI-like Allgather of NULL-terminated strings (whose lengths may vary
- * from task to task).
- *
- * Each task provides a pointer to its NULL-terminated string as input.
- * Each task then receives an array of pointers to strings indexed by rank number
- * and also a pointer to the buffer holding the string data.
- * When done with the strings, both the array of string pointers and the
- * buffer should be freed.
- *
- * Example Usage:
- *   char host[256], **hosts, *buf;
- *   gethostname(host, sizeof(host));
- *   cobo_allgatherstr(host, &hosts, &buf);
- *   for(int i=0; i<nprocs; i++) { printf("rank %d runs on host %s\n", i, hosts[i]); }
- *   free(hosts);
- *   free(buf);
- */
-int cobo_allgather_str(char* sendstr, char*** recvstr, char** recvbuf);
 
 /*
  * ==========================================================================
@@ -162,6 +126,13 @@ int initialize_handshake_security(handshake_protocol_t *protocol);
 
 typedef int (*cobo_preconnect_cb_t)(const char *);
 void cobo_register_preconnect_cb(cobo_preconnect_cb_t f);
+
+#define NC_ERROR -1
+#define NC_SOFT_ERROR -2   
+int cobo_establish_new_parent();
+   
+int cobo_accept_new_child();
+int cobo_get_new_connection_socket();
    
 #if defined(__cplusplus)
 }
