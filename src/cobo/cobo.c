@@ -676,37 +676,76 @@ static char* cobo_expand_hostname(int rank)
 }
 
 /* given cobo_me and cobo_nprocs, fills in parent and children ranks -- currently implements a binomial tree */
-static int cobo_compute_children()
+static int cobo_compute_children(int rank, int* max_children, int* parent, int* num_child, int** child, int** child_fd)
 {
     /* compute the maximum number of children this task may have */
     int n = 1;
-    cobo_max_children = 0;
+    *max_children = 0;
     while (n < cobo_nprocs) {
         n <<= 1;
-        cobo_max_children++;
+        (*max_children)++;
     }
 
     /* prepare data structures to store our parent and children */
-    cobo_parent = 0;
-    cobo_num_child = 0;
-    cobo_child      = (int*) cobo_malloc(cobo_max_children * sizeof(int), "Child rank array");
-    cobo_child_fd    = (int*) cobo_malloc(cobo_max_children * sizeof(int), "Child socket fd array");
+    *parent = 0;
+    *num_child = 0;
+    *child      = (int*) cobo_malloc((*max_children) * sizeof(int), "Child rank array");
+    if (child_fd)
+       *child_fd    = (int*) cobo_malloc((*max_children) * sizeof(int), "Child socket fd array");
 
     /* find our parent rank and the ranks of our children */
     int low  = 0;
     int high = cobo_nprocs - 1;
     while (high - low > 0) {
         int mid = (high - low) / 2 + (high - low) % 2 + low;
-        if (low == cobo_me) {
-            cobo_child[cobo_num_child] = mid;
-            cobo_num_child++;
+        if (low == rank) {
+           (*child)[*num_child] = mid;
+           (*num_child)++;
         }
-        if (mid == cobo_me) { cobo_parent = low; }
-        if (mid <= cobo_me) { low  = mid; }
+        if (mid == rank) { *parent = low; }
+        if (mid <= rank) { low  = mid; }
         else                { high = mid-1; }
     }
 
     return COBO_SUCCESS;
+}
+
+static void print_cobo_layer(int spaces, int rank)
+{
+   int max_children, parent, num_child, *child, i;
+   char *str;
+   int pos = 0, strsize;
+
+   int offset = *((int*) (cobo_hostlist + rank * sizeof(int)));
+   char* hostname = (char*) (cobo_hostlist + offset);
+   
+
+   strsize = (spaces * 4) + 4 + 32 + 3 + strlen(hostname);
+   str = (char *) cobo_malloc(strsize, "print cobo");
+
+   cobo_compute_children(rank, &max_children, &parent, &num_child, &child, NULL);
+   
+   for (i = 0; i < spaces-1; i++) {
+      pos += snprintf(str+pos, strsize-pos, "|   ");
+   }
+   if (spaces) {
+      pos += snprintf(str+pos, strsize-pos, "|---");      
+   }
+   pos += snprintf(str+pos, strsize-pos, "%d (%s)\n", rank, hostname);
+   debug_printf3("%s", str);
+   cobo_free(str);
+   for (i = 0; i < num_child; i++) {
+      print_cobo_layer(spaces+1, child[i]);
+   }
+   cobo_free(child);
+}
+
+static void print_cobo_tree()
+{
+   if (spindle_debug_prints > 2) {
+      debug_printf3("Cobo tree layout:\n");
+      print_cobo_layer(0, 0);
+   }
 }
 
 #define ACCEPT_AND_HANDSHAKE_AGAIN -1
@@ -933,7 +972,8 @@ static int cobo_open_tree()
 */
 
     /* given our rank and the number of ranks, compute the ranks of our children */
-    cobo_compute_children();  
+    cobo_compute_children(cobo_me, &cobo_max_children, &cobo_parent, &cobo_num_child, &cobo_child, &cobo_child_fd);
+    print_cobo_tree();    
     /* cobo_compute_children_root_C1(); */
 
     char **child_names = (char **) malloc(sizeof(char *) * cobo_num_child);

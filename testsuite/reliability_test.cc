@@ -212,7 +212,9 @@ static bool loadFiles()
       fprintf(stderr, "Failed to fopen hello_rx.py\n");
       had_error = true;
    }
-   fclose(f);
+   else {
+      fclose(f);
+   }
    
    memset(linktarg, 0, sizeof(linktarg));
    result = readlink("hello_l.py", linktarg, sizeof(linktarg));
@@ -230,7 +232,7 @@ int main(int argc, char **argv)
    init(&argc, &argv);
    
    setupHosts();
-   printAllHosts();
+   //printAllHosts();
 
    if (shouldTerminate()) {
       dlopen("libtrigger_spindle_server_exit_8WgNSgb0.so", RTLD_NOW);

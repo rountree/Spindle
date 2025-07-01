@@ -33,6 +33,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <errno.h>
 #include <execinfo.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #if !defined(LIBEXEC)
 #error Expected to have LIBEXEC defined
@@ -74,8 +75,39 @@ void spawnLogDaemon(char *tempdir)
    if (result == 0) {
       result = fork();
       if (result == 0) {
-         char *params[7];
+         char *params[9];
+         params[0] = "/usr/bin/valgrind";
+         params[1] = "--tool=memcheck";
          int cur = 0;
+         {
+            int fd;
+            char fname[1024];
+            char pid[512];
+
+            snprintf(pid, 512, "%d", getpid());
+
+            memset(fname, 0, 1024);
+            gethostname(fname, 1024);
+            strcat(fname, ".");
+            strcat(fname, pid);
+            strcat(fname, ".log.out");
+            close(1);
+            fd = open(fname, O_WRONLY | O_CREAT, 0600);
+            assert(fd != -1);
+            dup2(fd, 1);
+
+            memset(fname, 0, 1024);
+            gethostname(fname, 1024);
+            strcat(fname, ".");
+            strcat(fname, pid);
+            strcat(fname, ".log.err");
+            close(2);
+            fd = open(fname, O_WRONLY | O_CREAT, 0600);
+            assert(fd != -1);
+            dup2(fd, 2);
+         }
+
+            
          params[cur++] = spindle_log_daemon_name;
          params[cur++] = tempdir;
          if (spindle_debug_prints) {
@@ -88,8 +120,8 @@ void spawnLogDaemon(char *tempdir)
          }
          params[cur++] = NULL;
          unsetenv("LD_AUDIT");
-         unsetenv("LD_PRELOAD");
-         execv(spindle_log_daemon_name, params);
+         unsetenv("LD_PRELOAD");         
+         execv(params[0], params);
          fprintf(stderr, "Error executing %s: %s\n", spindle_log_daemon_name, strerror(errno));
          exit(0);
       }

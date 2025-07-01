@@ -204,6 +204,8 @@ int ldcs_listen() {
       
          /* call callback function for all active fds */
          for(c = 0; c <ldcs_listen_data.item_table_size; c++) {
+            if (ldcs_listen_data.item_table[c].state != LDCS_LISTEN_STATUS_ACTIVE)
+               continue;
             fd = ldcs_listen_data.item_table[c].fd;
             in_read = FD_ISSET(fd, &rd) && ldcs_listen_data.item_table[c].fdtype == LISTEN_READ;
             in_err = FD_ISSET(fd, &er) && ldcs_listen_data.item_table[c].fdtype == LISTEN_ERROR;

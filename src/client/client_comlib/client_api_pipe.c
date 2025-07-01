@@ -80,7 +80,7 @@ static int write_pipe(int fd, const void *data, int bytes)
         if (retries-- > 0)
            continue;
         else {
-           err_printf("Error writing to pipe: zero ret\n");
+           err_printf("Error writing to pipe %d: zero ret\n", fd);
            return -1;
         }
      }     
@@ -112,7 +112,7 @@ static int read_pipe(int fd, void *data, int bytes)
          if (retries-- > 0)
             continue;
          else {
-            err_printf("Error reading from pipe: zero ret\n");
+            err_printf("Error reading from pipe fd %d: zero ret\n", fd);
             return -1;
          }
       }
@@ -336,6 +336,11 @@ int client_send_msg_pipe(int fd, ldcs_message_t *msg) {
 
    int result;
 
+   if (fd == -1) {
+      err_printf("Tried to send message on close fd -1\n");
+      return -1;
+   }
+   
    assert(fd >= 0 && fd < MAX_FD);
    
    debug_printf3("sending message of size len=%d\n", msg->header.len);
@@ -357,6 +362,11 @@ int client_send_msg_pipe(int fd, ldcs_message_t *msg) {
 static int client_recv_msg_pipe(int fd, ldcs_message_t *msg, ldcs_read_block_t block, int is_dynamic)
 {
    int result;
+   if (fd == -1) {
+      err_printf("Tried to recv message on close fd -1\n");
+      return -1;
+   }
+
    msg->header.type=LDCS_MSG_UNKNOWN;
    msg->header.len=0;
 
@@ -395,12 +405,16 @@ int client_recv_msg_static_pipe(int fd, ldcs_message_t *msg, ldcs_read_block_t b
 
 int is_client_fd(int connfd, int fd)
 {
+   if (connfd == -1)
+      return 0;
    return (fdlist_pipe[connfd].in_fd == fd || fdlist_pipe[connfd].out_fd == fd);
 }
 
 int client_close_connection_pipe(int fd)
 {
    int result;
+   if (fd == -1)
+      return 0;
 
    assert(fd >= 0 && fd < MAX_FD);
 
