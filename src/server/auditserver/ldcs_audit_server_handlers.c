@@ -185,12 +185,7 @@ static int handle_alive_msg(ldcs_process_data_t *procdata, ldcs_message_t *msg);
 static int handle_client_info_msg(ldcs_process_data_t *procdata, int nc, ldcs_message_t *msg)
 {
    ldcs_client_t *client = procdata->client_table + nc;
-   if(msg->header.type == LDCS_MSG_CWD) {
-      strncpy(client->remote_cwd, msg->data, sizeof(client->remote_cwd)-1);
-      client->remote_cwd[sizeof(client->remote_cwd)-1] = '\0';
-      debug_printf2("Server recvd CWD %s from %d\n", msg->data, nc);
-   } 
-   else if(msg->header.type == LDCS_MSG_PID) {
+   if(msg->header.type == LDCS_MSG_PID) {
       int mypid;
       sscanf(msg->data,"%d",&mypid);
       client->remote_pid=mypid;
@@ -1861,7 +1856,6 @@ int handle_send_msg_to_keys(ldcs_process_data_t *procdata, ldcs_message_t *msg, 
 int handle_client_message(ldcs_process_data_t *procdata, int nc, ldcs_message_t *msg)
 {
    switch (msg->header.type) {
-      case LDCS_MSG_CWD:
       case LDCS_MSG_PID:
       case LDCS_MSG_LOCATION:
       case LDCS_MSG_CPU:

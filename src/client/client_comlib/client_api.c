@@ -239,37 +239,6 @@ int send_dirlists_request(int fd, char **local_result, char **exece_result, char
    return 0;
 }
 
-int send_dir_cwd(int fd, char *cwd)
-{
-   ldcs_message_t message;
-
-   message.header.type = LDCS_MSG_CWD;
-   message.header.len = strlen(cwd) + 1;
-   message.data = cwd;
-
-   COMM_LOCK;
-
-   client_send_msg(fd, &message);
-
-   COMM_UNLOCK;
-
-   return 0;
-}
-
-int send_cwd(int fd)
-{
-   char buffer[MAX_PATH_LEN+1];
-   buffer[MAX_PATH_LEN] = '\0';
-
-   if (!getcwd(buffer, MAX_PATH_LEN)) {
-      return -1;
-   }
-
-   send_dir_cwd(fd, buffer);
-
-   return 0;
-}
-
 int send_pid(int fd) {
    ldcs_message_t message;
    char buffer[16];

@@ -49,7 +49,6 @@ char* _message_type_to_str (ldcs_message_ids_t type) {
       STR_CASE(LDCS_MSG_ORIGPATH_QUERY);
       STR_CASE(LDCS_MSG_ORIGPATH_ANSWER);
       STR_CASE(LDCS_MSG_END);
-      STR_CASE(LDCS_MSG_CWD);
       STR_CASE(LDCS_MSG_PID);
       STR_CASE(LDCS_MSG_LOCATION);
       STR_CASE(LDCS_MSG_CPU);      
