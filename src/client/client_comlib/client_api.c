@@ -281,24 +281,6 @@ int send_cpu(int fd, int cpu) {
    return(rc);
 }
 
-int send_location(int fd, char *location) {
-   ldcs_message_t message;
-
-   message.header.type = LDCS_MSG_LOCATION;
-   message.header.len = strlen(location)+1;
-   message.data = location;
-
-   debug_printf3("Sending location\n");
-
-   COMM_LOCK;
-
-   client_send_msg(fd,&message);
-
-   COMM_UNLOCK;
-
-   return 0;
-}
-
 int send_ldso_info_request(int fd, const char *ldso_path, char *result_path)
 {
    ldcs_message_t message;

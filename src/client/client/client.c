@@ -258,7 +258,6 @@ static int init_server_connection()
          return -1;
 
       send_pid(ldcsid);
-      send_location(ldcsid, location);
       send_rankinfo_query(ldcsid, rankinfo+0, rankinfo+1, rankinfo+2, rankinfo+3);
 #if defined(LIBNUMA)      
       if (opts & OPT_NUMA)

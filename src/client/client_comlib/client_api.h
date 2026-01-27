@@ -29,7 +29,6 @@
 int send_file_query(int fd, char* path, int dso, char **newpath, int *errcode);
 int send_pid(int fd);
 int send_cpu(int fd, int cpu);
-int send_location(int fd, char *location);
 int send_rankinfo_query(int fd, int *mylrank, int *mylsize, int *mymdrank, int *mymdsize);
 int send_end(int fd);
 int send_existance_test(int fd, char *path, int *exists);
