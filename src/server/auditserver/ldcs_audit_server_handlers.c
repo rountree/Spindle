@@ -312,7 +312,7 @@ static int handle_client_file_request(ldcs_process_data_t *procdata, int nc, ldc
    is_stat = (msg->header.type == LDCS_MSG_STAT_QUERY) || (msg->header.type == LDCS_MSG_LSTAT_QUERY);
    is_lstat = (msg->header.type == LDCS_MSG_LSTAT_QUERY);
    is_loader = (msg->header.type == LDCS_MSG_LOADER_DATA_REQ);
-   is_dso = (msg->header.type == LDCS_MSG_DSO_QUERY || msg->header.type == LDCS_MSG_DSO_QUERY_EXACT_PATH);
+   is_dso = (msg->header.type == LDCS_MSG_DSO_QUERY_EXACT_PATH);
 
    /* check to see if pathname is a local name (possibly from fstat()) and switch to global name if needed */
    char *globalname = lookup_global_name(pathname);
@@ -1861,7 +1861,6 @@ int handle_client_message(ldcs_process_data_t *procdata, int nc, ldcs_message_t 
          return handle_client_dirlists_req(procdata, nc);
       case LDCS_MSG_FILE_QUERY:
       case LDCS_MSG_FILE_QUERY_EXACT_PATH:
-      case LDCS_MSG_DSO_QUERY:
       case LDCS_MSG_DSO_QUERY_EXACT_PATH:
       case LDCS_MSG_STAT_QUERY:
       case LDCS_MSG_LSTAT_QUERY:

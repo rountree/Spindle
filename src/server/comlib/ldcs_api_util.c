@@ -31,7 +31,6 @@ char* _message_type_to_str (ldcs_message_ids_t type) {
    switch (type) {
       STR_CASE(LDCS_MSG_FILE_QUERY);
       STR_CASE(LDCS_MSG_FILE_QUERY_EXACT_PATH);
-      STR_CASE(LDCS_MSG_DSO_QUERY);
       STR_CASE(LDCS_MSG_DSO_QUERY_EXACT_PATH);      
       STR_CASE(LDCS_MSG_FILE_QUERY_ANSWER);
       STR_CASE(LDCS_MSG_FILE_REQUEST);
