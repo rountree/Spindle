@@ -301,10 +301,8 @@ int isFEHost(char **hostlist, unsigned int num_hosts)
 static char* locSpecificDir(spindle_args_t *params) 
 {
    char *dir = NULL, *expanded_dir = NULL, *realized_dir = NULL;
-   char hostname[256], session_id_str[32];
-   size_t unique_file_len;
-
-   dir = params->location;
+   
+   dir = params->commpath;
    if (!dir) {
       sdprintf(1, "ERROR: Location not filled in\n");
       goto done;
@@ -858,7 +856,7 @@ int registerFEPid(pid_t pid, spindle_args_t *args)
    int fd;
    int result;
 
-   snprintf(pid_file, sizeof(pid_file), "%s/fepid", args->location);
+   snprintf(pid_file, sizeof(pid_file), "%s/fepid", args->commpath);
    pid_file[sizeof(pid_file)-1] = '\0';
 
    snprintf(pid_s, sizeof(pid_s), "%d\n", (int) pid);
@@ -889,7 +887,7 @@ int readFEPid(pid_t *pid, spindle_args_t *args)
    pid_t pid_result;
    int fd, result;
 
-   snprintf(pid_file, sizeof(pid_file), "%s/fepid", args->location);
+   snprintf(pid_file, sizeof(pid_file), "%s/fepid", args->commpath);
    pid_file[sizeof(pid_file)-1] = '\0';
 
    sdprintf(2, "Reading FE pid from %s\n", pid_file);
