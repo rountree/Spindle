@@ -1,0 +1,88 @@
+# This is based on the Flux Container Tutorial
+# See https://flux-framework.readthedocs.io/en/latest/tutorials/containers
+ARG flux_sched_version=noble
+FROM fluxrm/flux-sched:${flux_sched_version} AS builder
+ARG replicas=4
+ENV workers=${replicas}
+USER root
+
+RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
+    && apt-get -qq install -y --no-install-recommends \
+        autotools-dev \
+        autoconf \
+        automake \
+        cmake \
+        git \
+        python3 \
+        openssh-server \
+        openssh-client \
+        libdb-dev \
+        apt-utils \
+        dnsutils \
+        iputils-ping \
+        python3-pip \
+        libgcrypt20 \
+        libgcrypt20-dev \
+        gdb \
+        software-properties-common
+
+ARG USER=fluxuser
+ARG CONFIG_ROOT=containers/spindle-flux-ubuntu
+
+# Allow fluxuser to run as other users so it can start munged
+RUN sh -c "printf \"${USER} ALL=(ALL) NOPASSWD: ALL\\n\" >> /etc/sudoers"
+
+# Configure flux
+ENV STATE_DIR=/var/lib/flux
+
+RUN mkdir -p ${STATE_DIR}
+RUN mkdir -p /etc/flux/system
+RUN mkdir -p /etc/flux/system/cron.d
+RUN mkdir -p /etc/flux/config
+RUN mkdir -p /run/flux
+RUN mkdir -p /etc/flux/imp/conf.d
+RUN mkdir -p /etc/flux/system/cron.d
+RUN mkdir -p /mnt/curve
+
+RUN flux keygen /mnt/curve/curve.cert
+RUN flux R encode --hosts="node-[1-${workers}]" > /etc/flux/system/R
+
+COPY ${CONFIG_ROOT}/flux/imp.toml    /etc/flux/imp/conf.d/
+COPY ${CONFIG_ROOT}/flux/broker.toml /etc/flux/config/
+
+RUN chown -R ${USER}:${USER} ${STATE_DIR}
+RUN chown -R ${USER}:${USER} /mnt/curve/curve.cert
+RUN chown -R ${USER}:${USER} /run/flux
+RUN chown -R ${USER}:${USER} /etc/flux
+
+# Build Spindle
+WORKDIR /home/${USER}
+
+# Copy the whole git repo into the container.
+COPY . /home/${USER}/Spindle
+COPY ${CONFIG_ROOT}/scripts/build_spindle.sh /home/${USER}/build_spindle.sh
+
+RUN ./build_spindle.sh
+
+# Copy useful scripts to the top level and make them runnable.
+COPY --chmod=755 ${CONFIG_ROOT}/scripts/flux_healthcheck.sh /home/${USER}
+COPY --chmod=755 ${CONFIG_ROOT}/scripts/entrypoint.sh /home/${USER}
+
+RUN chown -R ${USER}:${USER} /home/fluxuser && \
+    chown -R ${USER}:${USER} /run/flux      && \
+    chown    ${USER}:${USER} /home/${USER}/flux_healthcheck.sh /home/${USER}/entrypoint.sh
+
+# Switch from root to fluxuser
+USER ${USER}
+ENV PATH /home/${USER}/Spindle-inst/bin:${PATH}
+
+# Make libfabric work with fork.
+ENV RDMAV_FORK_SAFE 1
+
+# Silence warning from hwloc about unsupported PCI device
+# on GitHub-hosted runners.
+ENV HWLOC_HIDE_ERRORS 2
+
+# ${USER} isn't evaluated correctly here.
+ENTRYPOINT /bin/bash /home/fluxuser/entrypoint.sh
+
