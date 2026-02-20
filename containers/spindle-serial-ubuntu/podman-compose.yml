@@ -1,0 +1,16 @@
+services:
+  spindlenode:
+    # The build context is set to ../.. so that we can copy
+    # the Spindle directory into the created image.
+    # Because we set the context, we then have to specify
+    # the path from the context to the Dockerfile.
+    build:
+      context: ../..
+      dockerfile: containers/spindle-serial-ubuntu/Podmanfile
+    hostname: spindlenode
+    container_name: spindlenode
+    tty: true
+    # The NUMA tests require CAP_SYS_NICE.
+    cap_add:
+      - SYS_NICE
+
