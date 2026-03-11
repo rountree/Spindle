@@ -17,6 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+################################################################################
+# spindle-serial-ubuntu
+################################################################################
   spindle-serial-ubuntu:
     name: Testsuite (Serial, Ubuntu)
     environment: Spindle CI
@@ -47,15 +50,53 @@ jobs:
         id: serial-ubuntu-munge
         run: |
           docker exec spindlenode bash -c 'munge -n | unmunge'
-      - name: Run spindle-serial-ubuntu testsuite
-        timeout-minutes: 14
+
+# SPINDLE_DEBUG=3
+      - name: Run spindle-serial-ubuntu testsuite SPINDLE_DEBUG=3
+        timeout-minutes: 5
         id: serial-ubuntu-testsuite
+        if: ${{ success() }}
         run: |
           docker exec spindlenode bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=3 ./runTests'
 
+      - name: If successful, remove log files
+        id: serial-ubuntu-remove-logs-debug3
+        if: ${{ success() }}
+        run: |
+          docker exec spindlenode bash -c 'rm -f /home/spindleuser/Spindle-build/testsuite/spindle_output*'
+
+# SPINDLE_DEBUG=2
+      - name: Run spindle-serial-ubuntu testsuite SPINDLE_DEBUG=2
+        timeout-minutes: 5
+        id: serial-ubuntu-testsuite
+        if: ${{ success() }}
+        run: |
+          docker exec spindlenode bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=2 ./runTests'
+
+      - name: If successful, remove log files
+        id: serial-ubuntu-remove-logs-debug2
+        if: ${{ success() }}
+        run: |
+          docker exec spindlenode bash -c 'rm -f /home/spindleuser/Spindle-build/testsuite/spindle_output*'
+
+# SPINDLE_DEBUG=1
+      - name: Run spindle-serial-ubuntu testsuite SPINDLE_DEBUG=1
+        timeout-minutes: 5
+        id: serial-ubuntu-testsuite
+        if: ${{ success() }}
+        run: |
+          docker exec spindlenode bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=1 ./runTests'
+
+      - name: If successful, remove log files
+        id: serial-ubuntu-remove-logs-debug1
+        if: ${{ success() }}
+        run: |
+          docker exec spindlenode bash -c 'rm -f /home/spindleuser/Spindle-build/testsuite/spindle_output*'
+
+# After any failure up to this point, export the debug logs.
       - name: Pull logs out of the container(s)
         id: serial-ubuntu-copy-from-container
-        if: ${{ always() }}
+        if: ${{ failure() }}
         continue-on-error: true
         run: |
           docker exec spindlenode bash -c 'tar cjvf /home/spindleuser/ubuntu_serial_logs.tar.bz2 /home/spindleuser/Spindle-build/testsuite/spindle_output*'
@@ -63,11 +104,19 @@ jobs:
 
       - name: Upload ubuntu-serial logs
         id: serial-ubuntu-copy-to-artifact
-        if: ${{ always() }}
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: Ubuntu serial logs tarball
           path: ./ubuntu_serial_logs.tar.bz2
+
+# NO DEBUGGING (if it fails, there aren't any logs to recover)
+      - name: Run spindle-serial-ubuntu testsuite no debugging
+        timeout-minutes: 14
+        id: serial-ubuntu-testsuite
+        if: ${{ success() }}
+        run: |
+          docker exec spindlenode bash -c 'cd Spindle-build/testsuite && ./runTests'
 
       - name: Bring spindle-serial-ubuntu down
         id: serial-ubuntu-down
@@ -77,223 +126,434 @@ jobs:
           cd containers/spindle-serial-ubuntu
           docker compose down
 
-  spindle-flux-ubuntu:
-    name: Testsuite (Flux, Ubuntu)
+################################################################################
+# spindle-flux-ubuntu-debug3
+################################################################################
+  spindle-flux-ubuntu-debug3:
+    name: Testsuite (Flux, Ubuntu, SPINDLE_DEBUG=3)
     environment: Spindle CI
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out Spindle
+      - name: Check out Spindle (spindle-flux-ubuntu-debug3)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Docker Compose
+      - name: Setup Docker Compose (spindle-flux-ubuntu-debug3)
         uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
         with:
           version: latest
 
-      - name: Build spindle-flux-ubuntu image
-        id: flux-ubuntu-build
+      - name: Build spindle-flux-ubuntu-debug3 image
+        id: flux-ubuntu-debug3-build
         run: |
           cd containers/spindle-flux-ubuntu
           docker compose --progress=plain build
 
-      - name: Bring spindle-flux-ubuntu up
-        id: flux-ubuntu-up
+      - name: Bring spindle-flux-ubuntu-debug3 up
+        id: flux-ubuntu-debug3-up
         run: |
           cd containers/spindle-flux-ubuntu
           docker compose up -d --wait --wait-timeout 60
 
-      - name: Verify munge works in spindle-flux-ubuntu
-        id: flux-ubuntu-munge
+      - name: Verify munge works in spindle-flux-ubuntu-debug3
+        id: flux-ubuntu-debug3-munge
         run: |
           docker exec node-1 bash -c 'munge -n | unmunge'
 
       # Observed time:  5m 12s
-      - name: Run spindle-flux-ubuntu testsuite
+      - name: Run spindle-flux-ubuntu-debug3 testsuite
         timeout-minutes: 7
-        id: flux-ubuntu-testsuite
+        id: flux-ubuntu-debug3-testsuite
         run: |
           docker exec node-1 bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=3 flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3'
 
       # Observed time:  7m 51s
-      - name: Pull logs out of the container(s)
+      - name: Extract logs from spindle-flux-ubuntu-debug3
         timeout-minutes: 9
-        id: flux-ubuntu-copy-from-container
-        if: ${{ always() }}
+        id: flux-ubuntu-debug3-tar
+        if: ${{ failure() }}
         continue-on-error: true
         run: |
           docker exec node-1 bash -c 'ls /home/fluxuser/Spindle-build/testsuite/'
-          docker exec node-1 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_logs-1.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker exec node-1 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug3_logs-1.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
           docker cp node-1:/home/fluxuser/flux_ubuntu_logs-1.tar.bz2 .
-          docker exec node-2 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_logs-2.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker exec node-2 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug3_logs-2.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
           docker cp node-2:/home/fluxuser/flux_ubuntu_logs-2.tar.bz2 .
-          docker exec node-3 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_logs-3.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker exec node-3 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug3_logs-3.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
           docker cp node-3:/home/fluxuser/flux_ubuntu_logs-3.tar.bz2 .
-          docker exec node-4 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_logs-4.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker exec node-4 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug3_logs-4.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
           docker cp node-4:/home/fluxuser/flux_ubuntu_logs-4.tar.bz2 .
 
-      - name: Upload flux ubuntu logs
-        id: flux-ubuntu-copy-to-artifact
-        if: ${{ always() }}
+      - name: Upload spindle-flux-ubuntu-debug3 logs
+        id: flux-ubuntu-debug3-artifact
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: Ubuntu flux logs tarball
           path: |
-            ./flux_ubuntu_logs-1.tar.bz2
-            ./flux_ubuntu_logs-2.tar.bz2
-            ./flux_ubuntu_logs-3.tar.bz2
-            ./flux_ubuntu_logs-4.tar.bz2
+            ./flux_ubuntu_debug3_logs-1.tar.bz2
+            ./flux_ubuntu_debug3_logs-2.tar.bz2
+            ./flux_ubuntu_debug3_logs-3.tar.bz2
+            ./flux_ubuntu_debug3_logs-4.tar.bz2
 
-      - name: Bring spindle-flux-ubuntu down
-        id: flux-ubuntu-down
+      - name: spindle-flux-ubuntu-debug3 teardown container
+        id: flux-ubuntu-debug3-teardown
         if: ${{ always() }}
         continue-on-error: true
         run: |
           cd containers/spindle-flux-ubuntu
           docker compose down
 
-  spindle-slurm-ubuntu:
-    name: Testsuite (Slurm, Ubuntu)
+################################################################################
+# spindle-flux-ubuntu-debug2
+################################################################################
+  spindle-flux-ubuntu-debug2:
+    name: Testsuite (Flux, Ubuntu, SPINDLE_DEBUG=3)
     environment: Spindle CI
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out Spindle
+      - name: Check out Spindle (spindle-flux-ubuntu-debug2)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Docker Compose
+      - name: Setup Docker Compose (spindle-flux-ubuntu-debug2)
         uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
         with:
           version: latest
 
-      - name: Login to GitHub Container Registry
-        if: ${{ !env.ACT }}
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate MariaDB configuration
-        id: slurm-ubuntu-mariadb
+      - name: Build spindle-flux-ubuntu-debug2 image
+        id: flux-ubuntu-debug2-build
         run: |
-          cd containers/spindle-slurm-ubuntu/testing
-          ./generate_config.sh
-
-      - name: Build spindle-slurm-ubuntu image
-        id: slurm-ubuntu-build
-        run: |
-          cd containers/spindle-slurm-ubuntu/testing
+          cd containers/spindle-flux-ubuntu
           docker compose --progress=plain build
 
-      - name: Bring spindle-slurm-ubuntu up
-        id: slurm-ubuntu-up
+      - name: Bring spindle-flux-ubuntu-debug2 up
+        id: flux-ubuntu-debug2-up
         run: |
-          cd containers/spindle-slurm-ubuntu/testing
-          docker compose up -d --wait --wait-timeout 120
+          cd containers/spindle-flux-ubuntu
+          docker compose up -d --wait --wait-timeout 60
 
-      - name: Verify munge works in spindle-slurm-ubuntu
-        id: slurm-ubuntu-munge
+      - name: Verify munge works in spindle-flux-ubuntu-debug2
+        id: flux-ubuntu-debug2-munge
         run: |
-          docker exec slurm-head bash -c 'munge -n | unmunge'
+          docker exec node-1 bash -c 'munge -n | unmunge'
 
-      - name: Run spindle-slurm-ubuntu testsuite
-        timeout-minutes: 14
-        id: slurm-ubuntu-testsuite
+      # Observed time:  5m 12s
+      - name: Run spindle-flux-ubuntu-debug2 testsuite
+        timeout-minutes: 7
+        id: flux-ubuntu-debug2-testsuite
         run: |
-          docker exec slurm-head bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=3 salloc -n${workers} -N${workers} ./runTests ${workers}'
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=2 flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3'
 
-      - name: Pull logs out of the container(s)
-        id: slurm-ubuntu-copy-from-container
-        if: ${{ always() }}
+      # Observed time:  7m 51s
+      - name: Extract logs from spindle-flux-ubuntu-debug2
+        timeout-minutes: 9
+        id: flux-ubuntu-debug2-tar
+        if: ${{ failure() }}
         continue-on-error: true
         run: |
-          docker exec slurm-node-1 bash -c 'ls /home/slurmuser/Spindle-build/testsuite/'
-          docker exec slurm-node-1 bash -c 'tar cjvf /home/slurmuser/slurm_ubuntu_logs-1.tar.bz2 /home/slurmuser/Spindle-build/testsuite/spindle_output*'
-          docker cp slurm-node-1:/home/slurmuser/slurm_ubuntu_logs-1.tar.bz2 .
-          docker exec slurm-node-2 bash -c 'tar cjvf /home/slurmuser/slurm_ubuntu_logs-2.tar.bz2 /home/slurmuser/Spindle-build/testsuite/spindle_output*'
-          docker cp slurm-node-2:/home/slurmuser/slurm_ubuntu_logs-2.tar.bz2 .
-          docker exec slurm-node-3 bash -c 'tar cjvf /home/slurmuser/slurm_ubuntu_logs-3.tar.bz2 /home/slurmuser/Spindle-build/testsuite/spindle_output*'
-          docker cp slurm-node-3:/home/slurmuser/slurm_ubuntu_logs-3.tar.bz2 .
-          docker exec slurm-node-4 bash -c 'tar cjvf /home/slurmuser/slurm_ubuntu_logs-4.tar.bz2 /home/slurmuser/Spindle-build/testsuite/spindle_output*'
-          docker cp slurm-node-4:/home/slurmuser/slurm_ubuntu_logs-4.tar.bz2 .
+          docker exec node-1 bash -c 'ls /home/fluxuser/Spindle-build/testsuite/'
+          docker exec node-1 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug2_logs-1.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker cp node-1:/home/fluxuser/flux_ubuntu_logs-1.tar.bz2 .
+          docker exec node-2 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug2_logs-2.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker cp node-2:/home/fluxuser/flux_ubuntu_logs-2.tar.bz2 .
+          docker exec node-3 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug2_logs-3.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker cp node-3:/home/fluxuser/flux_ubuntu_logs-3.tar.bz2 .
+          docker exec node-4 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug2_logs-4.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker cp node-4:/home/fluxuser/flux_ubuntu_logs-4.tar.bz2 .
 
-      - name: Upload slurm ubuntu logs
-        id: slurm-ubuntu-copy-to-artifact
-        if: ${{ always() }}
+      - name: Upload spindle-flux-ubuntu-debug2 logs
+        id: flux-ubuntu-debug2-artifact
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Ubuntu slurm logs tarball
+          name: Ubuntu flux logs tarball
           path: |
-            ./slurm_ubuntu_logs-1.tar.bz2
-            ./slurm_ubuntu_logs-2.tar.bz2
-            ./slurm_ubuntu_logs-3.tar.bz2
-            ./slurm_ubuntu_logs-4.tar.bz2
+            ./flux_ubuntu_debug2_logs-1.tar.bz2
+            ./flux_ubuntu_debug2_logs-2.tar.bz2
+            ./flux_ubuntu_debug2_logs-3.tar.bz2
+            ./flux_ubuntu_debug2_logs-4.tar.bz2
 
-
-      - name: Bring spindle-slurm-ubuntu down
-        id: slurm-ubuntu-down
+      - name: spindle-flux-ubuntu-debug2 teardown container
+        id: flux-ubuntu-debug2-teardown
         if: ${{ always() }}
         continue-on-error: true
         run: |
-          cd containers/spindle-slurm-ubuntu/testing
+          cd containers/spindle-flux-ubuntu
           docker compose down
 
-  spindle-slurm-plugin-ubuntu:
-    name: Testsuite (Slurm Plugin, Ubuntu)
+################################################################################
+# spindle-flux-ubuntu-debug1
+################################################################################
+  spindle-flux-ubuntu-debug1:
+    name: Testsuite (Flux, Ubuntu, SPINDLE_DEBUG=3)
     environment: Spindle CI
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out Spindle
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - name: Check out Spindle (spindle-flux-ubuntu-debug1)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Docker Compose
+      - name: Setup Docker Compose (spindle-flux-ubuntu-debug1)
         uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
         with:
           version: latest
 
-      - name: Login to GitHub Container Registry
-        if: ${{ !env.ACT }}
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate MariaDB configuration
-        id: slurm-ubuntu-mariadb
+      - name: Build spindle-flux-ubuntu-debug1 image
+        id: flux-ubuntu-debug1-build
         run: |
-          cd containers/spindle-slurm-ubuntu/testing-plugin
-          ./generate_config.sh
-
-      - name: Build spindle-slurm-plugin-ubuntu image
-        id: slurm-ubuntu-build
-        run: |
-          cd containers/spindle-slurm-ubuntu/testing-plugin
+          cd containers/spindle-flux-ubuntu
           docker compose --progress=plain build
 
-      - name: Bring spindle-slurm-plugin-ubuntu up
-        id: slurm-ubuntu-up
+      - name: Bring spindle-flux-ubuntu-debug1 up
+        id: flux-ubuntu-debug1-up
         run: |
-          cd containers/spindle-slurm-ubuntu/testing-plugin
-          docker compose up -d --wait --wait-timeout 120
+          cd containers/spindle-flux-ubuntu
+          docker compose up -d --wait --wait-timeout 60
 
-      - name: Verify munge works in spindle-slurm-plugin-ubuntu
-        id: slurm-ubuntu-munge
+      - name: Verify munge works in spindle-flux-ubuntu-debug1
+        id: flux-ubuntu-debug1-munge
         run: |
-          docker exec slurm-plugin-head bash -c 'munge -n | unmunge'
+          docker exec node-1 bash -c 'munge -n | unmunge'
 
-      - name: Run spindle-slurm-plugin-ubuntu testsuite
-        id: slurm-ubuntu-testsuite
+      # Observed time:  5m 12s
+      - name: Run spindle-flux-ubuntu-debug1 testsuite
+        timeout-minutes: 7
+        id: flux-ubuntu-debug1-testsuite
         run: |
-          docker exec slurm-plugin-head bash -c 'cd Spindle-build/testsuite && salloc -n${workers} -N${workers} ./runTests ${workers}'
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=1 flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3'
 
-      - name: Bring spindle-slurm-plugin-ubuntu down
-        id: slurm-ubuntu-down
+      # Observed time:  7m 51s
+      - name: Extract logs from spindle-flux-ubuntu-debug1
+        timeout-minutes: 9
+        id: flux-ubuntu-debug1-tar
+        if: ${{ failure() }}
+        continue-on-error: true
+        run: |
+          docker exec node-1 bash -c 'ls /home/fluxuser/Spindle-build/testsuite/'
+          docker exec node-1 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug1_logs-1.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker cp node-1:/home/fluxuser/flux_ubuntu_logs-1.tar.bz2 .
+          docker exec node-2 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug1_logs-2.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker cp node-2:/home/fluxuser/flux_ubuntu_logs-2.tar.bz2 .
+          docker exec node-3 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug1_logs-3.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker cp node-3:/home/fluxuser/flux_ubuntu_logs-3.tar.bz2 .
+          docker exec node-4 bash -c 'tar cjvf /home/fluxuser/flux_ubuntu_debug1_logs-4.tar.bz2 /home/fluxuser/Spindle-build/testsuite/spindle_output*'
+          docker cp node-4:/home/fluxuser/flux_ubuntu_logs-4.tar.bz2 .
+
+      - name: Upload spindle-flux-ubuntu-debug1 logs
+        id: flux-ubuntu-debug1-artifact
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ubuntu flux logs tarball
+          path: |
+            ./flux_ubuntu_debug1_logs-1.tar.bz2
+            ./flux_ubuntu_debug1_logs-2.tar.bz2
+            ./flux_ubuntu_debug1_logs-3.tar.bz2
+            ./flux_ubuntu_debug1_logs-4.tar.bz2
+
+      - name: spindle-flux-ubuntu-debug1 teardown container
+        id: flux-ubuntu-debug1-teardown
         if: ${{ always() }}
         continue-on-error: true
         run: |
-          cd containers/spindle-slurm-ubuntu/testing-plugin
+          cd containers/spindle-flux-ubuntu
           docker compose down
 
+################################################################################
+# spindle-flux-ubuntu (no debugging)
+################################################################################
+  spindle-flux-ubuntu-:
+    name: Testsuite (Flux, Ubuntu, SPINDLE_DEBUG=3)
+    environment: Spindle CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out Spindle (spindle-flux-ubuntu-)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Docker Compose (spindle-flux-ubuntu-)
+        uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
+        with:
+          version: latest
+
+      - name: Build spindle-flux-ubuntu- image
+        id: flux-ubuntu--build
+        run: |
+          cd containers/spindle-flux-ubuntu
+          docker compose --progress=plain build
+
+      - name: Bring spindle-flux-ubuntu- up
+        id: flux-ubuntu--up
+        run: |
+          cd containers/spindle-flux-ubuntu
+          docker compose up -d --wait --wait-timeout 60
+
+      - name: Verify munge works in spindle-flux-ubuntu-
+        id: flux-ubuntu--munge
+        run: |
+          docker exec node-1 bash -c 'munge -n | unmunge'
+
+      # Observed time:  5m 12s
+      - name: Run spindle-flux-ubuntu- testsuite
+        timeout-minutes: 7
+        id: flux-ubuntu--testsuite
+        run: |
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite && flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3'
+
+      - name: spindle-flux-ubuntu- teardown container
+        id: flux-ubuntu--teardown
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          cd containers/spindle-flux-ubuntu
+          docker compose down
+
+#################################################################################
+## spindle-slurm-ubuntu (no debugging)
+#################################################################################
+#  spindle-slurm-ubuntu:
+#    name: Testsuite (Slurm, Ubuntu)
+#    environment: Spindle CI
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 20
+#    steps:
+#      - name: Check out Spindle
+#        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+#
+#      - name: Setup Docker Compose
+#        uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
+#        with:
+#          version: latest
+#
+#      - name: Login to GitHub Container Registry
+#        if: ${{ !env.ACT }}
+#        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#
+#      - name: Generate MariaDB configuration
+#        id: slurm-ubuntu-mariadb
+#        run: |
+#          cd containers/spindle-slurm-ubuntu/testing
+#          ./generate_config.sh
+#
+#      - name: Build spindle-slurm-ubuntu image
+#        id: slurm-ubuntu-build
+#        run: |
+#          cd containers/spindle-slurm-ubuntu/testing
+#          docker compose --progress=plain build
+#
+#      - name: Bring spindle-slurm-ubuntu up
+#        id: slurm-ubuntu-up
+#        run: |
+#          cd containers/spindle-slurm-ubuntu/testing
+#          docker compose up -d --wait --wait-timeout 120
+#
+#      - name: Verify munge works in spindle-slurm-ubuntu
+#        id: slurm-ubuntu-munge
+#        run: |
+#          docker exec slurm-head bash -c 'munge -n | unmunge'
+#
+#      - name: Run spindle-slurm-ubuntu testsuite
+#        timeout-minutes: 14
+#        id: slurm-ubuntu-testsuite
+#        run: |
+#          docker exec slurm-head bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=3 salloc -n${workers} -N${workers} ./runTests ${workers}'
+#
+#      - name: Pull logs out of the container(s)
+#        id: slurm-ubuntu-copy-from-container
+#        if: ${{ always() }}
+#        continue-on-error: true
+#        run: |
+#          docker exec slurm-node-1 bash -c 'ls /home/slurmuser/Spindle-build/testsuite/'
+#          docker exec slurm-node-1 bash -c 'tar cjvf /home/slurmuser/slurm_ubuntu_logs-1.tar.bz2 /home/slurmuser/Spindle-build/testsuite/spindle_output*'
+#          docker cp slurm-node-1:/home/slurmuser/slurm_ubuntu_logs-1.tar.bz2 .
+#          docker exec slurm-node-2 bash -c 'tar cjvf /home/slurmuser/slurm_ubuntu_logs-2.tar.bz2 /home/slurmuser/Spindle-build/testsuite/spindle_output*'
+#          docker cp slurm-node-2:/home/slurmuser/slurm_ubuntu_logs-2.tar.bz2 .
+#          docker exec slurm-node-3 bash -c 'tar cjvf /home/slurmuser/slurm_ubuntu_logs-3.tar.bz2 /home/slurmuser/Spindle-build/testsuite/spindle_output*'
+#          docker cp slurm-node-3:/home/slurmuser/slurm_ubuntu_logs-3.tar.bz2 .
+#          docker exec slurm-node-4 bash -c 'tar cjvf /home/slurmuser/slurm_ubuntu_logs-4.tar.bz2 /home/slurmuser/Spindle-build/testsuite/spindle_output*'
+#          docker cp slurm-node-4:/home/slurmuser/slurm_ubuntu_logs-4.tar.bz2 .
+#
+#      - name: Upload slurm ubuntu logs
+#        id: slurm-ubuntu-copy-to-artifact
+#        if: ${{ always() }}
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: Ubuntu slurm logs tarball
+#          path: |
+#            ./slurm_ubuntu_logs-1.tar.bz2
+#            ./slurm_ubuntu_logs-2.tar.bz2
+#            ./slurm_ubuntu_logs-3.tar.bz2
+#            ./slurm_ubuntu_logs-4.tar.bz2
+#
+#
+#      - name: Bring spindle-slurm-ubuntu down
+#        id: slurm-ubuntu-down
+#        if: ${{ always() }}
+#        continue-on-error: true
+#        run: |
+#          cd containers/spindle-slurm-ubuntu/testing
+#          docker compose down
+#
+#  spindle-slurm-plugin-ubuntu:
+#    name: Testsuite (Slurm Plugin, Ubuntu)
+#    environment: Spindle CI
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 20
+#    steps:
+#      - name: Check out Spindle
+#        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+#
+#      - name: Setup Docker Compose
+#        uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
+#        with:
+#          version: latest
+#
+#      - name: Login to GitHub Container Registry
+#        if: ${{ !env.ACT }}
+#        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#
+#      - name: Generate MariaDB configuration
+#        id: slurm-ubuntu-mariadb
+#        run: |
+#          cd containers/spindle-slurm-ubuntu/testing-plugin
+#          ./generate_config.sh
+#
+#      - name: Build spindle-slurm-plugin-ubuntu image
+#        id: slurm-ubuntu-build
+#        run: |
+#          cd containers/spindle-slurm-ubuntu/testing-plugin
+#          docker compose --progress=plain build
+#
+#      - name: Bring spindle-slurm-plugin-ubuntu up
+#        id: slurm-ubuntu-up
+#        run: |
+#          cd containers/spindle-slurm-ubuntu/testing-plugin
+#          docker compose up -d --wait --wait-timeout 120
+#
+#      - name: Verify munge works in spindle-slurm-plugin-ubuntu
+#        id: slurm-ubuntu-munge
+#        run: |
+#          docker exec slurm-plugin-head bash -c 'munge -n | unmunge'
+#
+#      - name: Run spindle-slurm-plugin-ubuntu testsuite
+#        id: slurm-ubuntu-testsuite
+#        run: |
+#          docker exec slurm-plugin-head bash -c 'cd Spindle-build/testsuite && salloc -n${workers} -N${workers} ./runTests ${workers}'
+#
+#      - name: Bring spindle-slurm-plugin-ubuntu down
+#        id: slurm-ubuntu-down
+#        if: ${{ always() }}
+#        continue-on-error: true
+#        run: |
+#          cd containers/spindle-slurm-ubuntu/testing-plugin
+#          docker compose down
+#
