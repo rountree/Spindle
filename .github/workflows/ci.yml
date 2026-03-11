@@ -54,13 +54,13 @@ jobs:
 # SPINDLE_DEBUG=3
       - name: Run spindle-serial-ubuntu testsuite SPINDLE_DEBUG=3
         timeout-minutes: 5
-        id: serial-ubuntu-testsuite
+        id: serial-ubuntu-debug3-testsuite
         if: ${{ success() }}
         run: |
           docker exec spindlenode bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=3 ./runTests'
 
       - name: If successful, remove log files
-        id: serial-ubuntu-remove-logs-debug3
+        id: serial-ubuntu-debug3-remove-logs
         if: ${{ success() }}
         run: |
           docker exec spindlenode bash -c 'rm -f /home/spindleuser/Spindle-build/testsuite/spindle_output*'
@@ -68,13 +68,13 @@ jobs:
 # SPINDLE_DEBUG=2
       - name: Run spindle-serial-ubuntu testsuite SPINDLE_DEBUG=2
         timeout-minutes: 5
-        id: serial-ubuntu-testsuite
+        id: serial-ubuntu-debug2-testsuite
         if: ${{ success() }}
         run: |
           docker exec spindlenode bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=2 ./runTests'
 
       - name: If successful, remove log files
-        id: serial-ubuntu-remove-logs-debug2
+        id: serial-ubuntu-debug2-remove-logs
         if: ${{ success() }}
         run: |
           docker exec spindlenode bash -c 'rm -f /home/spindleuser/Spindle-build/testsuite/spindle_output*'
@@ -82,13 +82,13 @@ jobs:
 # SPINDLE_DEBUG=1
       - name: Run spindle-serial-ubuntu testsuite SPINDLE_DEBUG=1
         timeout-minutes: 5
-        id: serial-ubuntu-testsuite
+        id: serial-ubuntu-debug1-testsuite
         if: ${{ success() }}
         run: |
           docker exec spindlenode bash -c 'cd Spindle-build/testsuite && SPINDLE_DEBUG=1 ./runTests'
 
       - name: If successful, remove log files
-        id: serial-ubuntu-remove-logs-debug1
+        id: serial-ubuntu-debug1-remove-logs
         if: ${{ success() }}
         run: |
           docker exec spindlenode bash -c 'rm -f /home/spindleuser/Spindle-build/testsuite/spindle_output*'
