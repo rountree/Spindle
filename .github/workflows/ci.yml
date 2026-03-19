@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-        TARBALL: ./serial_ubunutu_dbg${{ matrix.debug }}_${{ github.run_id }}_${{ github.run_attempt }}.tar.bz2
+        TARBALL: ./serial_ubunutu_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
         UNIQNAME: spindle_serial_ubuntu_${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}
     strategy:
         fail-fast: false
@@ -161,10 +161,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-        TARBALL1: ./flux_node1_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
-        TARBALL2: ./flux_node2_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
-        TARBALL3: ./flux_node3_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
-        TARBALL4: ./flux_node4_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
+        TARBALL1: ./flux_node1_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
+        TARBALL2: ./flux_node2_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
+        TARBALL3: ./flux_node3_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
+        TARBALL4: ./flux_node4_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
         UNIQNAME: spindle_flux_ubutnu_${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}
     strategy:
         fail-fast: false
@@ -261,11 +261,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-        TARBALL1: ./slurm_node1_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
+        TARBALL1: ./slurm_node1_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
         TARBALL2: ./slurm_node2_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
         TARBALL3: ./slurm_node3_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
         TARBALL4: ./slurm_node4_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
-        TARBALL5: ./slurm_nodeH_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
+        TARBALLH: ./slurm_nodeH_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
         UNIQNAME: spindle_slurm_ubuntu_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}
     strategy:
         fail-fast: false
@@ -379,7 +379,7 @@ jobs:
         TARBALL2: ./plugin_node2_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
         TARBALL3: ./plugin_node3_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
         TARBALL4: ./plugin_node4_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
-        TARBALL5: ./plugin_nodeH_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
+        TARBALLH: ./plugin_nodeH_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
         UNIQNAME: spindle_plugin_ubuntu_${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}
     strategy:
         fail-fast: false
