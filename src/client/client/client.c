@@ -41,6 +41,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "exec_util.h"
 #include "intercept.h"
 #include "fixlocale.h"
+#include "should_intercept.h"
 
 errno_location_t app_errno_location;
 
@@ -70,11 +71,8 @@ static const ElfW(Phdr) *libc_phdrs, *interp_phdrs;
 static int num_libc_phdrs, num_interp_phdrs;
 ElfW(Addr) libc_loadoffset, interp_loadoffset;
 
-/* location has the realize'd path to the local file cache. orig_location is not realized and
- * may contain symlinks
- */
-char *location;
-char *orig_location;
+static char *commpath;
+char *chosen_realized_cachepath, *chosen_parsed_cachepath;
 number_t number;
 static int have_stat_patches;
 
@@ -200,8 +198,7 @@ static int init_server_connection()
    if (!use_ldcs)
       return 0;
 
-   location = getenv("LDCS_LOCATION");
-   orig_location = getenv("LDCS_ORIG_LOCATION");
+   commpath = getenv("LDCS_COMMPATH");
    number = (number_t) strtoul(getenv("LDCS_NUMBER"), NULL, 0);
    connection = getenv("LDCS_CONNECTION");
    rankinfo_s = getenv("LDCS_RANKINFO");
@@ -210,9 +207,9 @@ static int init_server_connection()
    opts = strtoul(opts_s, NULL, 10);
    shm_cachesize = atoi(cachesize_s) * 1024;
 
-   if (strchr(location, '$')) {
-      location = parse_location(location, number);
-      if (!location) {
+   if (strchr(commpath, '$')) {
+      commpath = parse_location(commpath, number);
+      if (!commpath) {
          exit(-1);
       }
    }
@@ -220,8 +217,7 @@ static int init_server_connection()
    if (!(opts & OPT_FOLLOWFORK)) {
       debug_printf("Disabling environment variables because we're not following forks\n");
       unsetenv("LD_AUDIT");
-      unsetenv("LDCS_LOCATION");
-      unsetenv("LDCS_ORIG_LOCATION");
+      unsetenv("LDCS_COMMPATH");
       unsetenv("LDCS_NUMBER");
       unsetenv("LDCS_CONNECTION");
       unsetenv("LDCS_RANKINFO");
@@ -235,14 +231,14 @@ static int init_server_connection()
 #else
       shm_cache_limit = shm_cachesize;
 #endif
-      shmcache_init(location, number, shm_cachesize, shm_cache_limit);
+      shmcache_init(commpath, number, shm_cachesize, shm_cache_limit);
    }
 
    if (connection) {
       /* boostrapper established the connection for us.  Reuse it. */
       debug_printf("Recreating existing connection to server\n");
-      debug_printf3("location = %s, number = %lu, connection = %s, rankinfo = %s\n",
-                    location, (unsigned long) number, connection, rankinfo_s);
+      debug_printf3("commpath = %s, number = %lu, connection = %s, rankinfo = %s\n",
+                    commpath, (unsigned long) number, connection, rankinfo_s);
       ldcsid  = client_register_connection(connection);
       if (ldcsid == -1)
          return -1;
@@ -252,20 +248,20 @@ static int init_server_connection()
    }
    else {
       /* Establish a new connection */
-      debug_printf("open connection to ldcs %s %lu\n", location, (unsigned long) number);
-      ldcsid = client_open_connection(location, number);
+      debug_printf("open connection to ldcs %s %lu\n", commpath, (unsigned long) number);
+      ldcsid = client_open_connection(commpath, number);
       if (ldcsid == -1)
          return -1;
 
       send_pid(ldcsid);
-      send_location(ldcsid, location);
+      send_location(ldcsid, commpath);
       send_rankinfo_query(ldcsid, rankinfo+0, rankinfo+1, rankinfo+2, rankinfo+3);
 #if defined(LIBNUMA)      
       if (opts & OPT_NUMA)
          send_cpu(ldcsid, get_cur_cpu());
 #endif
    }
-   
+   send_cachepath_query( ldcsid, &chosen_realized_cachepath, &chosen_parsed_cachepath );
    snprintf(debugging_name, 32, "Client.%d", rankinfo[0]);
    LOGGING_INIT(debugging_name);
 
@@ -472,7 +468,7 @@ char *client_library_load(const char *name)
 
    char *orig_file_name = (char *) name;
    if (is_in_spindle_cache(name)) {
-      debug_printf2("Library %s is in spindle cache (%s). Translating request\n", name, location);
+      debug_printf2("Library %s is in spindle cache (%s). Translating request\n", name, chosen_realized_cachepath);
       memset(fixed_name, 0, MAX_PATH_LEN+1);
       send_orig_path_request(ldcsid, orig_file_name, fixed_name);
       orig_file_name = fixed_name;

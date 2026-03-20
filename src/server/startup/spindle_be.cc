@@ -58,7 +58,8 @@ static int unpack_data(spindle_args_t *args, void *buffer, int buffer_size)
    unpack_param(args->use_launcher, buf, pos);
    unpack_param(args->startup_type, buf, pos);
    unpack_param(args->shm_cache_size, buf, pos);
-   unpack_param(args->location, buf, pos);
+   unpack_param(args->commpath, buf, pos);
+   unpack_param(args->candidate_cachepaths, buf, pos);
    unpack_param(args->pythonprefix, buf, pos);
    unpack_param(args->preloadfile, buf, pos);
    unpack_param(args->bundle_timeout_ms, buf, pos);
@@ -135,6 +136,8 @@ int spindleRunBE(unsigned int port, unsigned int num_ports, unique_id_t unique_i
    result = ldcs_audit_server_network_setup(port, num_ports, unique_id, &setup_data, &setup_data_size);
    if (result == -1) {
       err_printf("Error setting up network in spindleRunBE\n");
+      if (args.startup_type == startup_external)
+        LOGGING_FINI;
       return -1;
    }
    unpack_data(&args, setup_data, setup_data_size);
@@ -143,20 +146,23 @@ int spindleRunBE(unsigned int port, unsigned int num_ports, unique_id_t unique_i
    assert(args.port == port);
    
    
-   /* Expand environment variables in location. */
-   char *new_location = parse_location(args.location, args.number);
-   if (!new_location) {
-      err_printf("Failed to convert location %s\n", args.location);
+   /* Expand environment variables in commpath. */
+   char *new_commpath = parse_location(args.commpath, args.number);
+   if (!new_commpath) {
+      err_printf("Failed to convert commpath %s\n", args.commpath);
+      if (args.startup_type == startup_external)
+        LOGGING_FINI;
       return -1;
    }
-   debug_printf("Translated location from %s to %s\n", args.location, new_location);
-   free(args.location);
-   args.location = new_location;
-   test_printf("<internal> location=%s\n", args.location);
+   debug_printf("Translated commpath from %s to %s\n", args.commpath, new_commpath);
+   free(args.commpath);
+   args.commpath = strdup(new_commpath);
 
    result = ldcs_audit_server_process(&args);
    if (result == -1) {
       err_printf("Error in ldcs_audit_server_process\n");
+      if (args.startup_type == startup_external)
+        LOGGING_FINI;
       return -1;
    }
 
@@ -164,6 +170,8 @@ int spindleRunBE(unsigned int port, unsigned int num_ports, unique_id_t unique_i
       result = post_setup(&args);
       if (result == -1) {
          err_printf("post_setup callback errored.  Returning\n");
+         if (args.startup_type == startup_external)
+            LOGGING_FINI;
          return -1;
       }
    }
@@ -172,11 +180,12 @@ int spindleRunBE(unsigned int port, unsigned int num_ports, unique_id_t unique_i
    ldcs_audit_server_run();
    if (result == -1) {
       err_printf("Error in ldcs_audit_server_process\n");
+      if (args.startup_type == startup_external)
+         LOGGING_FINI;
       return -1;
    }
 
-
-   if (args.startup_type == startup_external)   
+   if (args.startup_type == startup_external)
       LOGGING_FINI;
 
    return 0;

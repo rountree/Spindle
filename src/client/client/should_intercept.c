@@ -30,21 +30,19 @@
 
 extern int relocate_spindleapi();
 
-extern char *location;
-extern char *orig_location;
-
 int is_in_spindle_cache(const char *pathname)
 {
-   static int location_size = 0;
-   static int orig_location_size = 0;
-   if (!location_size) {
-      location_size = strlen(location);
+   static int cachepath_size = 0;
+   static int orig_cachepath_size = 0;
+   extern char *chosen_realized_cachepath, *chosen_parsed_cachepath;
+   if (!cachepath_size) {
+      cachepath_size = strlen(chosen_realized_cachepath);
    }
-   if (!orig_location_size) {
-      orig_location_size = strlen(orig_location);
+   if (!orig_cachepath_size) {
+      orig_cachepath_size = strlen(chosen_parsed_cachepath);
    }
-   return ((strncmp(pathname, location, location_size) == 0) ||
-           (strncmp(pathname, orig_location, orig_location_size) == 0));
+   return ((strncmp(pathname, chosen_realized_cachepath, cachepath_size) == 0) ||
+           (strncmp(pathname, chosen_parsed_cachepath, orig_cachepath_size) == 0));
 }
 
 extern int is_local_prefix(const char *path, char **cached_local_prefixes);

@@ -31,19 +31,19 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 ssize_t (*orig_readlink)(const char *path, char *buf, size_t bufsiz);
 ssize_t (*orig_readlinkat)(int dirfd, const char *pathname, char *buf, size_t bufsiz);
 
-extern char *location;
 
 static int fix_local_readlink(char *buf, size_t bufsiz)
 {
    char spindle_id[32];
-   int location_len, result;
+   int cachepath_len, result;
    char tmp[MAX_PATH_LEN+1];
+   extern char *chosen_realized_cachepath;
 
-   location_len = strlen(location);   
+   cachepath_len = strlen(chosen_realized_cachepath);   
    snprintf(spindle_id, sizeof(spindle_id), "spindle.%lx", number);
-   if (strstr(buf, spindle_id) && strncmp(location, buf, location_len) == 0) {
+   if (strstr(buf, spindle_id) && strncmp(chosen_realized_cachepath, buf, cachepath_len) == 0) {
       debug_printf2("readlink received spindle cache path %s. Translating\n", buf);
-      result = send_orig_path_request(ldcsid, buf+location_len+1, tmp);
+      result = send_orig_path_request(ldcsid, buf+cachepath_len+1, tmp);
       if (result == -1)
          return -1;
       debug_printf2("readlink translated spindle local path %s to %s\n", buf, tmp);

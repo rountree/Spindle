@@ -125,7 +125,15 @@ struct ldcs_process_data_struct
   int exit_readys_recvd;
   ldcs_dist_model_t dist_model;
   ldcs_client_t* client_table;
-  char *location;
+  char *commpath;               /* Single user-specified path for fifo, daemons, etc. */
+                                /*   (Everything except the cachepath.) */
+  char *cachepaths;             /* Up to 64 colon-separated list of candidate cachepaths. */
+  char *cachepath;              /* The earliest path in the list available to all servers. */
+                                /*   (Environment variables replaced, symbolic links realized.) */
+  char *symbolic_cachepath;     /* The original representation of the cachepath. */
+  char *parsed_cachepath;       /* The cachepath with environment variables replaced. */
+                                /*   (Symbolic links, if any, remain.) */
+  uint64_t cachepath_bitidx;    /* Bit index of valid cachepaths on a given server. */
   char *hostname;
   char *pythonprefix;
   char *localprefix;

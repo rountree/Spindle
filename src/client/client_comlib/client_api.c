@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <assert.h>
+#include <time.h>
 
 #include "ldcs_api.h"
 #include "client_api.h"
@@ -36,7 +37,56 @@ static struct lock_t comm_lock;
 
 #define COMM_LOCK do { if (lock(&comm_lock) == -1) return -1; } while (0)
 #define COMM_UNLOCK unlock(&comm_lock)
-   
+
+
+int send_cachepath_query( int fd, char **chosen_realized_cachepath, char **chosen_parsed_cachepath){
+   int retries = 0, max_retries = 10;
+   struct timespec one_second = { .tv_sec = 1, .tv_nsec = 0 };
+   ldcs_message_t message;
+   char buffer[MAX_PATH_LEN+1];
+   buffer[MAX_PATH_LEN] = '\0';
+
+
+   do{
+       message.header.type = LDCS_MSG_CHOSEN_CACHEPATH_REQUEST;
+       message.header.len = MAX_PATH_LEN;
+       message.data = buffer;
+
+       COMM_LOCK;
+
+       debug_printf3("sending message of type: request_location_path.\n" );
+       client_send_msg(fd, &message);
+       client_recv_msg_static(fd, &message, LDCS_READ_BLOCK);
+
+       COMM_UNLOCK;
+
+       if( message.header.type == LDCS_MSG_NO_CACHEPATH_CONSENSUS_YET ){
+           if( retries++ >= max_retries ){
+               break;
+           }
+           nanosleep( &one_second, NULL );
+           continue;
+       }
+       break;
+
+   }while( 1 );
+
+   if (message.header.type != LDCS_MSG_CHOSEN_CACHEPATH || message.header.len > MAX_PATH_LEN) {
+      err_printf("Got unexpected message of type %d\n", (int) message.header.type);
+      return -1;
+   }
+   char *local_crc = strdup( buffer );
+   char *local_cpc = strdup( &buffer[ strlen(local_crc) + 1 ] );
+   if( chosen_realized_cachepath ){
+       *chosen_realized_cachepath = local_crc;
+   }
+   if( chosen_parsed_cachepath ){
+       *chosen_parsed_cachepath = local_cpc;
+   }
+
+   return 0;
+}
+
 int send_file_query(int fd, char* path, int dso, char** newpath, int *errcode) {
    ldcs_message_t message;
    char buffer[MAX_PATH_LEN+1+sizeof(int)];
@@ -68,7 +118,7 @@ int send_file_query(int fd, char* path, int dso, char** newpath, int *errcode) {
 
    if (message.header.type != LDCS_MSG_FILE_QUERY_ANSWER) {
       err_printf("Got unexpected message of type %d\n", (int) message.header.type);
-      assert(0);
+      return -1;
    }
    
    if (message.header.len > sizeof(int)) {
@@ -161,7 +211,7 @@ int send_existance_test(int fd, char *path, int *exists)
 
    if (message.header.type != LDCS_MSG_EXISTS_ANSWER || message.header.len != sizeof(uint32_t)) {
       err_printf("Got unexpected message after existance test: %d\n", (int) message.header.type);
-      assert(0);
+      return -1;
    }
 
    memcpy(exists, buffer, sizeof(*exists));
@@ -198,7 +248,7 @@ int send_orig_path_request(int fd, const char *path, char *newpath)
 
    if (message.header.type != LDCS_MSG_ORIGPATH_ANSWER || message.header.len > MAX_PATH_LEN) {
       err_printf("Got unexpected message after existance test: %d\n", (int) message.header.type);
-      assert(0);
+      return -1;
    }
    strncpy(newpath, buffer, MAX_PATH_LEN+1);
 
@@ -315,7 +365,7 @@ int send_cpu(int fd, int cpu) {
 int send_location(int fd, char *location) {
    ldcs_message_t message;
 
-   message.header.type = LDCS_MSG_LOCATION;
+   message.header.type = LDCS_MSG_COMMPATH;
    message.header.len = strlen(location)+1;
    message.data = location;
 
@@ -346,7 +396,7 @@ int send_ldso_info_request(int fd, const char *ldso_path, char *result_path)
 
    if (message.header.type != LDCS_MSG_LOADER_DATA_RESP) {
       err_printf("Got unexpected message after ldso req: %d\n", (int) message.header.type);
-      assert(0);
+      return -1;
    }
    return 0;
 }
@@ -388,7 +438,7 @@ int send_rankinfo_query(int fd, int *mylrank, int *mylsize, int *mymdrank, int *
    if (message.header.type != LDCS_MSG_MYRANKINFO_QUERY_ANSWER || message.header.len != 4*sizeof(int)) {
       err_printf("Received incorrect response to rankinfo query %d\n", message.header.type);
       *mylrank = *mylsize = *mymdrank = *mymdsize = -1;
-      assert(0);
+      return -1;
    }
 
    p = (int *) message.data;
@@ -423,7 +473,7 @@ int send_procmaps_query(int fd, int pid, char *result)
 
    if (message.header.type != LDCS_MSG_PROCMAPS_RESP) {
       err_printf("Received incorrect response to procmaps query %d\n", message.header.type);
-      assert(0);
+      return -1;
    }
 
    memcpy(result, buffer, MAX_PATH_LEN);
@@ -454,7 +504,7 @@ int send_pickone_query(int fd, char *key, int *result)
 
    if (message.header.type != LDCS_MSG_PICKONE_RESP) {
       err_printf("Received incorrect response to procmaps query %d\n", message.header.type);
-      assert(0);
+      return -1;
    }
 
    *result = *((int *) message.data);

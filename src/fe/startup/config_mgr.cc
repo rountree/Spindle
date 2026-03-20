@@ -50,10 +50,16 @@ using namespace std;
 #define SPINDLE_NUM_PORTS_STR "250"
 #endif
 
-#if defined(SPINDLE_LOC)
-#define SPINDLE_LOC_STR SPINDLE_LOC
+#if defined(COMMPATH)
+#define SPINDLE_COMMPATH_STR COMMPATH
 #else
-#define SPINDLE_LOC_STR "$TMPDIR"
+#define SPINDLE_COMMPATH_STR "$TMPDIR"
+#endif
+
+#if defined(CACHEPATHS)
+#define SPINDLE_CACHEPATHS_STR CACHEPATHS
+#else
+#define SPINDLE_CACHEPATHS_STR "$TMPDIR"
 #endif
 
 #if defined(SPINDLE_LOCAL_PREFIX)
@@ -267,8 +273,10 @@ void initOptionsList()
      "Provides a text file containing a white-space separated list of files that should be relocated to each node before execution begins" },
    { confStrip, "strip", shortStrip, groupMisc, cvBool, {}, "true", 
      "Strip debug and symbol information from binaries before distributing them." },
-   { confLocation, "location", shortLocation, groupMisc, cvString, {}, SPINDLE_LOC_STR,
-     "Back-end directory for storing relocated files.  Should be a non-shared location such as a ramdisk." },
+   { confCommPath, "commpath", shortCommPath, groupMisc, cvString, {}, SPINDLE_COMMPATH_STR,
+     "Back-end directory communication and housekeeping.  Should be a non-shared location such as a ramdisk." },
+   { confCachePaths, "cachepaths", shortCachePaths, groupMisc, cvString, {}, SPINDLE_CACHEPATHS_STR,
+     "Colon-separated list of candidate paths for cached libraries."},
    { confNoclean, "noclean", shortNoClean, groupMisc, cvBool, {}, "false",
      "Don't remove local file cache after execution." },
    { confDisableLogging, "disable-logging", shortDisableLogging, groupMisc, cvBool, {}, DISABLE_LOGGING_STR,
@@ -735,9 +743,24 @@ bool ConfigMap::toSpindleArgs(spindle_args_t &args, bool alloc_strs) const
          case confNumPorts:
             args.num_ports = numresult;
             break;
-         case confLocation: {
-            string loc = strresult + "/spindle.$NUMBER";
-            args.location = strdup(loc.c_str());
+         case confCommPath: {
+            string path = strresult + "/spindle.$NUMBER";
+            args.commpath = strdup(path.c_str());
+            break;
+         }
+         case confCachePaths:{
+            // Paramemter values are colon-separated lists of paths.
+            // Append "/spindle.$NUMBER" to each path in the list.
+            string paths = strresult;
+            size_t idx = paths.find(":");
+            string number_var_with_colon("/spindle.$NUMBER:");
+            string number_var_without_colon("/spindle.$NUMBER");
+            while( idx != string::npos ){
+               paths.replace(idx, 1, number_var_with_colon);
+               idx = paths.find(":", idx + number_var_with_colon.size());
+            };
+            paths += number_var_without_colon;
+            args.candidate_cachepaths = strdup(paths.c_str());
             break;
          }
          case confCachePrefix:

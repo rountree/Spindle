@@ -832,6 +832,9 @@ enable_maintainer_mode
 with_default_port
 with_default_num_ports
 with_localstorage
+with_cachepaths
+with_cachepath
+with_commpath
 with_default_local_prefix
 with_testrm
 with_rm
@@ -1570,7 +1573,13 @@ Optional Packages:
   --with-default-numports=NUM
                           Number of TCP/IP ports to scan for Spindle server
                           communication
-  --with-localstorage=DIR Directory on back-ends for storing relocated files
+  --with-localstorage=DIR (obsolete)
+                          Use --with-cachepaths and --with-commpath instead.
+  --with-cachepaths=DIR   Colon-separated list of potential back-end cache
+                          directories
+,
+  --with-compath=DIR      Back-end directory for communication and
+                          housekeeping
   --with-default-local-prefix=DIRS
                           Colon-seperated list of directories that Spindle
                           will not cache files out of
@@ -16439,9 +16448,29 @@ fi
 
 # Check whether --with-localstorage was given.
 if test "${with_localstorage+set}" = set; then :
-  withval=$with_localstorage; SPINDLE_LOC=${withval}
+  withval=$with_localstorage; as_fn_error $? "requested obsolete option --with-localstorage.  Use --with-cachepaths and --with-commpath instead." "$LINENO" 5
+fi
+
+
+# Check whether --with-cachepaths was given.
+if test "${with_cachepaths+set}" = set; then :
+  withval=$with_cachepaths; CACHEPATHS=${withval}
 else
-  SPINDLE_LOC=$DEFAULT_LOC
+  CACHEPATHS=$DEFAULT_LOC
+fi
+
+
+# Check whether --with-cachepath was given.
+if test "${with_cachepath+set}" = set; then :
+  withval=$with_cachepath; as_fn_error $? "use --with-cachepaths=DIRS (plural) instead of --with-cachepath=DIR to specify one or more cache paths" "$LINENO" 5
+fi
+
+
+# Check whether --with-commpath was given.
+if test "${with_commpath+set}" = set; then :
+  withval=$with_commpath; COMMPATH=${withval}
+else
+  COMMPATH=$DEFAULT_LOC
 fi
 
 
@@ -16449,7 +16478,7 @@ fi
 if test "${with_default_local_prefix+set}" = set; then :
   withval=$with_default_local_prefix; SPINDLE_LOCAL_PREFIX=${withval}
 else
-  SPINDLE_LOCAL_PREFIX="$DEFAULT_LOCAL_PREFIX:$SPINDLE_LOC"
+  SPINDLE_LOCAL_PREFIX="$DEFAULT_LOCAL_PREFIX:$COMMPATH"
 fi
 
 
@@ -16469,7 +16498,12 @@ _ACEOF
 
 
 cat >>confdefs.h <<_ACEOF
-#define SPINDLE_LOC "$SPINDLE_LOC"
+#define COMMPATH "$COMMPATH"
+_ACEOF
+
+
+cat >>confdefs.h <<_ACEOF
+#define CACHEPATHS "$CACHEPATHS"
 _ACEOF
 
 

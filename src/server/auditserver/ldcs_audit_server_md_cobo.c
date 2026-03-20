@@ -401,3 +401,7 @@ int ldcs_audit_server_md_get_num_children(ldcs_process_data_t *procdata)
    cobo_get_num_childs(&num_childs);
    return num_childs;
 }
+
+void ldcs_audit_server_md_allreduce_AND( uint64_t *val ){
+    cobo_allreduce( val, COBO_OP_BITWISE_AND );
+}
