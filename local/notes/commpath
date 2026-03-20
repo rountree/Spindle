@@ -1,0 +1,55 @@
+19-Mar-2026
+
+Tonight's problem:  Delay eager clients until the servers
+  have settled on a common cachepath.  Currently, there's
+  a race that occasionally results in clients making file
+  requests early and getting an uninitialized cacahepath.
+
+Moving the client socket initialization out of the server
+  initialization code result in the server are-you-alive
+  message failing to get through.
+
+Net approach:  Allow the clients to connect, but send back
+  a NOT_YET response until the cachepath is sorted.
+
+send_pid() called from two spots:
+
+    client/client/client.c
+        int client_init()
+            static int init_server_connection()
+                client/client/client.c:256:      send_pid(ldcsid);
+
+    client/beboot/spindle_bootstrap.c
+        main()
+            establish_connection()
+                client/beboot/spindle_bootstrap.c:98:   send_pid(ldcsid);
+
+send_pid() implemented here:
+
+    client/client_comlib/client_api.c:307:int send_pid(int fd) {
+
+Uses LDCS_MSG_PID
+
+Message handled here:
+
+    server/auditserver/ldcs_audit_server_handlers.c:196:   else if(msg->header.type == LDCS_MSG_PID) {
+
+Cachepath consensus determined here:
+
+    server/auditserver/ldcs_audit_server_handlers.c:2960:static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_message_t *msg){
+
+Whoops.  LDCS_MSG_PID doesn't have a reply.  Let's make one.
+Better idea.  Let's have the response of LDCS_MSG_CHOSEN_CACHEPATH_REQUEST
+  be either LDCS_MSG_CHOSEN_CACHEPATH or LDCS_MSG_NO_CACHEPATH_CONSENSUS.
+
+1)  include/ldcs_api.h
+        Added LDCS_MSG_NO_CACHEPATH_CONSENSUS_YET
+2)  server/comlib/ldcs_api_util.c
+        Added STR_CASE entry for that message.
+3)  server/auditserver/ldcs_audit_server_handlers.c
+        Added global "static bool cachepath_consensus_reached" above handle_cachepath_consensus() 
+        Set that variable to true inside handle_cachepath_consensus() 
+        In handle_chosen_cachepath_request(), made msg.header.type conditional on cachepath_consensus_reached
+4)  client/client_comlib/client_api.c
+        This is the only place LDCS_MSG_CHOSEN_CACHEPATH_REQUEST is used.
+        Will sleep for 1 second after each LDCS_MSG_NO_CACHEPATH_CONSENSUS_YET message.

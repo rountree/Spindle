@@ -1,0 +1,34 @@
+Punch list for commpath acceptance
+==================================
+1) Delay listening for clients until cachepath has been agreed to an propogated.
+
+2) Track down and fix the early "failed to stat" message in the logs.
+
+3) Add debug printfs into cachepath consensus code.
+
+4) Move consensus kickoff outside of frontend.
+
+5) Only track commpath and cachepath directories if we're creating them.
+
+6) Directory cleanup should handle both cachepath and commpath simultaneously.
+
+7) Move realize/pathloc into code that tracks directories.
+
+8) Add comments to ci.yml on how to customize.
+
+9) Add tests for commpath and cachepath being subdirectories of each other.
+
+
+
+Fun short projects:
+===================
+
+Specify path for logfiles.
+
+Specify tags for logfiles.
+
+Refactor ci.yml to use runner storage for logs.
+
+Remove trailing whitespace.
+
+

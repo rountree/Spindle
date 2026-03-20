@@ -2,7 +2,7 @@
 
 # Only used for path construction (bottom of this file)
 export ROOT=/p/vast1/rountree/machines/${LCSCHEDCLUSTER}
-SPINDLE_REPO=/p/vast1/rountree/repos/Spindle
+SPINDLE_REPO=/p/vast1/rountree/blends/Spindle
 
 # Get the current branch and commit
 cd $SPINDLE_REPO
