@@ -2961,7 +2961,7 @@ static int handle_client_pickone_msg(ldcs_process_data_t *procdata, int nc, ldcs
  * Handle LDCS_MSG_REQUEST_CACHEPATH_CONSENSUS to determine which cachepaths are
  * available across all of the servers.
  */
-static bool cachepath_consensus_reached;
+static int cachepath_consensus_reached;
 static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_message_t *msg){
 
     int num_children = ldcs_audit_server_md_get_num_children(procdata);
@@ -2988,7 +2988,7 @@ static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_messag
     ldcs_audit_server_filemngt_init(procdata->cachepath);
 
     test_printf("<internal> cachepath=%s\n", procdata->cachepath);
-    cachepath_consensus_reached = true;
+    cachepath_consensus_reached = 1;
     return 0;
 }
 
