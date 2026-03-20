@@ -11,6 +11,8 @@ on:
   push:
     branches:
       - devel
+      - commpath
+      - commpath-blend
   pull_request:
     branches:
       - devel
