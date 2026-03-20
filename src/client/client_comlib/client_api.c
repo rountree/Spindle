@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <assert.h>
+#include <time.h>
 
 #include "ldcs_api.h"
 #include "client_api.h"
@@ -39,21 +40,36 @@ static struct lock_t comm_lock;
 
 
 int send_cachepath_query( int fd, char **chosen_realized_cachepath, char **chosen_parsed_cachepath){
+   int retries = 0, max_retries = 10;
+   struct timespec one_second = { .tv_sec = 1, .tv_nsec = 0 };
    ldcs_message_t message;
    char buffer[MAX_PATH_LEN+1];
    buffer[MAX_PATH_LEN] = '\0';
 
-   message.header.type = LDCS_MSG_CHOSEN_CACHEPATH_REQUEST;
-   message.header.len = MAX_PATH_LEN;
-   message.data = buffer;
 
-   COMM_LOCK;
+   do{
+       message.header.type = LDCS_MSG_CHOSEN_CACHEPATH_REQUEST;
+       message.header.len = MAX_PATH_LEN;
+       message.data = buffer;
 
-   debug_printf3("sending message of type: request_location_path.\n" );
-   client_send_msg(fd, &message);
-   client_recv_msg_static(fd, &message, LDCS_READ_BLOCK);
+       COMM_LOCK;
 
-   COMM_UNLOCK;
+       debug_printf3("sending message of type: request_location_path.\n" );
+       client_send_msg(fd, &message);
+       client_recv_msg_static(fd, &message, LDCS_READ_BLOCK);
+
+       COMM_UNLOCK;
+
+       if( message.header.type == LDCS_MSG_NO_CACHEPATH_CONSENSUS_YET ){
+           if( retries++ >= max_retries ){
+               break;
+           }
+           nanosleep( &one_second, NULL );
+           continue;
+       }
+       break;
+
+   }while( 1 );
 
    if (message.header.type != LDCS_MSG_CHOSEN_CACHEPATH || message.header.len > MAX_PATH_LEN) {
       err_printf("Got unexpected message of type %d\n", (int) message.header.type);
