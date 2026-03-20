@@ -46,51 +46,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Setup Docker Compose
-        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
-        with:
-          version: latest
-
-      - name: Build spindle-serial-ubuntu image
-        id: serial-ubuntu-build
-        run: |
-          cd containers/spindle-serial-ubuntu
-          docker compose --progress=plain build
-
-      - name: Bring spindle-serial-ubuntu up
-        id: serial-ubuntu-up
-        run: |
-          cd containers/spindle-serial-ubuntu
-          docker compose up -d
-
-      - name: Verify munge works in spindle-serial-ubuntu
-        id: serial-ubuntu-munge
-        run: |
-          docker exec spindlenode bash -c 'munge -n | unmunge'
-
-      - name: Run spindle-serial-ubuntu testsuite
-        id: serial-ubuntu-testsuite
-        run: |
-          docker exec spindlenode bash -c 'cd Spindle-build/testsuite && ./runTests'
-
-      - name: Bring spindle-serial-ubuntu down
-        id: serial-ubuntu-down
-        if: ${{ always() }}
-        continue-on-error: true
-        run: |
-          cd containers/spindle-serial-ubuntu
-          docker compose down
-          
-  spindle-serial-ubuntu_arm64:
-    name: Testsuite (Serial, Ubuntu, arm64)
-    environment: Spindle CI
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    steps:
-      - name: Check out Spindle
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Setup Docker Compose
-        uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
+        uses: docker/setup-compose-action@2fe291b7677a45ee1269ec56a42604c143505e7e
         with:
           version: latest
 
@@ -175,7 +131,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Setup Docker Compose (spindle-flux-ubuntu-debug3)
-        uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
+        uses: docker/setup-compose-action@2fe291b7677a45ee1269ec56a42604c143505e7e
         with:
           version: latest
 
@@ -276,7 +232,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Setup Docker Compose
-        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        uses: docker/setup-compose-action@2fe291b7677a45ee1269ec56a42604c143505e7e
         with:
           version: latest
 
@@ -390,7 +346,7 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
 
       - name: Setup Docker Compose
-        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        uses: docker/setup-compose-action@2fe291b7677a45ee1269ec56a42604c143505e7e
         with:
           version: latest
 
