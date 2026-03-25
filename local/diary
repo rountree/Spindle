@@ -58,6 +58,8 @@ CURRENT PUNCH LIST
         Add testing to verify existing comm/cachepaths aren't deleted, and
           created ones are.
         Run file/directory cleanup on comm/cachepaths simultaneously.
+        Remove FE code from cachepath consensus process.
+        Use message-free client cachepath request delay.
 
 
 25 Mar 2026
