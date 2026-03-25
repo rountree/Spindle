@@ -3,7 +3,11 @@
 # REMEMBER:  run with either "-o spindle" or a spindle variable like
 #            "-o psindle.cachepaths=/foo/bar/baz", but not both.
 
-. ./env.sh
+if [[ -v SPINDLE_SCRIPTS ]]; then
+    echo "Using scripts in " $SPINDLE_SCRIPTS
+else
+    echo "SPINDLE_SCRIPTS not set, please source env.h.  Exiting."
+fi
 
 echo FLUXRC=${FLUXRC}
 echo SPINDLE_FLUXOPT=${SPINDLE_FLUXOPT}
