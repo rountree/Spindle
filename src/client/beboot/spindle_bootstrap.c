@@ -113,8 +113,9 @@ static void setup_environment()
    if (opts & OPT_RELOCAOUT) 
       connection_str = client_get_connection_string(ldcsid);
 
-   char *chosen_parsed_cachepath;
+   char *chosen_parsed_cachepath = NULL;
    send_cachepath_query( ldcsid , NULL, &chosen_parsed_cachepath);
+   assert( chosen_parsed_cachepath );
 
    setenv("LD_AUDIT", client_lib, 1);
    setenv("LDCS_COMMPATH", commpath, 1);
