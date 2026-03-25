@@ -1292,6 +1292,7 @@ static int checkPathForLeak(const char *what, const char *path, const char *cach
 static int leak_check_cb(struct dl_phdr_info *p, size_t psize, void *opaque)
 {
    char *cachepath = (char *) opaque;
+   assert( cachepath );
    if (!p->dlpi_name || p->dlpi_name[0] == '\0')
       return 0;
    checkPathForLeak("dl_iterate_phdr", p->dlpi_name, cachepath);
