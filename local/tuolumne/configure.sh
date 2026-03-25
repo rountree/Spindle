@@ -5,7 +5,9 @@ if [[ -v SPINDLE_SCRIPTS ]]; then
 else
     echo "SPINDLE_SCRIPTS not set, please source env.h.  Exiting."
 fi
-export DEBUG=1
+
+echo SPINDLE_BUILD = $SPINDLE_BUILD
+echo SPINDLE_REPO  = $SPINDLE_REPO
 
 mkdir -p ${SPINDLE_BUILD}
 mkdir -p ${SPINDLE_INSTALL}
