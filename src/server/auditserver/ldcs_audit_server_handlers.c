@@ -21,6 +21,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <sys/inotify.h>
 #include <errno.h>
 #include <assert.h>
+#include <time.h>
 
 #include "ldcs_api.h"
 #include "ldcs_api_listen.h"
@@ -2964,6 +2965,7 @@ static int handle_client_pickone_msg(ldcs_process_data_t *procdata, int nc, ldcs
 static int cachepath_consensus_reached;
 static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_message_t *msg){
 
+    struct timespec seconds = { .tv_sec = 4, .tv_nsec = 0 };
     int num_children = ldcs_audit_server_md_get_num_children(procdata);
 
     if (num_children) {
@@ -2983,6 +2985,10 @@ static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_messag
                 &procdata->parsed_cachepath,
                 &procdata->symbolic_cachepath);
     }
+
+    debug_printf( "Arrived at cachepath consensus:  %s.  Now delaying to flush race condition.\n", procdata->cachepath );
+    nanosleep( &seconds, NULL );
+    debug_printf( "Delay completed.\n");
 
     debug_printf3("Initializing file cache cachepath %s\n", procdata->cachepath);
     ldcs_audit_server_filemngt_init(procdata->cachepath);
