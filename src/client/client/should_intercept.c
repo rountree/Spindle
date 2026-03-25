@@ -35,6 +35,7 @@ int is_in_spindle_cache(const char *pathname)
    static int cachepath_size = 0;
    static int orig_cachepath_size = 0;
    extern char *chosen_realized_cachepath, *chosen_parsed_cachepath;
+   assert( chosen_realized_cachepath );
    if (!cachepath_size) {
       cachepath_size = strlen(chosen_realized_cachepath);
    }
