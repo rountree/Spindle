@@ -1,0 +1,63 @@
+BRANCHING SCHEME
+
+    blr-*
+        Branches not intended for upstream PRs, e.g.:
+
+            1) blr-ci       Excessive logging
+            2) blr-diary    This branch
+            3) blr-scripts  My own configure/build/install/allocate scripts
+
+    testing-*
+        Branches containing a mix of PRs and blr-* branches.  For example:
+
+            git switch commpath
+            git switch -c testing-commpath
+            git merge blr-ci
+            git merge blr-diary
+            git merge blr-scripts
+
+        Editing occurs on (in this case) the commpath branch, which is
+          then merged into testing-commpath for config/build/install/test.
+
+        The intended benefit is getting the benefit of my ci and script
+          work into the same Spindle respository without having to force
+          it onto the folks working upstream.
+
+
+    commpath
+        Removes the "location" option and replaces it with "cachepaths"
+          and "commpath".  Allows for caches to be put into a separate
+          location.
+
+
+    log-ts (planned)
+        Add timestamps to log messages.
+
+    dead_code_removal
+        Currently a place to stash dead code removal patches as I find them.
+
+    podman
+        Scripts for doing ci in rootless containers.
+
+
+PROJECTS
+
+    1) Server resilience
+
+    2) CI capability on Tioga/Tuolumne
+
+    3) Commpath completion
+
+
+CURRENT PUNCH LIST
+
+    Commpath
+        Add nanosleep() to server cachepath consensus process to flush out
+          where clients are using an uninitialize cachepath.
+        Add logging statements to cachepath consensus process
+        Add testing to verify existing comm/cachepaths aren't deleted, and
+          created ones are.
+        Run file/directory cleanup on comm/cachepaths simultaneously.
+
+
+25 Mar 2026
