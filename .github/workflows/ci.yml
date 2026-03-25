@@ -12,6 +12,7 @@ on:
     branches:
       - devel
       - commpath
+      - testing-commpath
   pull_request:
     branches:
       - devel
