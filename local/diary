@@ -98,6 +98,8 @@ spindle_output.spindlenode.940:[FE.938@cobo_comm.c:216] - ERROR: Error writing t
 
 From spindle_output.spindlenode.154
 
+  485 [Server.157@ldcs_audit_server_handlers.c:2984] handle_cachepath_consensus - Arrived at cachepath consensus:  /tmp/commpath/cachepath/spindle.179673c416f96ccc.  Now delaying to flush race condition.
+
 21154 [Server.157@ldcs_api_pipe.c:361] ldcs_recv_msg_static_pipe - received message of type: LDCS_MSG_CHOSEN_CACHEPATH_REQUEST len=4096 data=^A ...
 21155 [Server.157@ldcs_audit_server_client_cb.c:70] _ldcs_client_CB - received message on connection nc=1 connid=2
 21156 [Server.157@ldcs_api_pipe.c:280] ldcs_send_msg_pipe - sending message of type: LDCS_MSG_CHOSEN_CACHEPATH len=98 data=/tmp/commpath/cachepath/spindle.179673c416f96ccc ...
