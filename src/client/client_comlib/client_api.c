@@ -54,7 +54,7 @@ int send_cachepath_query( int fd, char **chosen_realized_cachepath, char **chose
 
        COMM_LOCK;
 
-       debug_printf3("sending message of type: request_location_path.\n" );
+       debug_printf3("sending message of type: CHOSEN_CACHEPATH_REQUEST.\n" );
        client_send_msg(fd, &message);
        client_recv_msg_static(fd, &message, LDCS_READ_BLOCK);
 
