@@ -88,8 +88,53 @@ CURRENT PUNCH LIST
         information see:
         https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
 
+26 Mar 2026
+===========
+
+    Working on the serial version running on github:
+
+spindle_output.spindlenode.154:[FE.152@cobo_comm.c:216] - ERROR: Error writing to cobo FD 5: Connection reset by peer
+spindle_output.spindlenode.940:[FE.938@cobo_comm.c:216] - ERROR: Error writing to cobo FD 5: Connection reset by peer
+
+From spindle_output.spindlenode.154
+
+21154 [Server.157@ldcs_api_pipe.c:361] ldcs_recv_msg_static_pipe - received message of type: LDCS_MSG_CHOSEN_CACHEPATH_REQUEST len=4096 data=^A ...
+21155 [Server.157@ldcs_audit_server_client_cb.c:70] _ldcs_client_CB - received message on connection nc=1 connid=2
+21156 [Server.157@ldcs_api_pipe.c:280] ldcs_send_msg_pipe - sending message of type: LDCS_MSG_CHOSEN_CACHEPATH len=98 data=/tmp/commpath/cachepath/spindle.179673c416f96ccc ...
+21157 [Server.157@ldcs_audit_server_client_cb.c:77] _ldcs_client_CB - Finished handling client message on 1 with return code 0
+21158 [Server.157@ldcs_api_listen.c:159] ldcs_listen - Blocking for new messages in select
+21159 [Client.0.174@client_api_pipe.c:364] client_recv_msg_pipe - Reading 98 bytes for payload from pipe
+21160 [Client.1.174@intercept_exec.c:352] find_exec - Requesting stat on exec of .. to validate file
+21161 [Client.1.174@lookup.c:259] get_metadata_result - Sending request for stat of .. to server
+21162 [Client.1.174@client_api.c:158] send_stat_request - sending message of type: stat_query len=4 data='..' ...(..)
+21163 [Client.1.174@client_api_pipe.c:324] client_send_msg_pipe - sending message of size len=4
+21164 [Client.1.174@client_api_pipe.c:349] client_recv_msg_pipe - Reading 16 bytes for header from pipe
+21165 [Server.157@ldcs_api_listen.c:175] ldcs_listen - Select returned data.  Calling callback for fd 8 id=1
+21166 [Server.157@ldcs_audit_server_client_cb.c:61] _ldcs_client_CB - Receiving message from client 1 on fd 8
+21167 [Server.157@ldcs_api_pipe.c:381] _ldcs_read_pipe - before read from fifo 8, bytes_to_read = 16
+21168 [Server.157@ldcs_api_pipe.c:395] _ldcs_read_pipe - read from fifo: 16 bytes ...
+21169 [Server.157@ldcs_api_pipe.c:381] _ldcs_read_pipe - before read from fifo 8, bytes_to_read = 4
+21170 [Server.157@ldcs_api_pipe.c:395] _ldcs_read_pipe - read from fifo: 4 bytes ...
+21171 [Server.157@ldcs_api_pipe.c:361] ldcs_recv_msg_static_pipe - received message of type: LDCS_MSG_STAT_QUERY len=4 data=.. ...
+21172 [Server.157@ldcs_audit_server_client_cb.c:70] _ldcs_client_CB - received message on connection nc=1 connid=2
+21173 [Server.157@ldcs_audit_server_handlers.c:364] handle_client_file_request - Server recvd query stat for /home/spindleuser/Spindle-build/testsuite/...  Dir = /home/spindleuser/Spindle-build/testsuite, File = ..
+21174 [Server.157@ldcs_api_pipe.c:280] ldcs_send_msg_pipe - sending message of type: LDCS_MSG_STAT_ANSWER len=111 data=/tmp/commpath/cachepath/spindle.179673c416f96ccc/home/spindleuser/Spindle-build/testsuite/82-spindlens-stat-.. ...
+21175 [Server.157@ldcs_audit_server_handlers.c:2714] handle_client_metadata_result - Handle stat response: /tmp/commpath/cachepath/spindle.179673c416f96ccc/home/spindleuser/Spindle-build/testsuite/82-spindlens-stat-..
+21176 [Server.157@ldcs_audit_server_client_cb.c:77] _ldcs_client_CB - Finished handling client message on 1 with return code 0
+21177 [Server.157@ldcs_api_listen.c:159] ldcs_listen - Blocking for new messages in select
+21178 [Client.1.174@client_api_pipe.c:364] client_recv_msg_pipe - Reading 111 bytes for payload from pipe
+21179 [Client.1.174@lookup.c:261] get_metadata_result - Server returned stat result for ..: /tmp/commpath/cachepath/spindle.179673c416f96ccc/home/spindleuser/Spindle-build/testsuite/82-spindlens-stat-..
+21180 open("/tmp/commpath/cachepath/spindle.179673c416f96ccc/home/spindleuser/Spindle-build/testsuite/82-spindlens-stat-..", O_RDONLY) = 60
+21181 [Client.1.174@intercept_exec.c:569] execvp_wrapper - execvp redirection of .. returning error code
+21182 [Server.157@ldcs_api_listen.c:175] ldcs_listen - Select returned data.  Calling callback for fd 8 id=1
+21183 [Server.157@ldcs_audit_server_client_cb.c:61] _ldcs_client_CB - Receiving message from client 1 on fd 8
+21184 [Server.157@ldcs_api_pipe.c:381] _ldcs_read_pipe - before read from fifo 8, bytes_to_read = 16
+21185 [Server.157@ldcs_api_pipe.c:395] _ldcs_read_pipe - read from fifo: 0 bytes ...
+21186 [Server.157@ldcs_api_pipe.c:338] ldcs_recv_msg_static_pipe - Client disconnected.  Returning END message
+
 
 25 Mar 2026
+===========
 
     Redid workflow again.  Incorporating vim fugitive
       plugin.
