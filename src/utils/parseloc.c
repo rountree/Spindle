@@ -317,9 +317,14 @@ static int validateCandidatePath( char *candidatePath, char **realizedPath, char
        if( realizedCandidatePath ){
            rc = spindle_mkdir( parsedCandidatePath );
            if( 0 == rc ){
-               if( symbolicPath) *symbolicPath = candidatePath;
-               if( parsedPath  ) *parsedPath   = parsedCandidatePath;
-               if( realizedPath) *realizedPath = realizedCandidatePath;
+               // candidatePath is going to be freed in the calling function.
+               //   symbolicPath needs a strdup().  parsedPath() and realizedPath()
+               //   allocate their own memory for strings right now; the extra
+               //   strdup()s are just in case a future implementation decides
+               //   to modify the string passed instead of returning a new one.
+               if( symbolicPath) *symbolicPath = strdup(candidatePath);
+               if( parsedPath  ) *parsedPath   = strdup(parsedCandidatePath);
+               if( realizedPath) *realizedPath = strdup(realizedCandidatePath);
                return 1;
            }else{
                debug_printf2("Unable to create directory %s, moving on to the next candidate.\n", realizedCandidatePath );
@@ -345,6 +350,7 @@ static char *realizedCachePaths[64], *parsedCachePaths[64], *symbolicCachePaths[
 void determineValidCachePaths( uint64_t *validBitIdx, char *origPathList, number_t number ){
 
     char *saveptr, *candidatePath, *pathList = strdup( origPathList );
+    size_t pathList_len = strlen( pathList );
     uint64_t bitoffset = 0;
 
     *validBitIdx = 0;
@@ -360,6 +366,7 @@ void determineValidCachePaths( uint64_t *validBitIdx, char *origPathList, number
         bitoffset++;
         candidatePath = strtok_r( NULL, ":", &saveptr );
     }
+    memset( pathList, 'Q', pathList_len );
     free( pathList );
 }
 
