@@ -187,7 +187,7 @@ int ldcs_audit_server_fe_broadcast(ldcs_message_t *msg, void *data)
    (void)data;
    int root_fd;
 
-   debug_printf("Broadcasting message to daemons\n");
+   debug_printf("Broadcasting message %s to daemons\n",_message_type_to_str( msg->header.type ) );
 
    cobo_server_get_root_socket(&root_fd);
    return write_msg(root_fd, msg);
