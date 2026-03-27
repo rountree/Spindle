@@ -69,6 +69,12 @@ WISHLIST
         different --rm value (e.g., flux, serial) does not update the
         existing runTests file.
 
+    x) Go through the logs and modify and "error" messages that are
+        not actually errors.
+
+    x) Per-test timeouts, either in the testing infrastructure or
+        in the ci.yml.
+
 CURRENT PUNCH LIST
 
     Commpath
@@ -96,6 +102,75 @@ CURRENT PUNCH LIST
         ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more
         information see:
         https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+
+27 Mar 2026
+===========
+
+I hadn't appreciated how adding 4 seconds of delay to every test could push us
+    timeout limits in ci.yml.  Bumping those up got rid of nearly all of them.
+
+We have two postmortem cases, one from github and one from tuolumne.
+    /p/vast1/rountree/postmortem01.tar.bz2
+    /p/vast1/rountree/machines/tuolumne/build/Spindle-testing-commpath-flux/testsuite/postmortem2
+
+The latter has core files, but they're off of flux so probably of limited use.
+
+Working with the latter:
+
+Here's a server that succeeded.
+spindle_output.tuolumne1023.618865
+294 [Server.618884@ldcs_audit_server_handlers.c:3061] handle_alive_msg - Responding to parent with alive message. Child count matches alives (0 == 0)
+295 [Server.618884@ldcs_audit_server_md_cobo.c:185] ldcs_audit_server_md_is_responsible - Decided I am not responsible for file 
+296 [Server.618884@cobo_comm.c:198] ll_write - Have 24 bytes at 0x7fffffff7410 to write to network
+297 [Server.618884@cobo_comm.c:202] ll_write - Wrote 24 bytes at 0x7fffffff7410 to network: 0x3d 0x0 0x0 0x0 0x0 0x0 0x0 0x0...
+298 [Server.618884@ldcs_api_listen.c:159] ldcs_listen - Blocking for new messages in select
+299 [Server.618884@ldcs_api_listen.c:175] ldcs_listen - Select returned data.  Calling callback for fd 75 id=0
+300 [Server.618884@cobo_comm.c:167] ll_read - Read 24 bytes from network: 0x3e 0x0 0x0 0x0 0x55 0x15 0x0 0x0...
+301 [Server.618884@ldcs_audit_server_handlers.c:2984] handle_cachepath_consensus - Arrived at cachepath consensus:  /tmp/rountree/cachedir/spindle.e682c000000.  Now delaying to flush race condition.
+
+Here's a server that failed.
+spindle_output.tuolumne1013.670585
+294 [Server.670604@ldcs_audit_server_handlers.c:3061] handle_alive_msg - Responding to parent with alive message. Child count matches alives (0 == 0)
+295 [Server.670604@ldcs_audit_server_md_cobo.c:185] ldcs_audit_server_md_is_responsible - Decided I am not responsible for file 
+296 [Server.670604@cobo_comm.c:198] ll_write - Have 24 bytes at 0x7fffffff7410 to write to network
+297 [Server.670604@cobo_comm.c:202] ll_write - Wrote 24 bytes at 0x7fffffff7410 to network: 0x3d 0x0 0x0 0x0 0x0 0x0 0x0 0x0...
+298 [Server.670604@ldcs_api_listen.c:159] ldcs_listen - Blocking for new messages in select
+299 [Server.670604@ldcs_api_listen.c:175] ldcs_listen - Select returned data.  Calling callback for fd 75 id=0
+300 [Server.670604@cobo_comm.c:167] ll_read - Read 24 bytes from network: 0x3e 0x0 0x0 0x0 0x55 0x15 0x0 0x0...
+
+Here's another server that failed.
+
+411 [Server.730241@ldcs_audit_server_handlers.c:3061] handle_alive_msg - Responding to parent with alive message. Child count matches alives (1 == 1)
+412 [Server.730241@ldcs_audit_server_md_cobo.c:185] ldcs_audit_server_md_is_responsible - Decided I am not responsible for file 
+413 [Server.730241@cobo_comm.c:198] ll_write - Have 24 bytes at 0x7fffffff7410 to write to network
+414 [Server.730241@cobo_comm.c:202] ll_write - Wrote 24 bytes at 0x7fffffff7410 to network: 0x3d 0x0 0x0 0x0 0x0 0x0 0x0 0x0...
+415 [Server.730241@ldcs_api_listen.c:159] ldcs_listen - Blocking for new messages in select
+416 [Server.730241@ldcs_api_listen.c:175] ldcs_listen - Select returned data.  Calling callback for fd 80 id=0
+417 [Server.730241@ldcs_audit_server_client_cb.c:61] _ldcs_client_CB - Receiving message from client 0 on fd 80
+418 [Server.730241@ldcs_api_pipe.c:381] _ldcs_read_pipe - before read from fifo 80, bytes_to_read = 16
+419 [Server.730241@ldcs_api_pipe.c:395] _ldcs_read_pipe - read from fifo: 16 bytes ...
+420 [Server.730241@ldcs_api_pipe.c:361] ldcs_recv_msg_static_pipe - received message of type: LDCS_MSG_DIRLISTS_REQ len=0 data= ...
+421 [Server.730241@ldcs_audit_server_client_cb.c:70] _ldcs_client_CB - received message on connection nc=0 connid=1
+422 [Server.730241@ldcs_api_pipe.c:280] ldcs_send_msg_pipe - sending message of type: LDCS_MSG_DIRLISTS_RESP len=207 data=T ...
+423 [Server.730241@ldcs_audit_server_client_cb.c:77] _ldcs_client_CB - Finished handling client message on 0 with return code 0
+424 [Server.730241@ldcs_api_listen.c:159] ldcs_listen - Blocking for new messages in select
+
+431 [Server.730241@ldcs_api_listen.c:175] ldcs_listen - Select returned data.  Calling callback for fd 80 id=0
+432 [Server.730241@ldcs_audit_server_client_cb.c:61] _ldcs_client_CB - Receiving message from client 0 on fd 80
+433 [Server.730241@ldcs_api_pipe.c:381] _ldcs_read_pipe - before read from fifo 80, bytes_to_read = 16
+434 [Server.730241@ldcs_api_pipe.c:395] _ldcs_read_pipe - read from fifo: 16 bytes ...
+435 [Server.730241@ldcs_api_pipe.c:381] _ldcs_read_pipe - before read from fifo 80, bytes_to_read = 14
+436 [Server.730241@ldcs_api_pipe.c:395] _ldcs_read_pipe - read from fifo: 14 bytes ...
+437 [Server.730241@ldcs_api_pipe.c:361] ldcs_recv_msg_static_pipe - received message of type: LDCS_MSG_DSO_QUERY_EXACT_PATH len=14 data=./test_driver ...
+438 [Server.730241@ldcs_audit_server_client_cb.c:70] _ldcs_client_CB - received message on connection nc=0 connid=1
+
+So let's put in a few more debug messages.
+
+Aha!  determineValidCachePaths() is calling free() on memory that holds the
+    value of each candidate symbolicCachePath.  I don't think anyone uses
+    that value, but.... All three forms are now explicitly strdup()-ed and
+    I'm filling the memory that's freed with 'Q' (prior to free-ing).
+
 
 26 Mar 2026
 ===========
