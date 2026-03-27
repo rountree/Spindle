@@ -29,6 +29,8 @@ export DUST_BUNNIES="-Wall -Wextra -Werror"
 cd ${SPINDLE_BUILD}
 
 CFLAGS="-g -O2 -Wall ${EXTRA_CFLAGS} ${DUST_BUNNIES}" \
+    CC=${HOME}/v/machines/tuolumne/install/gcc-15.1.0/bin/gcc \
+    CXX=${HOME}/v/machines/tuolumne/install/gcc-15.1.0/bin/g++ \
 	CXXFLAGS="-g -O2 ${EXTRA_CXXFLAGS} ${DUST_BUNNIES}" \
 	CPPFLAGS="-g -O2 ${EXTRA_CPPFLAGS} ${DUST_BUNNIES}" \
     LDFLAGS="${EXTRA_LDFLAGS}"      \
@@ -45,8 +47,6 @@ CFLAGS="-g -O2 -Wall ${EXTRA_CFLAGS} ${DUST_BUNNIES}" \
     --with-rm=flux
 
 
-#    CC=${HOME}/v/machines/tuolumne/install/gcc-15.1.0/bin/gcc \
-#    CXX=${HOME}/v/machines/tuolumne/install/gcc-15.1.0/bin/g++ \
 
 
 
