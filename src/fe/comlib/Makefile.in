@@ -110,7 +110,9 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 LTLIBRARIES = $(noinst_LTLIBRARIES)
 libfe_cobo_la_LIBADD =
-am_libfe_cobo_la_OBJECTS = cobo_fe_comm.lo
+am__dirstamp = $(am__leading_dot)dirstamp
+am_libfe_cobo_la_OBJECTS = cobo_fe_comm.lo \
+	../../server/comlib/ldcs_api_util.lo
 libfe_cobo_la_OBJECTS = $(am_libfe_cobo_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
@@ -131,7 +133,8 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/../../scripts/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = ./$(DEPDIR)/cobo_fe_comm.Plo
+am__depfiles_remade = ../../server/comlib/$(DEPDIR)/ldcs_api_util.Plo \
+	./$(DEPDIR)/cobo_fe_comm.Plo
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -332,7 +335,7 @@ top_srcdir = @top_srcdir@
 noinst_LTLIBRARIES = libfe_cobo.la
 #noinst_LTLIBRARIES = libfe_msocket.la
 AM_CPPFLAGS = -I$(top_srcdir)/../logging -I$(top_srcdir)/../include -I$(top_srcdir)/../cobo
-libfe_cobo_la_SOURCES = cobo_fe_comm.c
+libfe_cobo_la_SOURCES = cobo_fe_comm.c ../../server/comlib/ldcs_api_util.c
 all: all-am
 
 .SUFFIXES:
@@ -377,16 +380,28 @@ clean-noinstLTLIBRARIES:
 	  echo rm -f $${locs}; \
 	  rm -f $${locs}; \
 	}
+../../server/comlib/$(am__dirstamp):
+	@$(MKDIR_P) ../../server/comlib
+	@: > ../../server/comlib/$(am__dirstamp)
+../../server/comlib/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) ../../server/comlib/$(DEPDIR)
+	@: > ../../server/comlib/$(DEPDIR)/$(am__dirstamp)
+../../server/comlib/ldcs_api_util.lo:  \
+	../../server/comlib/$(am__dirstamp) \
+	../../server/comlib/$(DEPDIR)/$(am__dirstamp)
 
 libfe_cobo.la: $(libfe_cobo_la_OBJECTS) $(libfe_cobo_la_DEPENDENCIES) $(EXTRA_libfe_cobo_la_DEPENDENCIES) 
 	$(AM_V_CCLD)$(LINK)  $(libfe_cobo_la_OBJECTS) $(libfe_cobo_la_LIBADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
+	-rm -f ../../server/comlib/*.$(OBJEXT)
+	-rm -f ../../server/comlib/*.lo
 
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@../../server/comlib/$(DEPDIR)/ldcs_api_util.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cobo_fe_comm.Plo@am__quote@ # am--include-marker
 
 $(am__depfiles_remade):
@@ -424,6 +439,7 @@ mostlyclean-libtool:
 
 clean-libtool:
 	-rm -rf .libs _libs
+	-rm -rf ../../server/comlib/.libs ../../server/comlib/_libs
 
 ID: $(am__tagged_files)
 	$(am__define_uniq_tagged_files); mkid -fID $$unique
@@ -540,6 +556,8 @@ clean-generic:
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
 	-test . = "$(srcdir)" || test -z "$(CONFIG_CLEAN_VPATH_FILES)" || rm -f $(CONFIG_CLEAN_VPATH_FILES)
+	-rm -f ../../server/comlib/$(DEPDIR)/$(am__dirstamp)
+	-rm -f ../../server/comlib/$(am__dirstamp)
 
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
@@ -550,7 +568,8 @@ clean-am: clean-generic clean-libtool clean-noinstLTLIBRARIES \
 	mostlyclean-am
 
 distclean: distclean-am
-		-rm -f ./$(DEPDIR)/cobo_fe_comm.Plo
+		-rm -f ../../server/comlib/$(DEPDIR)/ldcs_api_util.Plo
+	-rm -f ./$(DEPDIR)/cobo_fe_comm.Plo
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-tags
@@ -596,7 +615,8 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-am
-		-rm -f ./$(DEPDIR)/cobo_fe_comm.Plo
+		-rm -f ../../server/comlib/$(DEPDIR)/ldcs_api_util.Plo
+	-rm -f ./$(DEPDIR)/cobo_fe_comm.Plo
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
