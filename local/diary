@@ -110,6 +110,17 @@ Questions for Matt
 27 Mar 2026
 ===========
 
+After the call:
+Both
+    src/client/beboot/spindle_bootstrap.c
+and
+    src/client/client/client.c
+are calling
+    int send_cachepath_query( int fd, char **chosen_symbolic_cachepath, char **chosen_parsed_cachepath);
+
+I'm getting ready to replace all instances of cachepath with a function call.
+
+
 I hadn't appreciated how adding 4 seconds of delay to every test could push us
     timeout limits in ci.yml.  Bumping those up got rid of nearly all of them.
 
