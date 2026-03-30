@@ -49,7 +49,7 @@ int send_cachepath_query( int fd, char **chosen_realized_cachepath, char **chose
 
    do{
        message.header.type = LDCS_MSG_CHOSEN_CACHEPATH_REQUEST;
-       message.header.len = MAX_PATH_LEN;
+       message.header.len = 0;
        message.data = buffer;
 
        COMM_LOCK;
