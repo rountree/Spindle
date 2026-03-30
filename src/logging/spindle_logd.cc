@@ -167,7 +167,7 @@ public:
       output_file += std::string(".");
       output_file += std::string(pid);
       
-      fd = creat(output_file.c_str(), 0660);
+      fd = creat(output_file.c_str(), 0660 | O_SYNC);
       if (fd == -1) {
          fprintf(stderr, "[%s:%u] - Error opening output file %s: %s\n",
                  __FILE__, __LINE__, output_file.c_str(), strerror(errno));
