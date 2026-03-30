@@ -2970,7 +2970,7 @@ static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_messag
     struct timespec seconds = { .tv_sec = 4, .tv_nsec = 0 };
     int num_children = ldcs_audit_server_md_get_num_children(procdata);
 
-    debug_printf( "Processing REQUEST_CACHEPATH_CONSENSUS." );
+    debug_printf( "Processing REQUEST_CACHEPATH_CONSENSUS.\n" );
     debug_printf( "  procdata->cachepath_bitidx = %#"PRIx64"\n", procdata->cachepath_bitidx );
     debug_printf( "  procdata->cachepaths       = %s\n", procdata->cachepaths );
     debug_printf( "  procdata->cachepath        = %s [should be null]\n", procdata->cachepath  );
