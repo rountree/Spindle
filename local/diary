@@ -75,6 +75,24 @@ WISHLIST
     x) Per-test timeouts, either in the testing infrastructure or
         in the ci.yml.
 
+    x) client_recv_msg_static() and client_recv_msg_dynamic() are not
+        named clearly.  The former requires a caller-allocated
+        message->data buffer, the latter is callee-allocated.  Rename
+        to client_recv_msg_Alloc() and client_recv_msg_NoAlloc().
+
+    x) The above would be even clearer if the parameters were different.
+        The _Alloc version should take a ldcs_message_t **, the _NoAlloc()
+        version should take and ldcs_message_t *.
+
+    x) The _NoAlloc version currently does not allow the caller to
+        specify the size of the buffer being passed in.
+
+    x) Logfiles are not creat()-ed with O_SYNC, resulting in those logfiles
+        never making it to disk if a segfault comes sufficiently early.
+        (Fixed.)
+
+    x) Timestamps on log messages are occasionally useful.
+
 CURRENT PUNCH LIST
 
     Commpath
