@@ -54,7 +54,7 @@ FILE *spindle_debug_output_f;
 char *spindle_debug_name = "UNKNOWN";
 int spindle_debug_prints;
 int run_tests;
-
+double elapsed_timestamp;   // used in src/logging/spindle_logc.h
 //Timeout in tenths of a second
 #define SPAWN_TIMEOUT 300
 #define CONNECT_TIMEOUT 100
