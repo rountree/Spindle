@@ -93,6 +93,8 @@ WISHLIST
 
     x) Timestamps on log messages are occasionally useful.
 
+    x) Clean up the EOL ugliness in src/client/client/client.c
+
 CURRENT PUNCH LIST
 
     Commpath
