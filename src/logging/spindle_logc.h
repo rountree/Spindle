@@ -19,6 +19,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 
 extern int spindle_debug_prints;
 extern char *spindle_debug_name;
@@ -26,26 +27,44 @@ extern FILE *spindle_debug_output_f;
 extern FILE *spindle_test_output_f;
 extern int spindle_test_mode;
 extern int run_tests;
-
 extern void spindle_dump_on_error();
+extern double elapsed_timestamp;
 
 #define BASE_FILE (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/')+1 : __FILE__)
 
+#define calc_elapsed_timestamp()                                        \
+      do{                                                               \
+         static struct timeval start;                                   \
+         struct timeval now;                                            \
+         if( start.tv_sec == 0 && start.tv_usec == 0 ){                 \
+             gettimeofday( &start, NULL );                              \
+         }                                                              \
+         gettimeofday( &now, NULL );                                    \
+         elapsed_timestamp =                                            \
+             (now.tv_sec - start.tv_sec) +                              \
+             (now.tv_usec - start.tv_usec)/1000000.0;                   \
+      } while (0)
+
 #define debug_printf(format, ...)                                       \
    do {                                                                 \
+      calc_elapsed_timestamp();                                         \
       if (spindle_debug_prints && spindle_debug_output_f) {             \
-         fprintf(spindle_debug_output_f, "[%s.%d@%s:%u] %s - " format,  \
-                 spindle_debug_name, getpid(),                          \
+         fprintf(spindle_debug_output_f, "[%12.6lf][%s.%d@%s:%u] %s - " format,  \
+                 elapsed_timestamp, spindle_debug_name, getpid(),       \
                  BASE_FILE, __LINE__, __func__, ## __VA_ARGS__);        \
          fflush(spindle_debug_output_f);                                \
       }                                                                 \
    } while (0)
 
+
+
+
 #define debug_printf2(format, ...)                                      \
    do {                                                                 \
+      calc_elapsed_timestamp();                                         \
       if (spindle_debug_prints > 1 && spindle_debug_output_f) {         \
-         fprintf(spindle_debug_output_f, "[%s.%d@%s:%u] %s - " format,  \
-                 spindle_debug_name, getpid(),                          \
+         fprintf(spindle_debug_output_f, "[%12.6lf][%s.%d@%s:%u] %s - " format,  \
+                 elapsed_timestamp, spindle_debug_name, getpid(),       \
                  BASE_FILE, __LINE__, __func__, ## __VA_ARGS__);        \
          fflush(spindle_debug_output_f);                                \
       }                                                                 \
@@ -53,9 +72,10 @@ extern void spindle_dump_on_error();
 
 #define debug_printf3(format, ...)                                      \
    do {                                                                 \
+      calc_elapsed_timestamp();                                         \
       if (spindle_debug_prints > 2 && spindle_debug_output_f) {         \
-         fprintf(spindle_debug_output_f, "[%s.%d@%s:%u] %s - " format,  \
-                 spindle_debug_name, getpid(),                          \
+         fprintf(spindle_debug_output_f, "[%12.6lf][%s.%d@%s:%u] %s - " format,  \
+                 elapsed_timestamp, spindle_debug_name, getpid(),       \
                  BASE_FILE, __LINE__, __func__, ## __VA_ARGS__);        \
          fflush(spindle_debug_output_f);                                \
       }                                                                 \
@@ -87,9 +107,10 @@ extern void spindle_dump_on_error();
 
 #define err_printf(format, ...)                                         \
    do {                                                                 \
+      calc_elapsed_timestamp();                                         \
       if (spindle_debug_prints && spindle_debug_output_f) {             \
-         fprintf(spindle_debug_output_f, "[%s.%d@%s:%u] - ERROR: "      \
-                 format, spindle_debug_name, getpid(),                  \
+         fprintf(spindle_debug_output_f, "[%12.6lf][%s.%d@%s:%u] - ERROR: ",     \
+                 elapsed_timestamp, format, spindle_debug_name, getpid(),        \
                  BASE_FILE, __LINE__, ## __VA_ARGS__);                  \
          spindle_dump_on_error();                                       \
          fflush(spindle_debug_output_f);                                \
