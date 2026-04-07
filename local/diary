@@ -95,6 +95,10 @@ WISHLIST
 
     x) Clean up the EOL ugliness in src/client/client/client.c
 
+    x) Clean up configure options.  Remove unused, note which are defaults.
+        Better implied behavior (and document it):  does --rm=flux imply
+        --enable-flux-plugin?
+
 CURRENT PUNCH LIST
 
     Commpath
