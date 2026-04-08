@@ -4,195 +4,118 @@ export SPINDLE_TEST_ARGS="$@"
 export SPINDLE_BLUEGENE="BLUEGENE_TEST"
 export TEST_RM="TEST_RESOURCE_MANAGER"
 export GLOBAL_RESULT=0
-CHECK_RETCODE() { if [[ $? != 0 ]]; then export GLOBAL_RESULT=-1; fi }
 
-# For slurm-plugin, whether we use a session is determined by the allocation we run in.
-# Run only the non-session tests if this allocation doesn't use a session.
-# Run only the session tests if this allocation uses a session.
-SKIP_NONSESSION=false
-if test "x$TEST_RM" == "xslurm-plugin" && test "x$SPANK_SPINDLE_USE_SESSION" != "x"; then
-    SKIP_NONSESSION=true
+rm -f spindle_output* *.core
+
+declare -A SPINDLE_TESTS=(
+    [dependency_push]="--dependency --push"
+    [dlopen_push]="--dlopen --push"
+    [dlreopen_push]="--dlreopen --push"
+    [thrdopen_push]="--thrdopen --push"
+    [reorder_push]="--reorder --push"
+    [partial_push]="--partial --push"
+    [ldpreload_push]="--ldpreload --push"
+    [spindleapi_push]="--spindleapi --push"
+    [dependency_pull]="--dependency --pull"
+    [dlopen_pull]="--dlopen --pull"
+    [dlreopen_pull]="--dlreopen --pull"
+    [thrdopen_pull]="--thrdopen --pull"
+    [reorder_pull]="--reorder --pull"
+    [partial_pull]="--partial --pull"
+    [ldpreload_pull]="--ldpreload --pull"
+    [spindleapi_pull]="--spindleapi --pull"
+    [dependency_numa]="--dependency --numa"
+    [dlopen_numa]="--dlopen --numa"
+    [dlreopen_numa]="--dlreopen --numa"
+    [thrdopen_numa]="--thrdopen --numa"
+    [reorder_numa]="--reorder --numa"
+    [partial_numa]="--partial --numa"
+    [ldpreload_numa]="--ldpreload --numa"
+    [spindleapi_numa]="--spindleapi --numa"
+    [dependency_fork]="--dependency --fork"
+    [dlopen_fork]="--dlopen --fork"
+    [dlreopen_fork]="--dlreopen --fork"
+    [thrdopen_fork]="--thrdopen --fork"
+    [reorder_fork]="--reorder --fork"
+    [partial_fork]="--partial --fork"
+    [ldpreload_fork]="--ldpreload --fork"
+    [spindleapi_fork]="--spindleapi --fork"
+    [dependency_forkexec]="--dependency --forkexec"
+    [dlopen_forkexec]="--dlopen --forkexec"
+    [dlreopen_forkexec]="--dlreopen --forkexec"
+    [thrdopen_forkexec]="--thrdopen --forkexec"
+    [reorder_forkexec]="--reorder --forkexec"
+    [partial_forkexec]="--partial --forkexec"
+    [ldpreload_forkexec]="--ldpreload --forkexec"
+    [spindleapi_forkexec]="--spindleapi --forkexec"
+    [dependency_chdir]="--dependency --chdir"
+    [dlopen_chdir]="--dlopen --chdir"
+    [dlreopen_chdir]="--dlreopen --chdir"
+    [thrdopen_chdir]="--thrdopen --chdir"
+    [reorder_chdir]="--reorder --chdir"
+    [partial_chdir]="--partial --chdir"
+    [ldpreload_chdir]="--ldpreload --chdir"
+    [spindleapi_chdir]="--spindleapi --chdir"
+    [dependency_preload]="--dependency --preload"
+    [dlopen_preload]="--dlopen --preload"
+    [dlreopen_preload]="--dlreopen --preload"
+    [thrdopen_preload]="--thrdopen --preload"
+    [reorder_preload]="--reorder --preload"
+    [partial_preload]="--partial --preload"
+    [ldpreload_preload]="--ldpreload --preload"
+    [spindleapi_preload]="--spindleapi --preload"
+    [serial_spindle_exec_test]="--serial ./spindle_exec_test"
+    [serial_symbind_test]="--serial ./symbind_test"
+    [serial_interpreter_test]="--serial ./interpreter_test"
+)
+
+if test "x$TEST_RM" != "xserial"; then
+    export SESSION_ID=$(./run_driver --start-session)
+    SPINDLE_TESTS+=(
+        [dependency_session]="--dependency --session"
+        [dlopen_session]="--dlopen --session"
+        [dlreopen_session]="--dlreopen --session"
+        [thrdopen_session]="--thrdopen --session"
+        [reorder_session]="--reorder --session"
+        [partial_session]="--partial --session"
+        [ldpreload_session]="--ldpreload --session"
+        [spindleapi_session]="--spindleapi --session"
+        [end-session_$SESSION_ID]="--end-session --$SESSION_ID"
+    )
 fi
 
-if test "x$SKIP_NONSESSION" != "xtrue"; then
+for testname in "${!SPINDLE_TESTS[@]}"   # Iterate over the keys in the associative array
+do
+    # Run the benchmark, with the addition of start and elapsed time.
+    echo $(date) Starting ${testname} "${SPINDLE_TESTS[$testname]}"
+    ARGS="${SPINDLE_TESTS[$testname]}"
+    ./run_driver ${ARGS}
+    RESULT=$?
+    echo RESULT= ${RESULT}
+    if [[ $? != 0 ]]; then export GLOBAL_RESULT=-1; fi
 
-./run_driver --dependency --push
-CHECK_RETCODE
-./run_driver --dlopen --push
-CHECK_RETCODE
-./run_driver --dlreopen --push
-CHECK_RETCODE
-./run_driver --thrdopen --push
-CHECK_RETCODE
-./run_driver --reorder --push
-CHECK_RETCODE
-./run_driver --partial --push
-CHECK_RETCODE
-./run_driver --ldpreload --push
-CHECK_RETCODE
-./run_driver --spindleapi --push
-CHECK_RETCODE
 
-./run_driver --dependency --pull
-CHECK_RETCODE
-./run_driver --dlopen --pull
-CHECK_RETCODE
-./run_driver --dlreopen --pull
-CHECK_RETCODE
-./run_driver --thrdopen --pull
-CHECK_RETCODE
-./run_driver --reorder --pull
-CHECK_RETCODE
-./run_driver --partial --pull
-CHECK_RETCODE
-./run_driver --ldpreload --pull
-CHECK_RETCODE
-./run_driver --spindleapi --pull
-CHECK_RETCODE
+    # We only want to generate a tarball if there are logfiles and/or core files.
+    corestring=""; coreglob=""
+    logstring=""; logglob=""
 
-./run_driver --dependency --numa
-CHECK_RETCODE
-./run_driver --dlopen --numa
-CHECK_RETCODE
-./run_driver --dlreopen --numa
-CHECK_RETCODE
-./run_driver --thrdopen --numa
-CHECK_RETCODE
-./run_driver --reorder --numa
-CHECK_RETCODE
-./run_driver --partial --numa
-CHECK_RETCODE
-./run_driver --ldpreload --numa
-CHECK_RETCODE
-./run_driver --spindleapi --numa
-CHECK_RETCODE
+    # This works because if the glob passed to -e fails, -e tests for the existence of the literal glob (and presumably fails).
+    core_files=( *.core );         [ -e "${core_files[0]}" ] && { corestring="_corefiles"; coreglob="*.core"; }
+    log_files=( spindle_output* ); [ -e "${log_files[0]}" ]  && { logstring="_logfiles";  logglob="spindle_output*"; }
 
-if test "x$SPINDLE_BLUEGENE" != "xtrue"; then
-./run_driver --dependency --fork
-CHECK_RETCODE
-./run_driver --dlopen --fork
-CHECK_RETCODE
-./run_driver --dlreopen --fork
-CHECK_RETCODE
-./run_driver --thrdopen --fork
-CHECK_RETCODE
-./run_driver --reorder --fork
-CHECK_RETCODE
-./run_driver --partial --fork
-CHECK_RETCODE
-./run_driver --ldpreload --fork
-CHECK_RETCODE
-./run_driver --spindleapi --fork
-CHECK_RETCODE
-fi
+    tag=${RESULT}_${testname}${corestring}${logstring}_$(date +"%N")
 
-if test "x$SPINDLE_BLUEGENE" != "xtrue"; then
-./run_driver --dependency --forkexec
-CHECK_RETCODE
-./run_driver --dlopen --forkexec
-CHECK_RETCODE
-./run_driver --dlreopen --forkexec
-CHECK_RETCODE
-./run_driver --thrdopen --forkexec
-CHECK_RETCODE
-./run_driver --reorder --forkexec
-CHECK_RETCODE
-./run_driver --partial --forkexec
-CHECK_RETCODE
-./run_driver --ldpreload --forkexec
-CHECK_RETCODE
-./run_driver --spindleapi --forkexec
-CHECK_RETCODE
-fi
+    # The concatenation tests for "at least one of", but in a not very intuitive way.
+    [ -n "$coreglob$logglob" ]                  \
+        && mkdir $tag                           \
+        && mv ${coreglob} ${logglob} ${tag}
 
-./run_driver --dependency --chdir
-CHECK_RETCODE
-./run_driver --dlopen --chdir
-CHECK_RETCODE
-./run_driver --dlreopen --chdir
-CHECK_RETCODE
-./run_driver --thrdopen --chdir
-CHECK_RETCODE
-./run_driver --reorder --chdir
-CHECK_RETCODE
-./run_driver --partial --chdir
-CHECK_RETCODE
-./run_driver --ldpreload --chdir
-CHECK_RETCODE
-./run_driver --spindleapi --chdir
-CHECK_RETCODE
-
-./run_driver --dependency --preload
-CHECK_RETCODE
-./run_driver --dlopen --preload
-CHECK_RETCODE
-./run_driver --dlreopen --preload
-CHECK_RETCODE
-./run_driver --thrdopen --preload
-CHECK_RETCODE
-./run_driver --reorder --preload
-CHECK_RETCODE
-./run_driver --partial --preload
-CHECK_RETCODE
-./run_driver --ldpreload --preload
-CHECK_RETCODE
-./run_driver --spindleapi --preload
-CHECK_RETCODE
-
-fi # SKIP_NONSESSION
-
-SKIP_SESSION=false
-if test "x$TEST_RM" == "xserial"; then
-    SKIP_SESSION=true
-fi
-if test "x$TEST_RM" == "xslurm-plugin" && test "x$SPANK_SPINDLE_USE_SESSION" == "x"; then
-    SKIP_SESSION=true
-fi
-
-if test "x$SKIP_SESSION" != "xtrue"; then
-export SESSION_ID=`./run_driver --start-session`
-./run_driver --dependency --session
-CHECK_RETCODE
-./run_driver --dlopen --session
-CHECK_RETCODE
-./run_driver --dlreopen --session
-CHECK_RETCODE
-./run_driver --thrdopen --session
-CHECK_RETCODE
-./run_driver --reorder --session
-CHECK_RETCODE
-./run_driver --partial --session
-CHECK_RETCODE
-./run_driver --ldpreload --session
-CHECK_RETCODE
-./run_driver --spindleapi --session
-CHECK_RETCODE
-./run_driver --end-session $SESSION_ID
-CHECK_RETCODE
-unset SESSION_ID
-else
-echo Skipping: ./run_driver --dependency --session
-echo Skipping: ./run_driver --dlopen --session
-echo Skipping: ./run_driver --dlreopen --session
-echo Skipping: ./run_driver --thrdopen --session
-echo Skipping: ./run_driver --reorder --session
-echo Skipping: ./run_driver --partial --session
-echo Skipping: ./run_driver --ldpreload --session
-echo Skipping: ./run_driver --spindleapi --session
-fi
-
-./run_driver --serial ./spindle_exec_test
-CHECK_RETCODE
-
-./run_driver --serial ./symbind_test
-CHECK_RETCODE
-
-./run_driver --serial ./interpreter_test
-CHECK_RETCODE
+done
 
 if [[ $GLOBAL_RESULT != 0 ]]; then
     echo SOME TESTS FAILED
     exit -1
 fi
 echo ALL TESTS PASSED
+unset SESSION_ID
 exit 0
