@@ -109,8 +109,9 @@ extern double elapsed_timestamp;
    do {                                                                 \
       calc_elapsed_timestamp();                                         \
       if (spindle_debug_prints && spindle_debug_output_f) {             \
-         fprintf(spindle_debug_output_f, "[%12.6lf][%s.%d@%s:%u] - ERROR: ",     \
-                 elapsed_timestamp, format, spindle_debug_name, getpid(),        \
+         fprintf(spindle_debug_output_f,                                \
+                 "[%12.6lf][%s.%d@%s:%u] - ERROR: " format,             \
+                 elapsed_timestamp, spindle_debug_name, getpid(),       \
                  BASE_FILE, __LINE__, ## __VA_ARGS__);                  \
          spindle_dump_on_error();                                       \
          fflush(spindle_debug_output_f);                                \
