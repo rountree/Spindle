@@ -1,3 +1,62 @@
+The call chain:
+
+  spindleCloseFE()                                                  src/fe/startup/spindle_fe.cc:456
+    ldcs_audit_server_fe_md_close()                                 src/server/cobo/cobo_comm.c:230
+      write_msg()                                                   src/server/cobo/cobo_comm.c:230
+        ll_write()                                                  src/server/cobo/cobo_comm.c:216
+
+attempts to write a LDCS_MSG_EXIT to root_fd.
+The server has usually exited, which generates a
+"ECONNRESET 104 Connection reset by peer"
+error.  The return value is ignored by the caller.
+
+ll_write() is only called from 5 different places,
+but only two of those is passing in a message header,
+so casting the pointer to an ldcs_message_t and looking
+for the LDCS_MSG_EXIT type is dangerous.
+
+Not a lot of ways to handle this:
+
+1) Demote the message to debug_printf().  That's
+    dangerous and potentially very annoying.
+2) Hoist the error handling up across the board
+    to determine if it's worth reporting.  That's
+    awkward and difficult to communicate to future
+    developers.
+3) Create an alternative call tree dedicated to
+    ldcs_message_t and check for this message.
+    Lots of work for just a one-off case.
+4) Add a "no_error" or "silent_error" parameter
+    to the call chain.  A modest amount of work,
+    but still a lot of complication to silence
+    exactly one error message.
+
+Putting this aside for now.
+
+r0  0x00001555545db95c in __strlen_evex () from /lib64/libc.so.6
+#1  0x000015555458731d in vfprintf () from /lib64/libc.so.6
+#2  0x000015555458d908 in fprintf () from /lib64/libc.so.6
+#3  0x0000000000447e25 in ll_write (fd=fd@entry=5, buf=buf@entry=0x7fffffff7610, count=count@entry=24)
+    at /p/vast1/rountree/machines/tuolumne/build/Spindle-testing-devel-serial/src/server/cobo/cobo_comm.c:216
+#4  0x0000000000448075 in write_msg (fd=5, msg=msg@entry=0x7fffffff7610)
+    at /p/vast1/rountree/machines/tuolumne/build/Spindle-testing-devel-serial/src/server/cobo/cobo_comm.c:230
+#5  0x000000000043bf03 in ldcs_audit_server_fe_md_close (data=<optimized out>)
+    at /p/vast1/rountree/machines/tuolumne/build/Spindle-testing-devel-serial/src/fe/comlib/cobo_fe_comm.c:181
+#6  0x000000000042061f in spindleCloseFE (params=0x485aa0)
+    at /p/vast1/rountree/machines/tuolumne/build/Spindle-testing-devel-serial/src/fe/startup/spindle_fe.cc:456
+#7  0x0000000000408958 in main (argc=<optimized out>, argv=<optimized out>) at /p/vast1/rountree/repos/Spindle/src/fe/startup/allocator.h:252
+#8  0x0000155554559865 in __libc_start_main () from /lib64/libc.so.6
+#9  0x000000000040a94e in _start () at /p/vast1/rountree/repos/Spindle/src/fe/startup/allocator.h:242
+
+In #3   buf="5" and is null-terminated.
+        error       optmized out
+        errno       104 (ECONNRESET 104 Connection reset by peer, not listed as a possible error for "write(2)".
+        fd=5
+
+debug_printf works fine
+err_printf segfaults
+
+
 BRANCHING SCHEME
 
     blr-*
