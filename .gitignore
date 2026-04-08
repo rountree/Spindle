@@ -1,4 +1,5 @@
 *~
+.*.swp
 /autom4te.cache
 /src/server/autom4te.cache
 /src/client/autom4te.cache
