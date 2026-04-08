@@ -18,13 +18,6 @@ export EXTRA_CPPFLAGS=
 export EXTRA_LDFLAGS=
 
 export DUST_BUNNIES="-Wall -Wextra -Werror"
-#export DUST_BUNNIES="      -Wextra -Werror"
-#export DUST_BUNNIES="      -Wextra        "
-#export DUST_BUNNIES="-Wall -Wextra        "
-#export DUST_BUNNIES="-Wall         -Werror"
-#export DUST_BUNNIES="-Wall                "
-#export DUST_BUNNIES="              -Werror"
-#export DUST_BUNNIES="                     "
 
 cd ${SPINDLE_BUILD}
 
@@ -42,9 +35,10 @@ CFLAGS="-g -O2 -Wall ${EXTRA_CFLAGS} ${DUST_BUNNIES}" \
  	--prefix=${SPINDLE_INSTALL}		\
  	--enable-sec-munge			    \
   	--enable-flux-plugin            \
+    --enable-slurm-plugin           \
     --with-cachepaths=/tmp          \
     --with-commpath=/tmp            \
-    --with-rm=flux
+    --with-rm=serial
 
 
 
