@@ -33,7 +33,7 @@ jobs:
     name: Testsuite (Serial, Ubuntu, debug=${{ matrix.debug }})
     environment: Spindle CI
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
         TARBALL: ./serial_ubunutu_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
         UNIQNAME: spindle_serial_ubuntu_${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}
@@ -115,7 +115,7 @@ jobs:
     name: Testsuite (Flux, Ubuntu)
     environment: Spindle CI
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
         TARBALL1: ./flux_node1_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
         TARBALL2: ./flux_node2_dbg${{ matrix.debug }}_sha${{ github.sha }}_runid${{ github.run_id }}_runattempt${{ github.run_attempt }}.tar.bz2
@@ -154,7 +154,7 @@ jobs:
 
       # Observed time:  5m 12s
       - name: Run spindle-flux-ubuntu testsuite
-        timeout-minutes: 20
+        timeout-minutes: 15
         id: flux-ubuntu-testsuite
         run: |
             if [ "${{ matrix.debug }}" = "0" ]; then
@@ -329,7 +329,7 @@ jobs:
     name: Testsuite (Slurm Plugin, Ubuntu)
     environment: Spindle CI
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
         TARBALL1: ./plugin_node1_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
         TARBALL2: ./plugin_node2_dbg${{ matrix.debug }}_sha${{ github.sha }}_run${{ github.run_id }}_attempt${{ github.run_attempt }}.tar.bz2
@@ -383,7 +383,7 @@ jobs:
 
 # Matrix across "debug"
       - name: Run spindle-slurm-plugin-ubuntu testsuite
-        timeout-minutes: 20
+        timeout-minutes: 15
         id: slurm-ubuntu-testsuite
         run: |
             if [ "${{ matrix.debug }}" = "0" ]; then
