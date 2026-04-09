@@ -1,3 +1,9 @@
+=== commpath hangs re-re-redux ===
+Switching the spindle ci build parameters to separate comm and cachepaths doesn't affect anything.
+Currently running tioga to try to capture a segfault on an LC machine.
+
+
+=== Fixing the horde of segfaults on devel ===
 The call chain:
 
   spindleCloseFE()                                                  src/fe/startup/spindle_fe.cc:456
