@@ -2967,7 +2967,7 @@ static int handle_client_pickone_msg(ldcs_process_data_t *procdata, int nc, ldcs
 static int cachepath_consensus_reached;
 static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_message_t *msg){
 
-    struct timespec seconds = { .tv_sec = 4, .tv_nsec = 0 };
+    /* QQQ struct timespec seconds = { .tv_sec = 4, .tv_nsec = 0 }; */
     int num_children = ldcs_audit_server_md_get_num_children(procdata);
 
     debug_printf( "Processing REQUEST_CACHEPATH_CONSENSUS.\n" );
@@ -3002,7 +3002,7 @@ static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_messag
     }
 
     debug_printf( "Arrived at cachepath consensus:  %s.  Now delaying to flush race condition.\n", procdata->cachepath );
-    nanosleep( &seconds, NULL );
+    /* QQQ nanosleep( &seconds, NULL ); */
     debug_printf( "Delay completed.\n");
 
     debug_printf3("Initializing file cache cachepath %s\n", procdata->cachepath);
