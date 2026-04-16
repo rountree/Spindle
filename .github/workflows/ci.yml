@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload ubuntu-serial logs
         id: serial-ubuntu-copy-to-artifact
-        if: ${{ failure() && matrix.debug != 0 }}
+        #if: ${{ failure() && matrix.debug != 0 }}
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.UNIQNAME }}
