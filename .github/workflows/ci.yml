@@ -79,10 +79,10 @@ jobs:
                  "cd Spindle-build/testsuite && SPINDLE_DEBUG=${{ matrix.debug }} ./runTests"
             fi
 
-# If we saw any failures, tar up the logfiles for extraction.
-      - name: On failure, pull logs out of the container(s)
+# Segfaults don't trigger visible failure, so always grab logs and corefiles.
+      - name: Pull logs out of the container(s)
         id: serial-ubuntu-copy-from-container
-        if: ${{ failure() && matrix.debug != 0 }}
+        #        if: ${{ failure() && matrix.debug != 0 }}
         continue-on-error: true
         run: |
           docker exec spindlenode bash -c "tar cjvf /home/spindleuser/ubuntu_serial_logs.tar.bz2 /home/spindleuser/Spindle-build//testsuite/_*"
