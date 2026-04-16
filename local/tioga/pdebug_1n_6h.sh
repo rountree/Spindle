@@ -4,6 +4,7 @@ else
     echo "SPINDLE_SCRIPTS not set, please source env.h.  Exiting."
     exit
 fi
-flux alloc --queue=pbatch --time-limit=12h --nodes=4 --exclusive
+
+flux alloc --queue=pdebug --time-limit=6h --nodes=1 --exclusive
 
 
