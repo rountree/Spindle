@@ -91,24 +91,18 @@ do
     ARGS="${SPINDLE_TESTS[$testname]}"
     ./run_driver ${ARGS}
     RESULT=$?
-    echo RESULT= ${RESULT}
     if [[ $? != 0 ]]; then export GLOBAL_RESULT=-1; fi
 
-
-    # We only want to generate a tarball if there are logfiles and/or core files.
-    corestring=""; coreglob=""
-    logstring=""; logglob=""
-
-    # This works because if the glob passed to -e fails, -e tests for the existence of the literal glob (and presumably fails).
-    core_files=( *.core );         [ -e "${core_files[0]}" ] && { corestring="_corefiles"; coreglob="*.core"; }
-    log_files=( spindle_output* ); [ -e "${log_files[0]}" ]  && { logstring="_logfiles";  logglob="spindle_output*"; }
-
-    tag=${RESULT}_${testname}${corestring}${logstring}_$(date +"%N")
-
-    # The concatenation tests for "at least one of", but in a not very intuitive way.
-    [ -n "$coreglob$logglob" ]                  \
-        && mkdir $tag                           \
-        && mv ${coreglob} ${logglob} ${tag}
+    # All result directories begin with _ for easy tarring afterwards.
+    # Repeated tests with identical results will land in the same directory.
+    # Runs that don't result in logs or corefiles will generate empty directories.
+    # The "find" uses a couple of obscure features:
+    #   {} gets replaced with every matching file (due to the trailing "+")
+    #   If no files match, the "mv" command doesn't execute, thus no error.
+    #   "-o" is logical-OR.
+    tag=_${RESULT}_${testname}
+    mkdir -p $tag
+    find . -maxdepth 1 \( -name '*.core' -o -name 'spindle_output*' \) -exec mv -t ./$tag {} +
 
 done
 
