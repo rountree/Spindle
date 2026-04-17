@@ -92,6 +92,7 @@ jobs:
         id: serial-ubuntu-backtrace-extraction
         continue-on-error: true
         run: |
+            docker exec spindlenode bash -c "ls -la ${HOME}"
             docker exec spindlenode bash -c "chmod 700 ${HOME}/process_corefiles.sh"
             docker exec spindlenode bash -c "cd Spindle-build/testsuite && ${HOME}/process_corefiles.sh"
 
