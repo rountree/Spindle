@@ -18,6 +18,7 @@ RUN apt-get update \
         sudo \
         psmisc \
         build-essential \
+        gdb \
         pkg-config \
         autotools-dev \
         libtool \

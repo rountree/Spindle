@@ -19,6 +19,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -qq install -y --no-install-recomme
         build-essential \
         pkg-config \
         autotools-dev \
+        gdb \
         libtool \
         autoconf \
         automake \
