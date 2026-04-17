@@ -13,4 +13,8 @@ services:
     # The NUMA tests require CAP_SYS_NICE.
     cap_add:
       - SYS_NICE
+    ulimits:
+      core:
+        soft: -1
+        hard: -1
 
