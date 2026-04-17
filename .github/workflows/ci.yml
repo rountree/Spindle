@@ -63,7 +63,7 @@ jobs:
             whoami
             sudo -n true && echo "passwordless sudo: yes" || echo "passwordless sudo: no"
             cat /proc/sys/kernel/core_pattern
-            echo 'core.%e.%p.%t' | sudo tee /proc/sys/kernel/core_pattern
+            echo '%E.%e.%p.%t.core' | sudo tee /proc/sys/kernel/core_pattern
             cat /proc/sys/kernel/core_pattern
 
       - name: Bring spindle-serial-ubuntu up
