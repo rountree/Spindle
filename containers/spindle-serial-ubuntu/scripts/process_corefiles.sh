@@ -21,6 +21,7 @@ process_core() {
 
     # Extract the execfn field from the core file's ELF notes
     local execfn
+    readelf -n "$corefile"
     execfn=$(readelf -n "$corefile" 2>/dev/null \
         | grep 'execfn:' \
         | sed "s/.*execfn: '\\([^']*\\)'.*/\\1/")
