@@ -87,7 +87,9 @@ fi
 # Check to see if we can generate core files.
 printf "\nTesting core dump generation.  Results, if any, will be in ./_corefiletest\n"
 echo "ulimit -c : " $(ulimit -c)
-echo "cat /proc/sys/kernel/core_pattern : " $(cat /proc/sys/kernel/core_pattern)
+echo "[initial] cat /proc/sys/kernel/core_pattern : " $(cat /proc/sys/kernel/core_pattern)
+sudo sysctl -w kernel.core_pattern='%E.%e.%p.%t.core'
+echo "[postset] cat /proc/sys/kernel/core_pattern : " $(cat /proc/sys/kernel/core_pattern)
 mkdir -p ./_corefiletest
 cd ./_corefiletest
 sleep 10 &
