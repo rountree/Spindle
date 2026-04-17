@@ -10,7 +10,5 @@ if pidof systemd > /dev/null 2>&1; then
     fi
 fi
 sudo sysctl -w kernel.core_pattern='%E.%e.%p.%t.core'
-echo 'ulimit -c unlimited' | sudo tee /etc/profile.d/coredump.sh
-echo 'ulimit -c unlimited' | sudo tee -a /etc/bash.bashrc
 
 
