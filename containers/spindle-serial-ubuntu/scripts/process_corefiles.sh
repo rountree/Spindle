@@ -59,7 +59,7 @@ process_core() {
 # Find all core files in subdirectories matching _*
 found=0
 echo -n "debugging:  file $(which readelf) -> "
-file $(which readelf
+file $(which readelf)
 echo -n "debugging:  readelf --version -> " $( readelf --version )
 
 for dir in "${TARGET_DIR}"/_*/; do
