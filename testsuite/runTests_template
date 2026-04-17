@@ -84,6 +84,20 @@ if test "x$TEST_RM" != "xserial"; then
     )
 fi
 
+# Check to see if we can generate core files.
+printf "\nTesting core dump generation.  Results, if any, will be in ./_corefiletest\n"
+echo "ulimit -c : " $(ulimit -c)
+echo "cat /proc/sys/kernel/core_pattern : " $(cat /proc/sys/kernel/core_pattern)
+mkdir -p ./_corefiletest
+cd ./_corefiletest
+sleep 10 &
+SLEEP_PID=$!
+kill -SIGSEGV $SLEEP_PID
+sleep 1
+ls -la *.core 2>/dev/null || printf "WARNING: No core file generated\n"
+cd ..
+
+
 for testname in "${!SPINDLE_TESTS[@]}"   # Iterate over the keys in the associative array
 do
     # Run the benchmark, with the addition of start and elapsed time.
