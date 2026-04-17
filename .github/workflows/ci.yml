@@ -59,7 +59,12 @@ jobs:
       # Once the container is running, the /proc filesystem becomes read-only.
       # Set this on the host and let the container inherit it.
       - name: Enable core dumps
-        run: echo 'core.%e.%p.%t' | sudo tee /proc/sys/kernel/core_pattern
+        run: |
+            whoami
+            sudo -n true && echo "passwordless sudo: yes" || echo "passwordless sudo: no"
+            cat /proc/sys/kernel/core_pattern
+            echo 'core.%e.%p.%t' | sudo tee /proc/sys/kernel/core_pattern
+            cat /proc/sys/kernel/core_pattern
 
       - name: Bring spindle-serial-ubuntu up
         id: serial-ubuntu-up
