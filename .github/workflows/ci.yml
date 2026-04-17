@@ -69,15 +69,14 @@ jobs:
 
 # Matrix across "debug"
       - name: Run spindle-serial-ubuntu testsuite
-        timeout-minutes: ${{ matrix.debug == 0 && 15 || 15 }}
+        timeout-minutes: ${{ matrix.debug == 0 && 15 || 10 }}
         run: |
-            if [ "${{ matrix.debug }}" = "0" ]; then
-               docker exec spindlenode bash -c \
-                 'ulimit -c unlimited && cd Spindle-build/testsuite && ./runTests'
-             else
-               docker exec spindlenode bash -c \
-                 "ulimit -c unlimited && cd Spindle-build/testsuite && SPINDLE_DEBUG=${{ matrix.debug }} ./runTests"
+            debug_env=""
+            if [ "${{ matrix.debug }}" != "0" ]; then
+              debug_env="SPINDLE_DEBUG=${{ matrix.debug }}"
             fi
+            docker exec spindlenode bash -c \
+              "ulimit -c unlimited && cd Spindle-build/testsuite && $debug_env ./runTests"
 
 # Segfaults don't trigger visible failure, so always grab logs and corefiles.
       - name: Pull logs out of the container(s)
