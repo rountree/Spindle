@@ -61,3 +61,6 @@ ENV PATH /home/${USER}/Spindle-inst/bin:$PATH
 
 ENTRYPOINT /bin/bash ./entrypoint.sh
 
+# Extract corefile backtraces inside the container.
+COPY ${BUILD_ROOT}/scripts/process_corefiles.sh /home/${USER}/process_corefiles.sh
+
