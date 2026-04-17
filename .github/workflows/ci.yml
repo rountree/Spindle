@@ -56,6 +56,11 @@ jobs:
           cd containers/spindle-serial-ubuntu
           docker compose --progress=plain build
 
+      # Once the container is running, the /proc filesystem becomes read-only.
+      # Set this on the host and let the container inherit it.
+      - name: Enable core dumps
+        run: echo 'core.%e.%p.%t' | sudo tee /proc/sys/kernel/core_pattern
+
       - name: Bring spindle-serial-ubuntu up
         id: serial-ubuntu-up
         run: |
