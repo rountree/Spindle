@@ -20,6 +20,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -qq install -y --no-install-recomme
         pkg-config \
         autotools-dev \
         gdb \
+        libc6-dbg \
         libtool \
         autoconf \
         automake \
