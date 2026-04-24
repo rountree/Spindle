@@ -1,6 +1,7 @@
 name: ci
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - devel
@@ -17,11 +18,55 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  spindle-serial-ubuntu:
+  spindle-serial-ubuntu_x86:
     name: Testsuite (Serial, Ubuntu)
     environment: Spindle CI
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    steps:
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Docker Compose
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        with:
+          version: latest
+
+      - name: Build spindle-serial-ubuntu image
+        id: serial-ubuntu-build
+        run: |
+          cd containers/spindle-serial-ubuntu
+          docker compose --progress=plain build
+
+      - name: Bring spindle-serial-ubuntu up
+        id: serial-ubuntu-up
+        run: |
+          cd containers/spindle-serial-ubuntu
+          docker compose up -d
+
+      - name: Verify munge works in spindle-serial-ubuntu
+        id: serial-ubuntu-munge
+        run: |
+          docker exec spindlenode bash -c 'munge -n | unmunge'
+
+      - name: Run spindle-serial-ubuntu testsuite
+        id: serial-ubuntu-testsuite
+        run: |
+          docker exec spindlenode bash -c 'cd Spindle-build/testsuite && ./runTests'
+
+      - name: Bring spindle-serial-ubuntu down
+        id: serial-ubuntu-down
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          cd containers/spindle-serial-ubuntu
+          docker compose down
+          
+  spindle-serial-ubuntu_arm64:
+    name: Testsuite (Serial, Ubuntu, arm64)
+    environment: Spindle CI
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     steps:
       - name: Check out Spindle
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -71,7 +116,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Setup Docker Compose
-        uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
         with:
           version: latest
 
@@ -115,13 +160,13 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Setup Docker Compose
-        uses: docker/setup-compose-action@364cc21a5de5b1ee4a7f5f9d3fa374ce0ccde746
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
         with:
           version: latest
 
       - name: Login to GitHub Container Registry
         if: ${{ !env.ACT }}
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -161,5 +206,68 @@ jobs:
         continue-on-error: true
         run: |
           cd containers/spindle-slurm-ubuntu/testing
+          docker compose down
+
+  spindle-slurm-plugin-ubuntu:
+    name: Testsuite (Slurm Plugin, Ubuntu)
+    environment: Spindle CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Docker Compose
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        with:
+          version: latest
+
+      - name: Login to GitHub Container Registry
+        if: ${{ !env.ACT }}
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate MariaDB configuration
+        id: slurm-ubuntu-mariadb
+        run: |
+          cd containers/spindle-slurm-ubuntu/testing-plugin
+          ./generate_config.sh
+
+      - name: Build spindle-slurm-plugin-ubuntu image
+        id: slurm-ubuntu-build
+        run: |
+          cd containers/spindle-slurm-ubuntu/testing-plugin
+          docker compose --progress=plain build
+
+      - name: Bring spindle-slurm-plugin-ubuntu up
+        id: slurm-ubuntu-up
+        run: |
+          cd containers/spindle-slurm-ubuntu/testing-plugin
+          docker compose up -d --wait --wait-timeout 120
+
+      - name: Verify munge works in spindle-slurm-plugin-ubuntu
+        id: slurm-ubuntu-munge
+        run: |
+          docker exec slurm-plugin-head bash -c 'munge -n | unmunge'
+
+      - name: Run spindle-slurm-plugin-ubuntu testsuite
+        id: slurm-ubuntu-testsuite
+        run: |
+          docker exec slurm-plugin-head bash -c 'cd Spindle-build/testsuite && salloc -n${workers} -N${workers} ./runTests ${workers}'
+
+      - name: Run spindle-slurm-plugin-ubuntu session testsuite
+        id: slurm-ubuntu-testsuite-sessions
+        run: |
+          docker exec slurm-plugin-head bash -c 'cd Spindle-build/testsuite && salloc -n${workers} -N${workers} --spindle-session ./runTests ${workers}'
+
+      - name: Bring spindle-slurm-plugin-ubuntu down
+        id: slurm-ubuntu-down
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          cd containers/spindle-slurm-ubuntu/testing-plugin
           docker compose down
 
