@@ -59,6 +59,7 @@ jobs:
           mkdir -p /tmp/artifacts/success
           mkdir -p /tmp/artifacts/failure
           mkdir -p /tmp/artifacts/hang
+          mkdir -p /tmp/artifacts/all_stdout
 
           echo "Starting test iterations at $(date)"
           echo "Configuration: timeout=${ITERATION_TIMEOUT_SECONDS}s, max_success=${MAX_SUCCESS_LOGS}, max_failure=${MAX_FAILURE_LOGS}"
@@ -69,8 +70,8 @@ jobs:
 
             # Run test with timeout
             if timeout ${ITERATION_TIMEOUT_SECONDS} docker exec node-1 bash -c \
-                "cd Spindle-build/testsuite && flux alloc --nodes=\${workers} ./runTests --nodes=\${workers} --tasks-per-node=3" \
-                > /tmp/artifacts/stdout_iter_${i}.log 2>&1; then
+                "cd Spindle-build/testsuite && SPINDLE_DEBUG=3 flux alloc --nodes=\${workers} ./runTests --nodes=\${workers} --tasks-per-node=3" \
+                > /tmp/artifacts/all_stdout/stdout_iter_${i}.log 2>&1; then
 
               # ===== SUCCESS =====
               echo "Iteration $i: PASSED"
@@ -82,21 +83,24 @@ jobs:
                 mkdir -p /tmp/artifacts/success/iter_${i}
 
                 # Save stdout/stderr
-                cp /tmp/artifacts/stdout_iter_${i}.log /tmp/artifacts/success/iter_${i}/
+                cp /tmp/artifacts/all_stdout/stdout_iter_${i}.log /tmp/artifacts/success/iter_${i}/
 
                 # Collect spindle_output files from all nodes
                 for node in node-1 node-2 node-3 node-4; do
                   echo "    Collecting logs from ${node}..."
                   mkdir -p /tmp/artifacts/success/iter_${i}/${node}
 
-                  # Copy all spindle_output files from this node
+                  # List what files exist
                   docker exec ${node} bash -c \
-                    "cd Spindle-build/testsuite && ls -la spindle_output.* 2>/dev/null || echo 'No spindle_output files found'" \
+                    "cd Spindle-build/testsuite && ls -la spindle_output.* spindle_test.* 2>/dev/null || echo 'No spindle log files found'" \
                     > /tmp/artifacts/success/iter_${i}/${node}/file_list.txt 2>&1
 
-                  docker exec ${node} bash -c \
-                    "cd Spindle-build/testsuite && cat spindle_output.* 2>/dev/null" \
-                    > /tmp/artifacts/success/iter_${i}/${node}/spindle_output_combined.log 2>&1 || true
+                  # Copy each spindle_output file individually, preserving names
+                  for logfile in $(docker exec ${node} bash -c \
+                    "cd Spindle-build/testsuite && ls spindle_output.* spindle_test.* 2>/dev/null || true"); do
+                    docker cp ${node}:/home/fluxuser/Spindle-build/testsuite/${logfile} \
+                      /tmp/artifacts/success/iter_${i}/${node}/ 2>/dev/null || true
+                  done
                 done
 
                 success_count=$((success_count + 1))
@@ -126,21 +130,24 @@ jobs:
                   mkdir -p /tmp/artifacts/hang/iter_${i}
 
                   # Save stdout/stderr
-                  cp /tmp/artifacts/stdout_iter_${i}.log /tmp/artifacts/hang/iter_${i}/
+                  cp /tmp/artifacts/all_stdout/stdout_iter_${i}.log /tmp/artifacts/hang/iter_${i}/
 
                   # Collect spindle_output files from all nodes
                   for node in node-1 node-2 node-3 node-4; do
                     echo "    Collecting logs from ${node}..."
                     mkdir -p /tmp/artifacts/hang/iter_${i}/${node}
 
-                    # Copy all spindle_output files from this node
+                    # List what files exist
                     docker exec ${node} bash -c \
-                      "cd Spindle-build/testsuite && ls -la spindle_output.* 2>/dev/null || echo 'No spindle_output files found'" \
+                      "cd Spindle-build/testsuite && ls -la spindle_output.* spindle_test.* 2>/dev/null || echo 'No spindle log files found'" \
                       > /tmp/artifacts/hang/iter_${i}/${node}/file_list.txt 2>&1
 
-                    docker exec ${node} bash -c \
-                      "cd Spindle-build/testsuite && cat spindle_output.* 2>/dev/null" \
-                      > /tmp/artifacts/hang/iter_${i}/${node}/spindle_output_combined.log 2>&1 || true
+                    # Copy each spindle_output file individually, preserving names
+                    for logfile in $(docker exec ${node} bash -c \
+                      "cd Spindle-build/testsuite && ls spindle_output.* spindle_test.* 2>/dev/null || true"); do
+                      docker cp ${node}:/home/fluxuser/Spindle-build/testsuite/${logfile} \
+                        /tmp/artifacts/hang/iter_${i}/${node}/ 2>/dev/null || true
+                    done
                   done
 
                   failure_count=$((failure_count + 1))
@@ -180,7 +187,7 @@ jobs:
       - name: Upload artifacts
         id: flux-ubuntu-upload
         if: ${{ always() }}
-        uses: actions/upload-artifact@834a144ee995460fba8ed112a2fc961b36a5ec5a
+        uses: actions/upload-artifact@v4
         with:
           name: hang-debug-logs-${{ github.run_number }}
           path: /tmp/artifacts/
