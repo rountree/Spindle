@@ -46,7 +46,146 @@ jobs:
       - name: Run spindle-flux-ubuntu testsuite
         id: flux-ubuntu-testsuite
         run: |
-          docker exec node-1 bash -c 'cd Spindle-build/testsuite && for i in `seq 200`; do flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3; done'
+          # Configuration
+          ITERATION_TIMEOUT_SECONDS=30
+          MAX_SUCCESS_LOGS=1
+          MAX_FAILURE_LOGS=1
+
+          # Counters
+          success_count=0
+          failure_count=0
+
+          # Create artifact staging directories
+          mkdir -p /tmp/artifacts/success
+          mkdir -p /tmp/artifacts/failure
+          mkdir -p /tmp/artifacts/hang
+
+          echo "Starting test iterations at $(date)"
+          echo "Configuration: timeout=${ITERATION_TIMEOUT_SECONDS}s, max_success=${MAX_SUCCESS_LOGS}, max_failure=${MAX_FAILURE_LOGS}"
+
+          for i in $(seq 1 200); do
+            echo ""
+            echo "=== Iteration $i at $(date) ==="
+
+            # Run test with timeout
+            if timeout ${ITERATION_TIMEOUT_SECONDS} docker exec node-1 bash -c \
+                "cd Spindle-build/testsuite && flux alloc --nodes=\${workers} ./runTests --nodes=\${workers} --tasks-per-node=3" \
+                > /tmp/artifacts/stdout_iter_${i}.log 2>&1; then
+
+              # ===== SUCCESS =====
+              echo "Iteration $i: PASSED"
+
+              if [ $success_count -lt $MAX_SUCCESS_LOGS ]; then
+                echo "  Collecting success logs (${success_count}/${MAX_SUCCESS_LOGS})..."
+
+                # Create directory for this iteration
+                mkdir -p /tmp/artifacts/success/iter_${i}
+
+                # Save stdout/stderr
+                cp /tmp/artifacts/stdout_iter_${i}.log /tmp/artifacts/success/iter_${i}/
+
+                # Collect spindle_output files from all nodes
+                for node in node-1 node-2 node-3 node-4; do
+                  echo "    Collecting logs from ${node}..."
+                  mkdir -p /tmp/artifacts/success/iter_${i}/${node}
+
+                  # Copy all spindle_output files from this node
+                  docker exec ${node} bash -c \
+                    "cd Spindle-build/testsuite && ls -la spindle_output.* 2>/dev/null || echo 'No spindle_output files found'" \
+                    > /tmp/artifacts/success/iter_${i}/${node}/file_list.txt 2>&1
+
+                  docker exec ${node} bash -c \
+                    "cd Spindle-build/testsuite && cat spindle_output.* 2>/dev/null" \
+                    > /tmp/artifacts/success/iter_${i}/${node}/spindle_output_combined.log 2>&1 || true
+                done
+
+                success_count=$((success_count + 1))
+                echo "  Success logs collected (${success_count}/${MAX_SUCCESS_LOGS})"
+              else
+                echo "  Skipping log collection (already have ${MAX_SUCCESS_LOGS} success logs)"
+              fi
+
+              # Clean up spindle_output files for next iteration
+              for node in node-1 node-2 node-3 node-4; do
+                docker exec ${node} bash -c \
+                  "cd Spindle-build/testsuite && rm -f spindle_output.* spindle_test.*" 2>/dev/null || true
+              done
+
+            else
+              # ===== FAILURE =====
+              rc=$?
+
+              if [ $rc -eq 124 ]; then
+                # TIMEOUT = HANG
+                echo "*** HANG DETECTED at iteration $i ***"
+
+                if [ $failure_count -lt $MAX_FAILURE_LOGS ]; then
+                  echo "  Collecting hang logs (${failure_count}/${MAX_FAILURE_LOGS})..."
+
+                  # Create directory for this hang
+                  mkdir -p /tmp/artifacts/hang/iter_${i}
+
+                  # Save stdout/stderr
+                  cp /tmp/artifacts/stdout_iter_${i}.log /tmp/artifacts/hang/iter_${i}/
+
+                  # Collect spindle_output files from all nodes
+                  for node in node-1 node-2 node-3 node-4; do
+                    echo "    Collecting logs from ${node}..."
+                    mkdir -p /tmp/artifacts/hang/iter_${i}/${node}
+
+                    # Copy all spindle_output files from this node
+                    docker exec ${node} bash -c \
+                      "cd Spindle-build/testsuite && ls -la spindle_output.* 2>/dev/null || echo 'No spindle_output files found'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/file_list.txt 2>&1
+
+                    docker exec ${node} bash -c \
+                      "cd Spindle-build/testsuite && cat spindle_output.* 2>/dev/null" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/spindle_output_combined.log 2>&1 || true
+                  done
+
+                  failure_count=$((failure_count + 1))
+                  echo "  Hang logs collected (${failure_count}/${MAX_FAILURE_LOGS})"
+                fi
+
+                # Exit on first hang
+                echo "Stopping after hang detection"
+                break
+
+              else
+                # Non-hang failure (Signal 127, etc.) - log but continue
+                echo "Iteration $i: FAILED (exit code $rc, not a hang)"
+                echo "  This will be handled in a future step (task 11)"
+
+                # Clean up for next iteration
+                for node in node-1 node-2 node-3 node-4; do
+                  docker exec ${node} bash -c \
+                    "cd Spindle-build/testsuite && rm -f spindle_output.* spindle_test.*" 2>/dev/null || true
+                done
+              fi
+            fi
+
+            # Check if we've collected enough samples
+            if [ $success_count -ge $MAX_SUCCESS_LOGS ] && [ $failure_count -ge $MAX_FAILURE_LOGS ]; then
+              echo ""
+              echo "=== Collection complete ==="
+              echo "Collected ${success_count} success logs and ${failure_count} failure logs"
+              break
+            fi
+          done
+
+          echo ""
+          echo "Test run completed at $(date)"
+          echo "Final counts: ${success_count} successes, ${failure_count} failures"
+
+      - name: Upload artifacts
+        id: flux-ubuntu-upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@834a144ee995460fba8ed112a2fc961b36a5ec5a
+        with:
+          name: hang-debug-logs-${{ github.run_number }}
+          path: /tmp/artifacts/
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Bring spindle-flux-ubuntu down
         id: flux-ubuntu-down
