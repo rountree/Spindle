@@ -17,6 +17,9 @@ jobs:
     environment: Spindle CI
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      # Required for actions/upload-artifact@v4
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Check out Spindle
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -179,7 +182,7 @@ jobs:
                       docker exec ${node} bash -c \
                         "if ps -p ${pid} > /dev/null 2>&1; then \
                            echo 'Process ${pid} (${proc_type}) is running, collecting backtrace...'; \
-                           gdb -p ${pid} -batch \
+                           sudo gdb -p ${pid} -batch \
                              -ex 'thread apply all bt full' \
                              -ex 'info registers' \
                              2>&1 || echo 'GDB failed for PID ${pid}'; \
