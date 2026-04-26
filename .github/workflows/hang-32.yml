@@ -1,0 +1,314 @@
+name: hang-32
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ci-${{github.ref}}-${{github.event.pull_request.number || github.run_number}}
+  cancel-in-progress: true
+
+jobs:
+  spindle-flux-ubuntu:
+    name: Testsuite (Flux, Ubuntu, 32 nodes)
+    environment: Spindle CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Required for actions/upload-artifact@v4
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Number of flux nodes in this test
+      NODE_COUNT: 32
+    steps:
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Docker Compose
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        with:
+          version: latest
+
+      - name: Generate docker-compose.yml for ${{ env.NODE_COUNT }} nodes
+        id: flux-ubuntu-generate
+        run: |
+          cd containers/spindle-flux-ubuntu
+          ./generate_compose.sh ${{ env.NODE_COUNT }}
+
+      - name: Build spindle-flux-ubuntu image
+        id: flux-ubuntu-build
+        run: |
+          cd containers/spindle-flux-ubuntu
+          docker compose --progress=plain build
+
+      - name: Bring spindle-flux-ubuntu up
+        id: flux-ubuntu-up
+        run: |
+          cd containers/spindle-flux-ubuntu
+          docker compose up -d --wait --wait-timeout 60
+
+      - name: Verify munge works in spindle-flux-ubuntu
+        id: flux-ubuntu-munge
+        run: |
+          docker exec node-1 bash -c 'munge -n | unmunge'
+
+      - name: Run spindle-flux-ubuntu testsuite
+        id: flux-ubuntu-testsuite
+        run: |
+          # Configuration
+          ITERATION_TIMEOUT_SECONDS=30
+          MAX_SUCCESS_LOGS=1
+          MAX_FAILURE_LOGS=1
+          NODE_COUNT=${{ env.NODE_COUNT }}
+
+          # Generate node list dynamically
+          NODE_LIST=$(seq -f "node-%.0f" 1 $NODE_COUNT | tr '\n' ' ')
+          echo "Node list: ${NODE_LIST}"
+
+          # Counters
+          success_count=0
+          failure_count=0
+
+          # Create artifact staging directories
+          mkdir -p /tmp/artifacts/success
+          mkdir -p /tmp/artifacts/failure
+          mkdir -p /tmp/artifacts/hang
+          mkdir -p /tmp/artifacts/all_stdout
+
+          echo "Starting test iterations at $(date)"
+          echo "Configuration: timeout=${ITERATION_TIMEOUT_SECONDS}s, max_success=${MAX_SUCCESS_LOGS}, max_failure=${MAX_FAILURE_LOGS}, nodes=${NODE_COUNT}"
+
+          for i in $(seq 1 200); do
+            echo ""
+            echo "=== Iteration $i at $(date) ==="
+
+            # Run test with timeout
+            if timeout ${ITERATION_TIMEOUT_SECONDS} docker exec node-1 bash -c \
+                "cd Spindle-build/testsuite && SPINDLE_DEBUG=3 FLUX_SHELL_VERBOSE=2 flux alloc --nodes=\${workers} ./runTests --nodes=\${workers} --tasks-per-node=3" \
+                > /tmp/artifacts/all_stdout/stdout_iter_${i}.log 2>&1; then
+
+              # ===== SUCCESS =====
+              echo "Iteration $i: PASSED"
+
+              if [ $success_count -lt $MAX_SUCCESS_LOGS ]; then
+                echo "  Collecting success logs (${success_count}/${MAX_SUCCESS_LOGS})..."
+
+                # Create directory for this iteration
+                mkdir -p /tmp/artifacts/success/iter_${i}
+
+                # Save stdout/stderr
+                cp /tmp/artifacts/all_stdout/stdout_iter_${i}.log /tmp/artifacts/success/iter_${i}/
+
+                # Collect spindle_output files from all nodes
+                for node in $NODE_LIST; do
+                  echo "    Collecting logs from ${node}..."
+                  mkdir -p /tmp/artifacts/success/iter_${i}/${node}
+
+                  # List what files exist
+                  docker exec ${node} bash -c \
+                    "cd Spindle-build/testsuite && (ls -la spindle_output.* spindle_test.* 2>&1 | grep -vE 'cannot access|No such file' || echo 'No spindle log files found')" \
+                    > /tmp/artifacts/success/iter_${i}/${node}/file_list.txt 2>&1
+
+                  # Copy each spindle_output file individually, preserving names
+                  for logfile in $(docker exec ${node} bash -c \
+                    "cd Spindle-build/testsuite && ls spindle_output.* spindle_test.* 2>/dev/null || true"); do
+                    docker cp ${node}:/home/fluxuser/Spindle-build/testsuite/${logfile} \
+                      /tmp/artifacts/success/iter_${i}/${node}/ 2>/dev/null || true
+                  done
+                done
+
+                success_count=$((success_count + 1))
+                echo "  Success logs collected (${success_count}/${MAX_SUCCESS_LOGS})"
+              else
+                echo "  Skipping log collection (already have ${MAX_SUCCESS_LOGS} success logs)"
+              fi
+
+              # Clean up spindle_output files for next iteration
+              for node in $NODE_LIST; do
+                docker exec ${node} bash -c \
+                  "cd Spindle-build/testsuite && rm -f spindle_output.* spindle_test.*" 2>/dev/null || true
+              done
+
+            else
+              # ===== FAILURE =====
+              rc=$?
+
+              if [ $rc -eq 124 ]; then
+                # TIMEOUT = HANG
+                echo "*** HANG DETECTED at iteration $i ***"
+
+                if [ $failure_count -lt $MAX_FAILURE_LOGS ]; then
+                  echo "  Collecting hang logs (${failure_count}/${MAX_FAILURE_LOGS})..."
+
+                  # Create directory for this hang
+                  mkdir -p /tmp/artifacts/hang/iter_${i}
+
+                  # Save stdout/stderr
+                  cp /tmp/artifacts/all_stdout/stdout_iter_${i}.log /tmp/artifacts/hang/iter_${i}/
+
+                  # Collect spindle_output files from all nodes
+                  for node in $NODE_LIST; do
+                    echo "    Collecting logs from ${node}..."
+                    mkdir -p /tmp/artifacts/hang/iter_${i}/${node}
+
+                    # List what files exist
+                    docker exec ${node} bash -c \
+                      "cd Spindle-build/testsuite && (ls -la spindle_output.* spindle_test.* 2>&1 | grep -vE 'cannot access|No such file' || echo 'No spindle log files found')" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/file_list.txt 2>&1
+
+                    # Copy each spindle_output file individually, preserving names
+                    for logfile in $(docker exec ${node} bash -c \
+                      "cd Spindle-build/testsuite && ls spindle_output.* spindle_test.* 2>/dev/null || true"); do
+                      docker cp ${node}:/home/fluxuser/Spindle-build/testsuite/${logfile} \
+                        /tmp/artifacts/hang/iter_${i}/${node}/ 2>/dev/null || true
+                    done
+                  done
+
+                  echo "  Collecting Flux diagnostics..."
+                  # Collect Flux eventlogs and broker logs from all nodes
+                  for node in $NODE_LIST; do
+                    echo "    Collecting Flux diagnostics from ${node}..."
+                    mkdir -p /tmp/artifacts/hang/iter_${i}/${node}/flux
+
+                    # Get list of recent jobs
+                    docker exec ${node} bash -c \
+                      "flux jobs -a -o '{id} {name} {status} {t_submit}' 2>&1 || echo 'flux jobs failed'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/jobs_list.txt 2>&1 || true
+
+                    # Get main eventlog for the most recent job
+                    docker exec ${node} bash -c \
+                      "JOBID=\$(flux job last 2>/dev/null); \
+                       if [ -n \"\$JOBID\" ]; then \
+                         echo \"Most recent job: \$JOBID\"; \
+                         flux job eventlog \$JOBID 2>&1 || echo 'flux job eventlog failed'; \
+                       else \
+                         echo 'No recent job found'; \
+                       fi" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/eventlog_main.txt 2>&1 || true
+
+                    # Get guest.exec.eventlog for the most recent job (contains shell.init event)
+                    docker exec ${node} bash -c \
+                      "JOBID=\$(flux job last 2>/dev/null); \
+                       if [ -n \"\$JOBID\" ]; then \
+                         echo \"Most recent job: \$JOBID\"; \
+                         flux job eventlog -p guest.exec.eventlog \$JOBID 2>&1 || echo 'flux job eventlog -p guest.exec.eventlog failed'; \
+                       else \
+                         echo 'No recent job found'; \
+                       fi" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/eventlog_guest_exec.txt 2>&1 || true
+
+                    # Get flux broker logs via dmesg
+                    docker exec ${node} bash -c \
+                      "flux dmesg 2>&1 || echo 'flux dmesg failed'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/broker_dmesg.txt 2>&1 || true
+
+                    # Try journalctl if available (may not be in container)
+                    docker exec ${node} bash -c \
+                      "journalctl -u flux -n 1000 --no-pager 2>&1 || echo 'journalctl not available in container'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/broker_journalctl.txt 2>&1 || true
+
+                    # Get flux resource status
+                    docker exec ${node} bash -c \
+                      "flux resource list 2>&1 || echo 'flux resource list failed'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/resource_status.txt 2>&1 || true
+                  done
+                  echo "  Flux diagnostics collected"
+
+                  echo "  Collecting backtraces from hung processes..."
+                  # Extract PIDs from spindle logs and collect backtraces
+                  for node in $NODE_LIST; do
+                    echo "    Extracting backtraces from ${node}..."
+                    mkdir -p /tmp/artifacts/hang/iter_${i}/${node}/backtraces
+
+                    # Get PIDs and process types from spindle log files
+                    # Log format: [ProcessType.PID@filename:line] function - message
+                    # Extract unique PID.ProcessType pairs
+                    docker exec ${node} bash -c \
+                      "cd Spindle-build/testsuite && \
+                       if ls spindle_output.* >/dev/null 2>&1; then \
+                         grep -hoP '\[\K[^.]+\.\d+(?=@)' spindle_output.* 2>/dev/null | sort -u; \
+                       fi" > /tmp/pids_${node}.txt || true
+
+                    # For each PID.ProcessType pair, collect backtrace
+                    while IFS= read -r pid_entry; do
+                      if [ -z "$pid_entry" ]; then continue; fi
+
+                      # Split into process type and PID
+                      proc_type=$(echo "$pid_entry" | cut -d'.' -f1)
+                      pid=$(echo "$pid_entry" | cut -d'.' -f2)
+
+                      echo "      Checking ${proc_type} process PID ${pid}..."
+
+                      # Check if process is still running and get backtrace
+                      docker exec ${node} bash -c \
+                        "if ps -p ${pid} > /dev/null 2>&1; then \
+                           echo 'Process ${pid} (${proc_type}) is running, collecting backtrace...'; \
+                           sudo gdb -p ${pid} -batch \
+                             -ex 'thread apply all bt full' \
+                             -ex 'info registers' \
+                             2>&1 || echo 'GDB failed for PID ${pid}'; \
+                         else \
+                           echo 'Process ${pid} (${proc_type}) not running'; \
+                         fi" \
+                        > /tmp/artifacts/hang/iter_${i}/${node}/backtraces/${proc_type}_${pid}.txt 2>&1 || true
+
+                    done < /tmp/pids_${node}.txt
+
+                    rm -f /tmp/pids_${node}.txt
+                  done
+                  echo "  Backtraces collected"
+
+                  failure_count=$((failure_count + 1))
+                  echo "  Hang logs collected (${failure_count}/${MAX_FAILURE_LOGS})"
+                fi
+
+                # Exit on first hang
+                echo "Stopping after hang detection"
+                break
+
+              else
+                # Non-hang failure (Signal 127, etc.) - log but continue
+                echo "Iteration $i: FAILED (exit code $rc, not a hang)"
+                echo "  This will be handled in a future step (task 11)"
+
+                # Clean up for next iteration
+                for node in $NODE_LIST; do
+                  docker exec ${node} bash -c \
+                    "cd Spindle-build/testsuite && rm -f spindle_output.* spindle_test.*" 2>/dev/null || true
+                done
+              fi
+            fi
+
+            # Check if we've collected enough samples
+            if [ $success_count -ge $MAX_SUCCESS_LOGS ] && [ $failure_count -ge $MAX_FAILURE_LOGS ]; then
+              echo ""
+              echo "=== Collection complete ==="
+              echo "Collected ${success_count} success logs and ${failure_count} failure logs"
+              break
+            fi
+          done
+
+          echo ""
+          echo "Test run completed at $(date)"
+          echo "Final counts: ${success_count} successes, ${failure_count} failures"
+
+      - name: Upload artifacts
+        id: flux-ubuntu-upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: hang-debug-logs-32node-${{ github.run_number }}
+          path: /tmp/artifacts/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Bring spindle-flux-ubuntu down
+        id: flux-ubuntu-down
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          cd containers/spindle-flux-ubuntu
+          docker compose down
+
