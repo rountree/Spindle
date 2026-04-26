@@ -153,6 +153,45 @@ jobs:
                     done
                   done
 
+                  echo "  Collecting Flux diagnostics..."
+                  # Collect Flux eventlogs and broker logs from all nodes
+                  for node in node-1 node-2 node-3 node-4; do
+                    echo "    Collecting Flux diagnostics from ${node}..."
+                    mkdir -p /tmp/artifacts/hang/iter_${i}/${node}/flux
+
+                    # Get list of recent jobs
+                    docker exec ${node} bash -c \
+                      "flux jobs -a -o '{id} {name} {status} {t_submit}' 2>&1 || echo 'flux jobs failed'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/jobs_list.txt 2>&1 || true
+
+                    # Get eventlog for the most recent job
+                    docker exec ${node} bash -c \
+                      "JOBID=\$(flux job last 2>/dev/null); \
+                       if [ -n \"\$JOBID\" ]; then \
+                         echo \"Most recent job: \$JOBID\"; \
+                         flux job eventlog \$JOBID 2>&1 || echo 'flux job eventlog failed'; \
+                       else \
+                         echo 'No recent job found'; \
+                       fi" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/eventlog_recent.txt 2>&1 || true
+
+                    # Get flux broker logs via dmesg
+                    docker exec ${node} bash -c \
+                      "flux dmesg 2>&1 || echo 'flux dmesg failed'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/broker_dmesg.txt 2>&1 || true
+
+                    # Try journalctl if available (may not be in container)
+                    docker exec ${node} bash -c \
+                      "journalctl -u flux -n 1000 --no-pager 2>&1 || echo 'journalctl not available in container'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/broker_journalctl.txt 2>&1 || true
+
+                    # Get flux resource status
+                    docker exec ${node} bash -c \
+                      "flux resource list 2>&1 || echo 'flux resource list failed'" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/resource_status.txt 2>&1 || true
+                  done
+                  echo "  Flux diagnostics collected"
+
                   echo "  Collecting backtraces from hung processes..."
                   # Extract PIDs from spindle logs and collect backtraces
                   for node in node-1 node-2 node-3 node-4; do
