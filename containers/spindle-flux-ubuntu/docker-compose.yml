@@ -39,6 +39,7 @@ x-shared-node-parameters: &shared-node-parameters
   environment: *shared-environment
   cap_add:
     - SYS_NICE # Required for libnuma
+    - SYS_PTRACE # Required for gdb to attach to processes
 
 services:
   node-1:

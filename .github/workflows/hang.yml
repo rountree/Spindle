@@ -92,7 +92,7 @@ jobs:
 
                   # List what files exist
                   docker exec ${node} bash -c \
-                    "cd Spindle-build/testsuite && ls -la spindle_output.* spindle_test.* 2>/dev/null || echo 'No spindle log files found'" \
+                    "cd Spindle-build/testsuite && (ls -la spindle_output.* spindle_test.* 2>&1 | grep -vE 'cannot access|No such file' || echo 'No spindle log files found')" \
                     > /tmp/artifacts/success/iter_${i}/${node}/file_list.txt 2>&1
 
                   # Copy each spindle_output file individually, preserving names
@@ -139,7 +139,7 @@ jobs:
 
                     # List what files exist
                     docker exec ${node} bash -c \
-                      "cd Spindle-build/testsuite && ls -la spindle_output.* spindle_test.* 2>/dev/null || echo 'No spindle log files found'" \
+                      "cd Spindle-build/testsuite && (ls -la spindle_output.* spindle_test.* 2>&1 | grep -vE 'cannot access|No such file' || echo 'No spindle log files found')" \
                       > /tmp/artifacts/hang/iter_${i}/${node}/file_list.txt 2>&1
 
                     # Copy each spindle_output file individually, preserving names
@@ -149,6 +149,50 @@ jobs:
                         /tmp/artifacts/hang/iter_${i}/${node}/ 2>/dev/null || true
                     done
                   done
+
+                  echo "  Collecting backtraces from hung processes..."
+                  # Extract PIDs from spindle logs and collect backtraces
+                  for node in node-1 node-2 node-3 node-4; do
+                    echo "    Extracting backtraces from ${node}..."
+                    mkdir -p /tmp/artifacts/hang/iter_${i}/${node}/backtraces
+
+                    # Get PIDs and process types from spindle log files
+                    # Log format: [ProcessType.PID@filename:line] function - message
+                    # Extract unique PID.ProcessType pairs
+                    docker exec ${node} bash -c \
+                      "cd Spindle-build/testsuite && \
+                       if ls spindle_output.* >/dev/null 2>&1; then \
+                         grep -hoP '\[\K[^.]+\.\d+(?=@)' spindle_output.* 2>/dev/null | sort -u; \
+                       fi" > /tmp/pids_${node}.txt || true
+
+                    # For each PID.ProcessType pair, collect backtrace
+                    while IFS= read -r pid_entry; do
+                      if [ -z "$pid_entry" ]; then continue; fi
+
+                      # Split into process type and PID
+                      proc_type=$(echo "$pid_entry" | cut -d'.' -f1)
+                      pid=$(echo "$pid_entry" | cut -d'.' -f2)
+
+                      echo "      Checking ${proc_type} process PID ${pid}..."
+
+                      # Check if process is still running and get backtrace
+                      docker exec ${node} bash -c \
+                        "if ps -p ${pid} > /dev/null 2>&1; then \
+                           echo 'Process ${pid} (${proc_type}) is running, collecting backtrace...'; \
+                           gdb -p ${pid} -batch \
+                             -ex 'thread apply all bt full' \
+                             -ex 'info registers' \
+                             2>&1 || echo 'GDB failed for PID ${pid}'; \
+                         else \
+                           echo 'Process ${pid} (${proc_type}) not running'; \
+                         fi" \
+                        > /tmp/artifacts/hang/iter_${i}/${node}/backtraces/${proc_type}_${pid}.txt 2>&1 || true
+
+                    done < /tmp/pids_${node}.txt
+
+                    rm -f /tmp/pids_${node}.txt
+                  done
+                  echo "  Backtraces collected"
 
                   failure_count=$((failure_count + 1))
                   echo "  Hang logs collected (${failure_count}/${MAX_FAILURE_LOGS})"
