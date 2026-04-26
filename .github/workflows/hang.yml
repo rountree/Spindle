@@ -73,7 +73,7 @@ jobs:
 
             # Run test with timeout
             if timeout ${ITERATION_TIMEOUT_SECONDS} docker exec node-1 bash -c \
-                "cd Spindle-build/testsuite && SPINDLE_DEBUG=3 flux alloc --nodes=\${workers} ./runTests --nodes=\${workers} --tasks-per-node=3" \
+                "cd Spindle-build/testsuite && SPINDLE_DEBUG=3 FLUX_SHELL_VERBOSE=2 flux alloc --nodes=\${workers} ./runTests --nodes=\${workers} --tasks-per-node=3" \
                 > /tmp/artifacts/all_stdout/stdout_iter_${i}.log 2>&1; then
 
               # ===== SUCCESS =====
@@ -164,7 +164,7 @@ jobs:
                       "flux jobs -a -o '{id} {name} {status} {t_submit}' 2>&1 || echo 'flux jobs failed'" \
                       > /tmp/artifacts/hang/iter_${i}/${node}/flux/jobs_list.txt 2>&1 || true
 
-                    # Get eventlog for the most recent job
+                    # Get main eventlog for the most recent job
                     docker exec ${node} bash -c \
                       "JOBID=\$(flux job last 2>/dev/null); \
                        if [ -n \"\$JOBID\" ]; then \
@@ -173,7 +173,18 @@ jobs:
                        else \
                          echo 'No recent job found'; \
                        fi" \
-                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/eventlog_recent.txt 2>&1 || true
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/eventlog_main.txt 2>&1 || true
+
+                    # Get guest.exec.eventlog for the most recent job (contains shell.init event)
+                    docker exec ${node} bash -c \
+                      "JOBID=\$(flux job last 2>/dev/null); \
+                       if [ -n \"\$JOBID\" ]; then \
+                         echo \"Most recent job: \$JOBID\"; \
+                         flux job eventlog \$JOBID guest.exec.eventlog 2>&1 || echo 'flux job eventlog guest.exec.eventlog failed'; \
+                       else \
+                         echo 'No recent job found'; \
+                       fi" \
+                      > /tmp/artifacts/hang/iter_${i}/${node}/flux/eventlog_guest_exec.txt 2>&1 || true
 
                     # Get flux broker logs via dmesg
                     docker exec ${node} bash -c \
