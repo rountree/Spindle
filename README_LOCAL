@@ -1,0 +1,48 @@
+18 Mar 2026
+
+New workflow.
+
+There are a lot of files and patches that are only useful
+for testing on LLNL machines, and a few patches that are
+useful for me but don't belong upstream.  In order to
+incorporate those into this repo, use this workflow.
+
+devel           should mirror upstream/devel
+my_fix          code intended for devel
+devel-local     location-specific files
+my_fix-local    merges devel-local and my_fix
+
+1) devel-local should be periodically rebased on devel.
+
+2) Coding should happen on my_fix.  Unfortunately, any
+    changes need to be committed and merged into
+    my_fix-local, which might get annoying.
+
+3) Compiling and testing should happen on my_fix-local.
+
+For example:
+
+I have a ci.yaml file I've been working on that runs
+four different builds (flux, serial, slurm, slurm-plugin)
+at all four debug levels (0-3), and creates artifacts out
+of all the logfiles.  This is overkill for most development
+on the devel branch, so it shouldn't be enabled in devel.
+
+I can, however, keep that ci.yaml file as the default in
+devel-local and repeatedly tweak (and commit) it as needed.
+That gives me a more flexible debugging environment without
+adding a bunch of extraneous commits to devel.
+
+Another example:
+
+I have a set of LC-specific scripts for configuration,
+building, installling and running Spindle.  Currently, I'm
+keeping them in a separate repo, but they rarely get pushed
+after modification and they're not tied to the specific
+Spindle branches and versions they're used on.  Pulling
+them into devel-local will help ensure changes get backed
+up and will make reproducing old tests much easier.
+
+There are, over course, other ways of doing this.  For the
+environment I have in front of me, the above appears to
+have the best set of tradeoffs.
