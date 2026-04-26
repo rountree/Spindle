@@ -180,7 +180,7 @@ jobs:
                       "JOBID=\$(flux job last 2>/dev/null); \
                        if [ -n \"\$JOBID\" ]; then \
                          echo \"Most recent job: \$JOBID\"; \
-                         flux job eventlog \$JOBID guest.exec.eventlog 2>&1 || echo 'flux job eventlog guest.exec.eventlog failed'; \
+                         flux job eventlog -p guest.exec.eventlog \$JOBID 2>&1 || echo 'flux job eventlog -p guest.exec.eventlog failed'; \
                        else \
                          echo 'No recent job found'; \
                        fi" \
