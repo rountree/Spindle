@@ -16,7 +16,7 @@ jobs:
     name: Testsuite (Flux, Ubuntu)
     environment: Spindle CI
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out Spindle
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -46,7 +46,10 @@ jobs:
       - name: Run spindle-flux-ubuntu testsuite
         id: flux-ubuntu-testsuite
         run: |
-          docker exec node-1 bash -c 'cd Spindle-build/testsuite && flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3'
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite
+          && for i in `seq 200` do;
+          flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3;
+          done'
 
       - name: Bring spindle-flux-ubuntu down
         id: flux-ubuntu-down
