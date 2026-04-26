@@ -49,6 +49,15 @@ jobs:
           cd containers/spindle-flux-ubuntu
           docker compose up -d --wait --wait-timeout 300
 
+      - name: Capture node-1 logs on startup failure
+        if: failure()
+        run: |
+          echo "=== Node-1 container logs ==="
+          docker logs node-1 2>&1 || echo "Could not get node-1 logs"
+          echo ""
+          echo "=== Node-1 container status ==="
+          docker ps -a | grep node-1 || echo "Node-1 not found in container list"
+
       - name: Verify munge works in spindle-flux-ubuntu
         id: flux-ubuntu-munge
         run: |
