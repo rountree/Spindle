@@ -5,7 +5,7 @@
 # `replicas` must match the number of nodes defined in the services section
 x-shared-workers:
   &workers
-  replicas: 4
+  replicas: __NODE_COUNT__
 
 # Base flux image version to use
 # ${ubuntu_version}-${flux_version}-${arch}
@@ -55,19 +55,4 @@ services:
       timeout: 10s
       retries: 5
 
-  node-2:
-    <<: *shared-node-parameters
-    hostname: node-2
-    container_name: node-2
-
-  node-3:
-    <<: *shared-node-parameters
-    hostname: node-3
-    container_name: node-3
-
-  node-4:
-    <<: *shared-node-parameters
-    hostname: node-4
-    container_name: node-4
-
-
+__NODE_SERVICES__

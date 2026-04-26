@@ -29,6 +29,12 @@ jobs:
         with:
           version: latest
 
+      - name: Generate docker-compose.yml for 4 nodes
+        id: flux-ubuntu-generate
+        run: |
+          cd containers/spindle-flux-ubuntu
+          ./generate_compose.sh 4
+
       - name: Build spindle-flux-ubuntu image
         id: flux-ubuntu-build
         run: |
