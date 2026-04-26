@@ -46,9 +46,9 @@ jobs:
       - name: Run spindle-flux-ubuntu testsuite
         id: flux-ubuntu-testsuite
         run: |
-          docker exec node-1 bash -c 'cd Spindle-build/testsuite
-          && for i in `seq 200` do;
-          flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3;
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite \
+          && for i in `seq 200` do; \
+          flux alloc --nodes=${workers} ./runTests --nodes=${workers} --tasks-per-node=3; \
           done'
 
       - name: Bring spindle-flux-ubuntu down
