@@ -50,9 +50,9 @@ services:
     # with the broker on the head node.
     healthcheck:
       test: ["CMD", "./flux_healthcheck.sh"]
-      start_period: 15s
-      interval: 5s
+      start_period: 60s
+      interval: 10s
       timeout: 10s
-      retries: 5
+      retries: 20
 
 __NODE_SERVICES__

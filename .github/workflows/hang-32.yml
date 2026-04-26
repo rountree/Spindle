@@ -47,7 +47,7 @@ jobs:
         id: flux-ubuntu-up
         run: |
           cd containers/spindle-flux-ubuntu
-          docker compose up -d --wait --wait-timeout 60
+          docker compose up -d --wait --wait-timeout 300
 
       - name: Verify munge works in spindle-flux-ubuntu
         id: flux-ubuntu-munge
