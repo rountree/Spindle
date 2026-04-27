@@ -32,13 +32,10 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <flux/shell.h>
 #include <flux/hostlist.h>
 
-/* Define FLUX_JOB_EVENT_WATCH_WAITCREATE if not already defined */
-#ifndef FLUX_JOB_EVENT_WATCH_WAITCREATE
-#define FLUX_JOB_EVENT_WATCH_WAITCREATE 1
-#endif
-
 #include "spindle_launch.h"
 #include "fluxmgr.h"
+
+static unsigned long seq;
 
 #define debug_printf(PRIORITY, FORMAT, ...)                         \
    do {                                                             \
@@ -267,13 +264,17 @@ static int run_spindle_backend (struct spindle_ctx *ctx)
 {
    sigset_t sset;
 
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
    if (!spindle_is_enabled(ctx)) {
       debug_printf(1, "Spindle disabled. Not starting BE\n");
       return 0;
    }
 
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
    ctx->backend_pid = fork ();
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
    if (ctx->backend_pid == 0) {
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
       enableSpindleForceExitBE();
 
       /* Set signal handlers for ctrl-c and related signals. */
@@ -330,68 +331,43 @@ static void wait_for_shell_init (flux_future_t *f, void *arg)
     const char *name;
     int rc = -1;
 
-    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() CALLED\n",
-            ctx->shell_rank);
-
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (ctx->params.opts & OPT_OFF) {
-       fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() OPT_OFF set, returning\n",
-               ctx->shell_rank);
        return;
     }
 
-    if (flux_job_event_watch_get (f, &event) < 0) {
-        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() flux_job_event_watch_get FAILED: %s\n",
-                ctx->shell_rank, strerror(errno));
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
+    if (flux_job_event_watch_get (f, &event) < 0)
         errno_printf_and_die(1, "spindle failed waiting for shell.init event\n");
-    }
-
-    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() received event: %.200s\n",
-            ctx->shell_rank, event);
-
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (!(o = json_loads (event, 0, NULL))
-            || json_unpack (o, "{s:s}", "name", &name) < 0) {
-        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() failed to parse event name\n",
-                ctx->shell_rank);
+            || json_unpack (o, "{s:s}", "name", &name) < 0)
         errno_printf_and_die(1, "failed to get event name\n");
-    }
-
-    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() event name: %s\n",
-            ctx->shell_rank, name);
-
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (strcmp (name, "shell.init") == 0) {
         rc = json_unpack (o,
                 "{s:{s:i s:i}}",
                 "context",
                 "spindle_port", &ctx->params.port,
                 "spindle_num_ports", &ctx->params.num_ports);
-        if (rc == 0) {
-            fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() parsed shell.init: port=%d, num_ports=%d\n",
-                    ctx->shell_rank, ctx->params.port, ctx->params.num_ports);
-        } else {
-            fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() failed to unpack port/num_ports\n",
-                    ctx->shell_rank);
-        }
     }
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     json_decref (o);
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (rc != 0) {
-        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() not shell.init or parse failed, resetting future\n",
-                ctx->shell_rank);
         flux_future_reset (f);
         return;
     }
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     flux_future_destroy (f);
-
-    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() about to call run_spindle_backend()\n",
-            ctx->shell_rank);
 
     /*  Now that port and num_ports are obtained from rank 0, start
      *   the backends and frontend on rank 0
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     run_spindle_backend (ctx);
 
-    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() run_spindle_backend() returned\n",
-            ctx->shell_rank);
-
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (ctx->shell_rank == 0)
         run_spindle_frontend (ctx);
 }
@@ -560,7 +536,9 @@ static int sp_init (flux_plugin_t *p,
     (void)arg;
     (void)data;
     struct spindle_ctx *ctx;
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     flux_shell_t *shell = flux_plugin_get_shell (p);
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     flux_t *h = flux_shell_get_flux (shell);
     flux_jobid_t id;
     int shell_rank, rc;
@@ -571,21 +549,25 @@ static int sp_init (flux_plugin_t *p,
     const char *test;
     const char *spindle_enabled;
 
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (!(shell = flux_plugin_get_shell (p))
         || !(h = flux_shell_get_flux (shell)))
        logerrno_printf_and_return(1, "failed to get shell or flux handle\n");
 
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (flux_shell_getopt (shell, "spindle", NULL) != 1)
         return 0;
 
     /*  If SPINDLE_DEBUG is set in the environment of the job, propagate
      *  it into the shell so we get spindle debugging for this session.
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if ((debug = flux_shell_getenv (shell, "SPINDLE_DEBUG")))
         setenv ("SPINDLE_DEBUG", debug, 1);
 
     /*  The spindle testsuite requires SPINDLE_TEST
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if ((test = flux_shell_getenv (shell, "SPINDLE_TEST")))
        setenv ("SPINDLE_TEST", test, 1);
 
@@ -594,21 +576,27 @@ static int sp_init (flux_plugin_t *p,
     /*  Spindle requires that TMPDIR is set. Propagate TMPDIR from job
      *  environment, or use /tmp if TMPDIR not set.
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     tmpdir = flux_shell_getenv (shell, "TMPDIR");
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (!tmpdir) {
         tmpdir = "/tmp";
         if (flux_shell_setenvf (shell, 1, "TMPDIR", "%s", tmpdir) < 0)
             logerrno_printf_and_return(1, "failed to set TMPDIR=/tmp in job environment");
 
     }
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     setenv ("TMPDIR", tmpdir, 1);
 
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     spindle_enabled = flux_shell_getenv (shell, "SPINDLE");
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (spindle_enabled)
        setenv("SPINDLE", spindle_enabled, 1);
 
     /*  Get the jobid, R, and shell rank
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (flux_shell_info_unpack (shell,
                                 "{s:I s:o s:i}",
                                 "jobid", &id,
@@ -621,6 +609,7 @@ static int sp_init (flux_plugin_t *p,
      *  Set this object in the plugin context for later fetching as
      *   well as auto-destruction on plugin unload.
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (!(ctx = spindle_ctx_create (id, shell_rank, R))
         || flux_plugin_aux_set (p,
                                 "spindle",
@@ -630,7 +619,9 @@ static int sp_init (flux_plugin_t *p,
         logerrno_printf_and_return(1, "failed to create spindle ctx\n");
     }
 
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     rc = spindle_in_session_mode(h, NULL, NULL);
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (rc == -1) {
        logerrno_printf_and_return(1, "failed to read session info from flux\n");
        spindle_ctx_destroy(ctx);
@@ -646,6 +637,7 @@ static int sp_init (flux_plugin_t *p,
      *   not overwrite our already-initialized `number`, which must be
      *   shared across the session.
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (fillInSpindleArgsCmdlineFE (&ctx->params,
                                     ctx->flags,
                                     0,
@@ -656,8 +648,10 @@ static int sp_init (flux_plugin_t *p,
 
     /*  Read other spindle options from spindle option in jobspec:
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (sp_getopts (shell, ctx) < 0)
         return -1;
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (ctx->params.opts & OPT_OFF) {
        return 0;
     }
@@ -669,13 +663,16 @@ static int sp_init (flux_plugin_t *p,
     /*  N.B. Override unique_id with id again to be sure it wasn't changed
      *  (Occaisionally see hangs if this is not done)
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     ctx->params.unique_id = (unique_id_t) id;
 
     /*  Get args to prepend to job cmdline
      */
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (getApplicationArgsFE(&ctx->params, &ctx->argc, &ctx->argv) < 0)
         shell_die (1, "getApplicationArgsFE");
 
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (shell_rank == 0) {
         /*  Rank 0: add spindle port and num_ports to the shell.init
          *   exec eventlog event. All other shell's will wait for this
@@ -693,31 +690,10 @@ static int sp_init (flux_plugin_t *p,
      *   order to distribute port and num_ports. This is unnecessary on
      *   rank 0, but code is simpler if we treat all ranks the same.
      */
-
-    /* DEBUG: Check if shell.init is already in eventlog before registering watch */
-    char ns[128];
-    if (flux_job_kvs_namespace(ns, sizeof(ns), id) == 0) {
-        flux_future_t *check_f = flux_kvs_lookup(h, ns, 0, "exec.eventlog");
-        const char *log_before;
-        if (flux_kvs_lookup_get(check_f, &log_before) == 0) {
-            fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog BEFORE watch:\n%s\n",
-                    shell_rank, log_before);
-        } else {
-            fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog BEFORE watch: NOT FOUND (errno=%d)\n",
-                    shell_rank, errno);
-        }
-        flux_future_destroy(check_f);
-    } else {
-        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Failed to get KVS namespace\n", shell_rank);
-    }
-
-    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] About to call flux_job_event_watch with WAITCREATE flag\n", shell_rank);
-
-    if (!(f = flux_job_event_watch (h, id, "guest.exec.eventlog", FLUX_JOB_EVENT_WATCH_WAITCREATE))
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
+    if (!(f = flux_job_event_watch (h, id, "guest.exec.eventlog", 0))
         || flux_future_then (f, -1., wait_for_shell_init, ctx) < 0)
         shell_die (1, "flux_job_event_watch");
-
-    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Registered event watch with WAITCREATE\n", shell_rank);
 
     /*  Return control to job shell */
     return 0;
@@ -813,57 +789,12 @@ static int sp_exit (flux_plugin_t *p,
 
 int flux_plugin_init (flux_plugin_t *p)
 {
-    /* DEBUG: Check eventlog state before and after registering shell.init handler */
-    flux_shell_t *shell = flux_plugin_get_shell (p);
-    flux_t *h = flux_shell_get_flux (shell);
-    flux_jobid_t id;
-    int shell_rank;
-
-    if (shell && h &&
-        flux_shell_info_unpack (shell, "{s:I s:i}",
-                                "jobid", &id,
-                                "rank", &shell_rank) == 0) {
-        char ns[128];
-        if (flux_job_kvs_namespace(ns, sizeof(ns), id) == 0) {
-            flux_future_t *check_f = flux_kvs_lookup(h, ns, 0, "exec.eventlog");
-            const char *log_before;
-            if (flux_kvs_lookup_get(check_f, &log_before) == 0) {
-                fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog in flux_plugin_init BEFORE handler registration:\n%s\n",
-                        shell_rank, log_before);
-            } else {
-                fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog in flux_plugin_init BEFORE handler registration: NOT FOUND (errno=%d)\n",
-                        shell_rank, errno);
-            }
-            flux_future_destroy(check_f);
-        }
-    }
-
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     if (flux_plugin_set_name (p, "spindle") < 0
         || flux_plugin_add_handler (p, "shell.init", sp_init, NULL) < 0
         || flux_plugin_add_handler (p, "task.init",  sp_task, NULL) < 0
         || flux_plugin_add_handler (p, "shell.exit", sp_exit, NULL) < 0)
         return -1;
-
-    /* DEBUG: Check eventlog state after registering handlers */
-    if (shell && h &&
-        flux_shell_info_unpack (shell, "{s:I s:i}",
-                                "jobid", &id,
-                                "rank", &shell_rank) == 0) {
-        char ns[128];
-        if (flux_job_kvs_namespace(ns, sizeof(ns), id) == 0) {
-            flux_future_t *check_f = flux_kvs_lookup(h, ns, 0, "exec.eventlog");
-            const char *log_after;
-            if (flux_kvs_lookup_get(check_f, &log_after) == 0) {
-                fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog in flux_plugin_init AFTER handler registration:\n%s\n",
-                        shell_rank, log_after);
-            } else {
-                fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog in flux_plugin_init AFTER handler registration: NOT FOUND (errno=%d)\n",
-                        shell_rank, errno);
-            }
-            flux_future_destroy(check_f);
-        }
-        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Handler for shell.init registered in flux_plugin_init\n", shell_rank);
-    }
-
+    fprintf( stderr, "QQQ %s:%d:%s:%lu\n", __FILE__, __LINE__, __func__, seq++ );
     return 0;
 }
