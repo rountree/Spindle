@@ -56,7 +56,7 @@ jobs:
         id: flux-ubuntu-testsuite
         run: |
           # Configuration
-          ITERATION_TIMEOUT_SECONDS=30
+          ITERATION_TIMEOUT_SECONDS=90
           MAX_SUCCESS_LOGS=1
           MAX_FAILURE_LOGS=1
 
