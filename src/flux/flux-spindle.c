@@ -654,9 +654,29 @@ static int sp_init (flux_plugin_t *p,
      *   order to distribute port and num_ports. This is unnecessary on
      *   rank 0, but code is simpler if we treat all ranks the same.
      */
+
+    /* DEBUG: Check if shell.init is already in eventlog before registering watch */
+    char ns[128];
+    if (flux_job_kvs_namespace(ns, sizeof(ns), id) == 0) {
+        flux_future_t *check_f = flux_kvs_lookup(h, ns, 0, "exec.eventlog");
+        const char *log_before;
+        if (flux_kvs_lookup_get(check_f, &log_before) == 0) {
+            fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog BEFORE watch:\n%s\n",
+                    shell_rank, log_before);
+        } else {
+            fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog BEFORE watch: NOT FOUND (errno=%d)\n",
+                    shell_rank, errno);
+        }
+        flux_future_destroy(check_f);
+    } else {
+        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Failed to get KVS namespace\n", shell_rank);
+    }
+
     if (!(f = flux_job_event_watch (h, id, "guest.exec.eventlog", 0))
         || flux_future_then (f, -1., wait_for_shell_init, ctx) < 0)
         shell_die (1, "flux_job_event_watch");
+
+    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Registered event watch\n", shell_rank);
 
     /*  Return control to job shell */
     return 0;
@@ -752,10 +772,57 @@ static int sp_exit (flux_plugin_t *p,
 
 int flux_plugin_init (flux_plugin_t *p)
 {
+    /* DEBUG: Check eventlog state before and after registering shell.init handler */
+    flux_shell_t *shell = flux_plugin_get_shell (p);
+    flux_t *h = flux_shell_get_flux (shell);
+    flux_jobid_t id;
+    int shell_rank;
+
+    if (shell && h &&
+        flux_shell_info_unpack (shell, "{s:I s:i}",
+                                "jobid", &id,
+                                "rank", &shell_rank) == 0) {
+        char ns[128];
+        if (flux_job_kvs_namespace(ns, sizeof(ns), id) == 0) {
+            flux_future_t *check_f = flux_kvs_lookup(h, ns, 0, "exec.eventlog");
+            const char *log_before;
+            if (flux_kvs_lookup_get(check_f, &log_before) == 0) {
+                fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog in flux_plugin_init BEFORE handler registration:\n%s\n",
+                        shell_rank, log_before);
+            } else {
+                fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog in flux_plugin_init BEFORE handler registration: NOT FOUND (errno=%d)\n",
+                        shell_rank, errno);
+            }
+            flux_future_destroy(check_f);
+        }
+    }
+
     if (flux_plugin_set_name (p, "spindle") < 0
         || flux_plugin_add_handler (p, "shell.init", sp_init, NULL) < 0
         || flux_plugin_add_handler (p, "task.init",  sp_task, NULL) < 0
         || flux_plugin_add_handler (p, "shell.exit", sp_exit, NULL) < 0)
         return -1;
+
+    /* DEBUG: Check eventlog state after registering handlers */
+    if (shell && h &&
+        flux_shell_info_unpack (shell, "{s:I s:i}",
+                                "jobid", &id,
+                                "rank", &shell_rank) == 0) {
+        char ns[128];
+        if (flux_job_kvs_namespace(ns, sizeof(ns), id) == 0) {
+            flux_future_t *check_f = flux_kvs_lookup(h, ns, 0, "exec.eventlog");
+            const char *log_after;
+            if (flux_kvs_lookup_get(check_f, &log_after) == 0) {
+                fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog in flux_plugin_init AFTER handler registration:\n%s\n",
+                        shell_rank, log_after);
+            } else {
+                fprintf(stderr, "[SPINDLE_DEBUG rank=%d] exec.eventlog in flux_plugin_init AFTER handler registration: NOT FOUND (errno=%d)\n",
+                        shell_rank, errno);
+            }
+            flux_future_destroy(check_f);
+        }
+        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Handler for shell.init registered in flux_plugin_init\n", shell_rank);
+    }
+
     return 0;
 }

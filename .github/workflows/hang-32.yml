@@ -93,7 +93,7 @@ jobs:
             echo ""
             echo "=== Iteration $i at $(date) ==="
 
-            # Run test with timeout
+            # Run test with timeout (capturing both stdout and stderr)
             if timeout ${ITERATION_TIMEOUT_SECONDS} docker exec node-1 bash -c \
                 "cd Spindle-build/testsuite && SPINDLE_DEBUG=3 FLUX_SHELL_VERBOSE=2 flux alloc --nodes=\${workers} ./runTests --nodes=\${workers} --tasks-per-node=3" \
                 > /tmp/artifacts/all_stdout/stdout_iter_${i}.log 2>&1; then
