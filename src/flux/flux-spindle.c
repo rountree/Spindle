@@ -31,6 +31,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <flux/core.h>
 #include <flux/shell.h>
 #include <flux/hostlist.h>
+#include <flux/job.h>
 
 #include "spindle_launch.h"
 #include "fluxmgr.h"
@@ -325,33 +326,67 @@ static void wait_for_shell_init (flux_future_t *f, void *arg)
     const char *name;
     int rc = -1;
 
+    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() CALLED\n",
+            ctx->shell_rank);
+
     if (ctx->params.opts & OPT_OFF) {
+       fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() OPT_OFF set, returning\n",
+               ctx->shell_rank);
        return;
     }
 
-    if (flux_job_event_watch_get (f, &event) < 0)
+    if (flux_job_event_watch_get (f, &event) < 0) {
+        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() flux_job_event_watch_get FAILED: %s\n",
+                ctx->shell_rank, strerror(errno));
         errno_printf_and_die(1, "spindle failed waiting for shell.init event\n");
+    }
+
+    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() received event: %.200s\n",
+            ctx->shell_rank, event);
+
     if (!(o = json_loads (event, 0, NULL))
-            || json_unpack (o, "{s:s}", "name", &name) < 0)
+            || json_unpack (o, "{s:s}", "name", &name) < 0) {
+        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() failed to parse event name\n",
+                ctx->shell_rank);
         errno_printf_and_die(1, "failed to get event name\n");
+    }
+
+    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() event name: %s\n",
+            ctx->shell_rank, name);
+
     if (strcmp (name, "shell.init") == 0) {
         rc = json_unpack (o,
                 "{s:{s:i s:i}}",
                 "context",
                 "spindle_port", &ctx->params.port,
                 "spindle_num_ports", &ctx->params.num_ports);
+        if (rc == 0) {
+            fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() parsed shell.init: port=%d, num_ports=%d\n",
+                    ctx->shell_rank, ctx->params.port, ctx->params.num_ports);
+        } else {
+            fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() failed to unpack port/num_ports\n",
+                    ctx->shell_rank);
+        }
     }
     json_decref (o);
     if (rc != 0) {
+        fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() not shell.init or parse failed, resetting future\n",
+                ctx->shell_rank);
         flux_future_reset (f);
         return;
     }
     flux_future_destroy (f);
 
+    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() about to call run_spindle_backend()\n",
+            ctx->shell_rank);
+
     /*  Now that port and num_ports are obtained from rank 0, start
      *   the backends and frontend on rank 0
      */
     run_spindle_backend (ctx);
+
+    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] wait_for_shell_init() run_spindle_backend() returned\n",
+            ctx->shell_rank);
 
     if (ctx->shell_rank == 0)
         run_spindle_frontend (ctx);
@@ -672,11 +707,13 @@ static int sp_init (flux_plugin_t *p,
         fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Failed to get KVS namespace\n", shell_rank);
     }
 
-    if (!(f = flux_job_event_watch (h, id, "guest.exec.eventlog", 0))
+    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] About to call flux_job_event_watch with WAITCREATE flag\n", shell_rank);
+
+    if (!(f = flux_job_event_watch (h, id, "guest.exec.eventlog", FLUX_JOB_EVENT_WATCH_WAITCREATE))
         || flux_future_then (f, -1., wait_for_shell_init, ctx) < 0)
         shell_die (1, "flux_job_event_watch");
 
-    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Registered event watch\n", shell_rank);
+    fprintf(stderr, "[SPINDLE_DEBUG rank=%d] Registered event watch with WAITCREATE\n", shell_rank);
 
     /*  Return control to job shell */
     return 0;
