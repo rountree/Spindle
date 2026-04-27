@@ -26,7 +26,7 @@ export FLUX_FAKE_HOSTNAME=$thisHost
 # This allows the same image to work with different cluster sizes
 if [ ${thisHost} == "${mainHost}" ]; then
     echo "Regenerating Flux R configuration for ${workers} nodes"
-    flux R encode --hosts="node-[1-${workers}]" > /etc/flux/system/R
+    flux R encode --hosts="node-[1-${workers}]" | sudo tee /etc/flux/system/R > /dev/null
 fi
 
 # Start munged
