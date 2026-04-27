@@ -31,7 +31,11 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <flux/core.h>
 #include <flux/shell.h>
 #include <flux/hostlist.h>
-#include <flux/job.h>
+
+/* Define FLUX_JOB_EVENT_WATCH_WAITCREATE if not already defined */
+#ifndef FLUX_JOB_EVENT_WATCH_WAITCREATE
+#define FLUX_JOB_EVENT_WATCH_WAITCREATE 1
+#endif
 
 #include "spindle_launch.h"
 #include "fluxmgr.h"
