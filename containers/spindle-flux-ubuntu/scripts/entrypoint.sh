@@ -25,11 +25,19 @@ export FLUX_FAKE_HOSTNAME=$thisHost
 # Regenerate R configuration at startup to match actual node count
 # This allows the same image to work with different cluster sizes
 if [ ${thisHost} == "${mainHost}" ]; then
+    echo "DEBUG: workers variable is: ${workers}"
+    echo "DEBUG: replicas variable is: ${replicas}"
+    echo "DEBUG: Old R file contents:"
+    cat /etc/flux/system/R
+    echo ""
     echo "Regenerating Flux R configuration for ${workers} nodes"
     # Clear any cached state from image build time
     sudo rm -rf ${STATE_DIRECTORY:-/var/lib/flux}/*
     # Generate new R for actual node count
     flux R encode --hosts="node-[1-${workers}]" | sudo tee /etc/flux/system/R > /dev/null
+    echo "DEBUG: New R file contents:"
+    cat /etc/flux/system/R
+    echo ""
 fi
 
 # Start munged
