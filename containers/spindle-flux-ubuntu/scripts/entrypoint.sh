@@ -26,6 +26,9 @@ export FLUX_FAKE_HOSTNAME=$thisHost
 # This allows the same image to work with different cluster sizes
 if [ ${thisHost} == "${mainHost}" ]; then
     echo "Regenerating Flux R configuration for ${workers} nodes"
+    # Clear any cached state from image build time
+    sudo rm -rf ${STATE_DIRECTORY:-/var/lib/flux}/*
+    # Generate new R for actual node count
     flux R encode --hosts="node-[1-${workers}]" | sudo tee /etc/flux/system/R > /dev/null
 fi
 
