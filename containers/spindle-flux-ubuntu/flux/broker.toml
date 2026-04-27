@@ -14,6 +14,6 @@ default_port = 8050
 default_bind = "tcp://eth0:%%p"
 default_connect = "tcp://%%h:%%p"
 hosts = [
-	{ host="node-[1-4]"},
+	{ host="node-[1-__NODE_COUNT__]"},
 ]
 

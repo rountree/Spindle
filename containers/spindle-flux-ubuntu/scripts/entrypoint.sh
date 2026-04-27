@@ -22,11 +22,19 @@ thisHost=${thisHost[0]}
 echo $thisHost
 export FLUX_FAKE_HOSTNAME=$thisHost
 
-# Regenerate R configuration at startup to match actual node count
+# Regenerate configurations at startup to match actual node count
 # This allows the same image to work with different cluster sizes
+echo "Configuring Flux for ${workers} nodes"
+
+# Update broker.toml with actual node count
+sudo sed -i "s/__NODE_COUNT__/${workers}/g" /etc/flux/config/broker.toml
+
 if [ ${thisHost} == "${mainHost}" ]; then
     echo "DEBUG: workers variable is: ${workers}"
     echo "DEBUG: replicas variable is: ${replicas}"
+    echo "DEBUG: Updated broker.toml:"
+    grep "host=" /etc/flux/config/broker.toml
+    echo ""
     echo "DEBUG: Old R file contents:"
     cat /etc/flux/system/R
     echo ""
