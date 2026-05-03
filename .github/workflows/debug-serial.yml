@@ -1,0 +1,57 @@
+name: debug-serial
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: debug-serial-${{github.ref}}-${{github.event.pull_request.number || github.run_number}}
+  cancel-in-progress: true
+
+jobs:
+  spindle-debug-serial:
+    name: Debug Testsuite (Serial, Ubuntu)
+    environment: Spindle CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Docker Compose
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        with:
+          version: latest
+
+      - name: Build spindle-debug-serial image
+        id: debug-serial-build
+        run: |
+          cd containers/debug/spindle-serial-ubuntu
+          docker compose --progress=plain build
+
+      - name: Bring spindle-debug-serial up
+        id: debug-serial-up
+        run: |
+          cd containers/debug/spindle-serial-ubuntu
+          docker compose up -d
+
+      - name: Verify munge works in spindle-debug-serial
+        id: debug-serial-munge
+        run: |
+          docker exec spindlenode bash -c 'munge -n | unmunge'
+
+      - name: Run spindle-debug-serial testsuite
+        id: debug-serial-testsuite
+        run: |
+          docker exec spindlenode bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py'
+
+      - name: Bring spindle-debug-serial down
+        id: debug-serial-down
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          cd containers/debug/spindle-serial-ubuntu
+          docker compose down
