@@ -26,14 +26,11 @@ def main():
     if args.dry_run:
         print(f"Running: {test_cmd}")
     else:
-        print(f"Running: {test_cmd}")
         result = subprocess.run(test_cmd, shell=True)
 
         if result.returncode == 0:
-            print("PASSED.")
             print("ALL TESTS PASSED")
         else:
-            print(f"FAILED with return code {result.returncode}")
             print("SOME TESTS FAILED")
 
         sys.exit(result.returncode)
