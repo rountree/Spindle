@@ -4,6 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 import argparse
+import subprocess
 import sys
 
 
@@ -25,9 +26,17 @@ def main():
     if args.dry_run:
         print(f"Running: {test_cmd}")
     else:
-        # Actual execution will be implemented in next step
         print(f"Running: {test_cmd}")
-        print("(Execution not yet implemented)")
+        result = subprocess.run(test_cmd, shell=True)
+
+        if result.returncode == 0:
+            print("PASSED.")
+            print("ALL TESTS PASSED")
+        else:
+            print(f"FAILED with return code {result.returncode}")
+            print("SOME TESTS FAILED")
+
+        sys.exit(result.returncode)
 
 
 if __name__ == '__main__':
