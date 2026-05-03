@@ -382,21 +382,21 @@ CLEANFILES = libtest10.c libtest11.c libtest12.c libtest13.c \
 	libtest8000.c libtest8000.so libtest10000.c libtest10000.so \
 	libsymlink.so libdepA.so libdepB.so libdepC.so \
 	libcxxexceptA.so libcxxexceptB.so libtestoutput.so \
-	libfuncdict.so runTests debug/runTests.py run_driver \
-	run_driver_rm spindle.rc test_driver test_driver_libs \
-	preload_file_list retzero_rx retzero_r retzero_x retzero_ \
-	badinterp hello_r.py hello_x.py hello_rx.py hello_.py \
-	hello_l.py badlink.py libtls1.c libtls2.c libtls3.c libtls4.c \
-	libtls5.c libtls6.c libtls7.c libtls8.c libtls9.c libtls10.c \
-	libtls11.c libtls12.c libtls13.c libtls14.c libtls15.c \
-	libtls16.c libtls17.c libtls18.c libtls19.c libtls20.c \
-	libtls1.so libtls2.so libtls3.so libtls4.so libtls5.so \
-	libtls6.so libtls7.so libtls8.so libtls9.so libtls10.so \
-	libtls11.so libtls12.so libtls13.so libtls14.so libtls15.so \
-	libtls16.so libtls17.so libtls18.so libtls19.so libtls20.so \
-	symbind_test libsymbind_a.so libsymbind_b.so libsymbind_c.so \
-	libsymbind_d.so libsymbind_e.so libsymbind_f.so \
-	libsymbind_g.so interpreter_test \
+	libfuncdict.so runTests debug/runTests.py debug-dir-stamp \
+	run_driver run_driver_rm spindle.rc test_driver \
+	test_driver_libs preload_file_list retzero_rx retzero_r \
+	retzero_x retzero_ badinterp hello_r.py hello_x.py hello_rx.py \
+	hello_.py hello_l.py badlink.py libtls1.c libtls2.c libtls3.c \
+	libtls4.c libtls5.c libtls6.c libtls7.c libtls8.c libtls9.c \
+	libtls10.c libtls11.c libtls12.c libtls13.c libtls14.c \
+	libtls15.c libtls16.c libtls17.c libtls18.c libtls19.c \
+	libtls20.c libtls1.so libtls2.so libtls3.so libtls4.so \
+	libtls5.so libtls6.so libtls7.so libtls8.so libtls9.so \
+	libtls10.so libtls11.so libtls12.so libtls13.so libtls14.so \
+	libtls15.so libtls16.so libtls17.so libtls18.so libtls19.so \
+	libtls20.so symbind_test libsymbind_a.so libsymbind_b.so \
+	libsymbind_c.so libsymbind_d.so libsymbind_e.so \
+	libsymbind_f.so libsymbind_g.so interpreter_test \
 	interpreter_test_dir/interpreter_test_perl alias
 all: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -578,7 +578,7 @@ distdir-am: $(DISTFILES)
 check-am: all-am
 check: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) check-am
-all-am: Makefile $(PROGRAMS)
+all-am: Makefile $(PROGRAMS) all-local
 installdirs:
 install: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) install-am
@@ -686,19 +686,19 @@ uninstall-am:
 
 .MAKE: all check install install-am install-strip
 
-.PHONY: CTAGS GTAGS TAGS all all-am am--depfiles check check-am clean \
-	clean-generic clean-libtool clean-noinstPROGRAMS cscopelist-am \
-	ctags ctags-am distclean distclean-compile distclean-generic \
-	distclean-libtool distclean-tags distdir dvi dvi-am html \
-	html-am info info-am install install-am install-data \
-	install-data-am install-dvi install-dvi-am install-exec \
-	install-exec-am install-html install-html-am install-info \
-	install-info-am install-man install-pdf install-pdf-am \
-	install-ps install-ps-am install-strip installcheck \
-	installcheck-am installdirs maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-compile \
-	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
-	tags tags-am uninstall uninstall-am
+.PHONY: CTAGS GTAGS TAGS all all-am all-local am--depfiles check \
+	check-am clean clean-generic clean-libtool \
+	clean-noinstPROGRAMS cscopelist-am ctags ctags-am distclean \
+	distclean-compile distclean-generic distclean-libtool \
+	distclean-tags distdir dvi dvi-am html html-am info info-am \
+	install install-am install-data install-data-am install-dvi \
+	install-dvi-am install-exec install-exec-am install-html \
+	install-html-am install-info install-info-am install-man \
+	install-pdf install-pdf-am install-ps install-ps-am \
+	install-strip installcheck installcheck-am installdirs \
+	maintainer-clean maintainer-clean-generic mostlyclean \
+	mostlyclean-compile mostlyclean-generic mostlyclean-libtool \
+	pdf pdf-am ps ps-am tags tags-am uninstall uninstall-am
 
 .PRECIOUS: Makefile
 
@@ -1071,10 +1071,13 @@ runTests: $(srcdir)/runTests_template
 	$(AM_V_GEN)$(SED) -e s,BLUEGENE_TEST,$(IS_BLUEGENE),g\;s,TEST_RESOURCE_MANAGER,$(TESTRM),g\;s,SPINDLE_EXEC,$(bindir)/spindle,g < $(srcdir)/runTests_template > $(top_builddir)/testsuite/runTests
 	@chmod 700 $(top_builddir)/testsuite/runTests
 
-debug/runTests.py: $(srcdir)/debug/runTests.py
-	@mkdir -p $(top_builddir)/testsuite/debug
-	$(AM_V_GEN)cp $(srcdir)/debug/runTests.py $(top_builddir)/testsuite/debug/runTests.py
-	@chmod 700 $(top_builddir)/testsuite/debug/runTests.py
+debug-dir-stamp: $(srcdir)/debug/runTests.py
+	@mkdir -p debug
+	$(AM_V_GEN)cp $(srcdir)/debug/runTests.py debug/runTests.py
+	@chmod 700 debug/runTests.py
+	@touch debug-dir-stamp
+
+debug/runTests.py: debug-dir-stamp
 
 run_driver: $(srcdir)/run_driver_template $(top_builddir)/Makefile
 	@rm -f ./run_driver
@@ -1101,6 +1104,8 @@ interpreter_test_dir/interpreter_test_perl: interpreter_test_perl_template inter
 
 interpreter_test: interpreter_test_template
 	$(AM_V_GEN)cp $< $@; chmod 700 $@
+
+all-local: debug/runTests.py
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
