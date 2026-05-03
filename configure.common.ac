@@ -595,3 +595,8 @@ AC_DEFUN([CHOOSE_SEC],[
            AC_DEFINE([ENABLE_NULL_ENCRYPTION], [1], [Allow NULL encryption])
         fi])
 
+# Define installation prefix for use in test code
+# Expand ${prefix} if it's still set to NONE (default)
+test "x$prefix" = xNONE && prefix=$ac_default_prefix
+AC_DEFINE_UNQUOTED([SPINDLE_PREFIX], ["$prefix"], [Installation prefix for Spindle])
+
