@@ -169,8 +169,8 @@ def run_flux_test(args, env, testsuite_dir):
         if args.verbose:
             print("Submitting job to Flux...")
 
-        # Submit and wait for job
-        jobid = flux.job.submit(handle, jobspec)
+        # Submit job with waitable=True so we can wait for it
+        jobid = flux.job.submit(handle, jobspec, waitable=True)
 
         if args.verbose:
             print(f"Job submitted: {jobid}")
