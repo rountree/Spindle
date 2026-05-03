@@ -49,14 +49,21 @@ def setup_environment():
 
     # Determine SPINDLE path if not already set
     if 'SPINDLE' not in env:
-        # Read from run_driver file
-        run_driver_path = os.path.join(testsuite_dir, 'run_driver')
-        if os.path.exists(run_driver_path):
-            with open(run_driver_path, 'r') as f:
+        # Read prefix from the build Makefile to construct the path
+        # testsuite_dir is typically .../build/Spindle-XXX/testsuite
+        build_dir = os.path.dirname(testsuite_dir)
+        makefile_path = os.path.join(build_dir, 'Makefile')
+
+        if os.path.exists(makefile_path):
+            prefix = None
+            with open(makefile_path, 'r') as f:
                 for line in f:
-                    if line.startswith('export SPINDLE='):
-                        env['SPINDLE'] = line.split('=', 1)[1].strip()
+                    if line.startswith('prefix = '):
+                        prefix = line.split('=', 1)[1].strip()
                         break
+
+            if prefix:
+                env['SPINDLE'] = f"{prefix}/bin/spindle"
 
     return env, testsuite_dir
 
