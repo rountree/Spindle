@@ -4,6 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 import argparse
+import os
 import subprocess
 import sys
 
@@ -17,6 +18,12 @@ def main():
         action='store_true',
         help='Print commands that would be run without executing them'
     )
+    parser.add_argument(
+        '--spindle-debug',
+        type=int,
+        choices=[0, 1, 2, 3],
+        help='Set SPINDLE_DEBUG level'
+    )
 
     args = parser.parse_args()
 
@@ -26,7 +33,11 @@ def main():
     if args.dry_run:
         print(f"Running: {test_cmd}")
     else:
-        result = subprocess.run(test_cmd, shell=True)
+        env = os.environ.copy()
+        if args.spindle_debug is not None:
+            env['SPINDLE_DEBUG'] = str(args.spindle_debug)
+
+        result = subprocess.run(test_cmd, shell=True, env=env)
 
         if result.returncode == 0:
             print("ALL TESTS PASSED")
