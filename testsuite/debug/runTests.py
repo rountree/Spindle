@@ -24,6 +24,11 @@ def main():
         choices=[0, 1, 2, 3],
         help='Set SPINDLE_DEBUG level'
     )
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Print command and environment variables'
+    )
 
     args = parser.parse_args()
 
@@ -36,6 +41,13 @@ def main():
         env = os.environ.copy()
         if args.spindle_debug is not None:
             env['SPINDLE_DEBUG'] = str(args.spindle_debug)
+
+        if args.verbose:
+            print(f"Command: {test_cmd}")
+            print("Environment variables:")
+            for key in sorted(env.keys()):
+                print(f"  {key}={env[key]}")
+            print()
 
         result = subprocess.run(test_cmd, shell=True, env=env)
 
