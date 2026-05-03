@@ -63,13 +63,22 @@ jobs:
           done
           # Move only the log directories (matching returncode_timestamp pattern) to final location
           mkdir -p debug-logs
+
+          # Find the timestamped directory from node-1
+          TIMESTAMP_DIR=$(find debug-logs-temp/node-1 -maxdepth 1 -type d -name '[0-9]*_[0-9]*_[0-9]*' -printf '%f\n' 2>/dev/null | head -1)
+
           for node in node-1 node-2 node-3 node-4; do
             mkdir -p debug-logs/$node
-            # Move timestamped directories
-            find debug-logs-temp/$node -maxdepth 1 -type d -name '[0-9]*_[0-9]*_[0-9]*' -exec mv {} debug-logs/$node/ \; 2>/dev/null || true
-            # Move spindle_output files from testsuite directly to node directory
-            if [ -d debug-logs-temp/$node/testsuite ]; then
-              find debug-logs-temp/$node/testsuite -maxdepth 1 -name 'spindle_output*' -exec mv {} debug-logs/$node/ \; 2>/dev/null || true
+
+            if [ "$node" = "node-1" ]; then
+              # Move timestamped directory from node-1
+              find debug-logs-temp/$node -maxdepth 1 -type d -name '[0-9]*_[0-9]*_[0-9]*' -exec mv {} debug-logs/$node/ \; 2>/dev/null || true
+            else
+              # For other nodes, create the same timestamped directory and move files into it
+              if [ -n "$TIMESTAMP_DIR" ] && [ -d debug-logs-temp/$node/testsuite ]; then
+                mkdir -p debug-logs/$node/$TIMESTAMP_DIR
+                find debug-logs-temp/$node/testsuite -maxdepth 1 -name 'spindle_output*' -exec mv {} debug-logs/$node/$TIMESTAMP_DIR/ \; 2>/dev/null || true
+              fi
             fi
           done
 
