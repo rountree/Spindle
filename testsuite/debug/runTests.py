@@ -124,13 +124,9 @@ def run_serial_test(args, env, testsuite_dir):
 
 def run_flux_test(args, env, testsuite_dir):
     """Run test using Flux resource manager."""
-    if not FLUX_AVAILABLE:
-        print("ERROR: Flux Python module not available", file=sys.stderr)
-        return 1
-
     # Determine TEST_EXEC based on first argument (--dependency)
     test_exec = './test_driver_libs'
-    test_args = ['--dependency', '--push']
+    test_args = '--dependency --push'
 
     # Get SPINDLE executable path
     if 'SPINDLE' in env:
@@ -144,45 +140,17 @@ def run_flux_test(args, env, testsuite_dir):
 
     # Build full command with spindle wrapper
     spindle_flags = env['SPINDLE_FLAGS']
-    full_command = [spindle_exec] + spindle_flags.split() + ['--push', '--launcher=serial', test_exec] + test_args
+    full_command = f"{spindle_exec} {spindle_flags} --push --launcher=serial {test_exec} {test_args}"
+
+    # Build flux run command
+    flux_cmd = f"flux run -N {args.num_nodes} -n {args.num_tasks} -c {args.cores_per_task} -t {args.time_limit} {full_command}"
 
     if args.verbose:
-        print(f"Flux command: {' '.join(full_command)}")
-        print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+        print(f"Flux command: {flux_cmd}")
 
-    try:
-        handle = flux.Flux()
-
-        # Create jobspec for the test
-        jobspec = flux.job.JobspecV1.from_command(
-            command=full_command,
-            num_tasks=args.num_tasks,
-            num_nodes=args.num_nodes,
-            cores_per_task=args.cores_per_task,
-            duration=args.time_limit,
-            cwd=testsuite_dir,
-        )
-
-        # Set environment variables
-        jobspec.environment = dict(env)
-
-        if args.verbose:
-            print("Submitting job to Flux...")
-
-        # Submit job with waitable=True so we can wait for it
-        jobid = flux.job.submit(handle, jobspec, waitable=True)
-
-        if args.verbose:
-            print(f"Job submitted: {jobid}")
-            print("Waiting for job to complete...")
-
-        returncode = flux.job.wait(handle, jobid)
-
-        return returncode
-
-    except Exception as e:
-        print(f"ERROR running Flux job: {e}", file=sys.stderr)
-        return 1
+    # Run via subprocess
+    result = subprocess.run(flux_cmd, shell=True, env=env, cwd=testsuite_dir)
+    return result.returncode
 
 
 def main():
