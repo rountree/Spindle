@@ -4,9 +4,11 @@ Spindle test runner with integrated debugging support.
 """
 
 import argparse
+import glob
 import os
 import subprocess
 import sys
+from datetime import datetime
 
 
 def setup_environment():
@@ -157,11 +159,25 @@ def main():
                     print(f"  {key}={env[key]}")
             print()
 
+        # Create a unique directory for this test run
+        debug_dir = os.path.join(testsuite_dir, 'debug')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        run_dir = os.path.join(debug_dir, f'run_{timestamp}')
+        os.makedirs(run_dir, exist_ok=True)
+
         # Print the "Running:" message like run_driver does
         print(f"Running: ./run_driver --dependency --push")
 
         # Change to testsuite directory to run
         result = subprocess.run(test_cmd, shell=True, env=env, cwd=testsuite_dir)
+
+        # Move spindle_output files if they exist
+        spindle_outputs = glob.glob(os.path.join(testsuite_dir, 'spindle_output*'))
+        if spindle_outputs:
+            for output_file in spindle_outputs:
+                filename = os.path.basename(output_file)
+                dest = os.path.join(run_dir, filename)
+                os.rename(output_file, dest)
 
         if result.returncode == 0:
             print("ALL TESTS PASSED")
