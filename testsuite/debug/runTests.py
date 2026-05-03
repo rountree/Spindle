@@ -44,9 +44,17 @@ def main():
 
         if args.verbose:
             print(f"Command: {test_cmd}")
-            print("Environment variables:")
-            for key in sorted(env.keys()):
-                print(f"  {key}={env[key]}")
+            print("Spindle environment variables:")
+            interesting_vars = [
+                'SPINDLE_DEBUG', 'SPINDLE_TEST', 'LD_LIBRARY_PATH', 'PATH',
+                'SPINDLE', 'SPINDLE_LAUNCH_MODE', 'TEST_RM', 'SPINDLE_OPTS',
+                'SPINDLE_FLAGS', 'TEST_EXEC', 'LIBRARY_LIST', 'SPINDLE_LD_PRELOAD',
+                'SPINDLE_BGQ_LD_PRELOAD', 'SPINDLE_BLUEGENE', 'SESSION_ID',
+                'STARTED_SPINDLE_SESSION', 'SPINDLEID'
+            ]
+            for key in sorted(interesting_vars):
+                if key in env:
+                    print(f"  {key}={env[key]}")
             print()
 
         result = subprocess.run(test_cmd, shell=True, env=env)
