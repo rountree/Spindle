@@ -93,13 +93,15 @@ def build_spindle_command(args, env, testsuite_dir):
     env['TEST_EXEC'] = test_exec
 
     # Build the command based on run_driver_serial logic
+    # Important: pass through the test arguments (--dependency --push) to test_exec
+    test_args = '--dependency --push'
     spindle_flags = env['SPINDLE_FLAGS']
 
     if 'SPINDLE_LD_PRELOAD' in env and env['SPINDLE_LD_PRELOAD']:
         ld_preload = env['SPINDLE_LD_PRELOAD']
-        cmd = f"{spindle_exec} {spindle_flags} {spindle_opts} --launcher=serial bash -c 'LD_PRELOAD={ld_preload} {test_exec}'"
+        cmd = f"{spindle_exec} {spindle_flags} {spindle_opts} --launcher=serial bash -c 'LD_PRELOAD={ld_preload} {test_exec} {test_args}'"
     else:
-        cmd = f"{spindle_exec} {spindle_flags} {spindle_opts} --launcher=serial {test_exec}"
+        cmd = f"{spindle_exec} {spindle_flags} {spindle_opts} --launcher=serial {test_exec} {test_args}"
 
     return cmd
 
