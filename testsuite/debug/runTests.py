@@ -49,18 +49,21 @@ def setup_environment():
 
     # Determine SPINDLE path if not already set
     if 'SPINDLE' not in env:
-        # Read prefix from the build Makefile to construct the path
+        # Read SPINDLE_PREFIX from config.h
         # testsuite_dir is typically .../build/Spindle-XXX/testsuite
         build_dir = os.path.dirname(testsuite_dir)
-        makefile_path = os.path.join(build_dir, 'Makefile')
+        config_h_path = os.path.join(build_dir, 'config.h')
 
-        if os.path.exists(makefile_path):
+        if os.path.exists(config_h_path):
             prefix = None
-            with open(makefile_path, 'r') as f:
+            with open(config_h_path, 'r') as f:
                 for line in f:
-                    if line.startswith('prefix = '):
-                        prefix = line.split('=', 1)[1].strip()
-                        break
+                    if line.startswith('#define SPINDLE_PREFIX '):
+                        # Extract the quoted string
+                        parts = line.split('"')
+                        if len(parts) >= 2:
+                            prefix = parts[1]
+                            break
 
             if prefix:
                 env['SPINDLE'] = f"{prefix}/bin/spindle"
