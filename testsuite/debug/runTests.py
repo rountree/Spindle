@@ -11,6 +11,14 @@ import subprocess
 import sys
 from datetime import datetime
 
+# Try to import flux - it's only available in flux containers
+try:
+    import flux
+    import flux.job
+    FLUX_AVAILABLE = True
+except ImportError:
+    FLUX_AVAILABLE = False
+
 
 def setup_environment():
     """Set up the environment variables needed for Spindle tests."""
@@ -74,8 +82,8 @@ def setup_environment():
     return env, testsuite_dir
 
 
-def build_spindle_command(args, env, testsuite_dir):
-    """Build the Spindle command based on arguments."""
+def run_serial_test(args, env, testsuite_dir):
+    """Run test using serial resource manager."""
     # Determine TEST_EXEC based on first argument (--dependency)
     test_exec = './test_driver_libs'
 
@@ -106,7 +114,76 @@ def build_spindle_command(args, env, testsuite_dir):
     else:
         cmd = f"{spindle_exec} {spindle_flags} {spindle_opts} --launcher=serial {test_exec} {test_args}"
 
-    return cmd
+    if args.verbose:
+        print(f"Command: {cmd}")
+
+    # Change to testsuite directory to run
+    result = subprocess.run(cmd, shell=True, env=env, cwd=testsuite_dir)
+    return result.returncode
+
+
+def run_flux_test(args, env, testsuite_dir):
+    """Run test using Flux resource manager."""
+    if not FLUX_AVAILABLE:
+        print("ERROR: Flux Python module not available", file=sys.stderr)
+        return 1
+
+    # Determine TEST_EXEC based on first argument (--dependency)
+    test_exec = './test_driver_libs'
+    test_args = ['--dependency', '--push']
+
+    # Get SPINDLE executable path
+    if 'SPINDLE' in env:
+        spindle_exec = env['SPINDLE']
+    else:
+        spindle_exec = 'spindle'
+
+    env['SPINDLE'] = spindle_exec
+    env['TEST_EXEC'] = test_exec
+    env['SPINDLE_OPTS'] = '--push'
+
+    # Build full command with spindle wrapper
+    spindle_flags = env['SPINDLE_FLAGS']
+    full_command = [spindle_exec] + spindle_flags.split() + ['--push', '--launcher=serial', test_exec] + test_args
+
+    if args.verbose:
+        print(f"Flux command: {' '.join(full_command)}")
+        print(f"Nodes: {args.nodes}, Tasks per node: {args.tasks_per_node}, Time limit: {args.time_limit}")
+
+    try:
+        handle = flux.Flux()
+
+        # Create jobspec for the test
+        jobspec = flux.job.JobspecV1.from_command(
+            command=full_command,
+            num_nodes=args.nodes,
+            tasks_per_node=args.tasks_per_node,
+        )
+
+        # Set time limit
+        jobspec.duration = args.time_limit
+        jobspec.cwd = testsuite_dir
+
+        # Set environment variables
+        jobspec.environment = dict(env)
+
+        if args.verbose:
+            print("Submitting job to Flux...")
+
+        # Submit and wait for job
+        jobid = flux.job.submit(handle, jobspec)
+
+        if args.verbose:
+            print(f"Job submitted: {jobid}")
+            print("Waiting for job to complete...")
+
+        returncode = flux.job.wait(handle, jobid)
+
+        return returncode
+
+    except Exception as e:
+        print(f"ERROR running Flux job: {e}", file=sys.stderr)
+        return 1
 
 
 def main():
@@ -139,8 +216,35 @@ def main():
         action='store_true',
         help='Continue running tests after a failure (default: stop at first failure)'
     )
+    parser.add_argument(
+        '--resource-manager',
+        choices=['serial', 'flux'],
+        default='serial',
+        help='Resource manager to use (serial, flux)'
+    )
+    parser.add_argument(
+        '--nodes',
+        type=int,
+        default=1,
+        help='Number of nodes (flux)'
+    )
+    parser.add_argument(
+        '--tasks-per-node',
+        type=int,
+        default=1,
+        help='Tasks per node (flux)'
+    )
+    parser.add_argument(
+        '--time-limit',
+        default='20s',
+        help='Time limit for job, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
+    )
 
     args = parser.parse_args()
+
+    # Validate resource manager availability
+    if args.resource_manager == 'flux' and not FLUX_AVAILABLE:
+        parser.error("--resource-manager=flux requires Flux Python module, which is not available")
 
     # Set up environment
     env, testsuite_dir = setup_environment()
@@ -149,14 +253,13 @@ def main():
     if args.spindle_debug is not None:
         env['SPINDLE_DEBUG'] = str(args.spindle_debug)
 
-    # Build the Spindle command
-    test_cmd = build_spindle_command(args, env, testsuite_dir)
-
     if args.dry_run:
-        print(f"Running: {test_cmd}")
+        print(f"Resource manager: {args.resource_manager}")
+        if args.resource_manager == 'flux':
+            print(f"Nodes: {args.nodes}, Tasks per node: {args.tasks_per_node}, Time limit: {args.time_limit}")
+        print(f"Running: ./run_driver --dependency --push")
     else:
         if args.verbose:
-            print(f"Command: {test_cmd}")
             print("Spindle environment variables:")
             interesting_vars = [
                 'SPINDLE_DEBUG', 'SPINDLE_TEST', 'LD_LIBRARY_PATH', 'PATH',
@@ -179,11 +282,17 @@ def main():
         # Print the "Running:" message like run_driver does
         print(f"Running: ./run_driver --dependency --push")
 
-        # Change to testsuite directory to run
-        result = subprocess.run(test_cmd, shell=True, env=env, cwd=testsuite_dir)
+        # Run test with appropriate resource manager
+        if args.resource_manager == 'serial':
+            returncode = run_serial_test(args, env, testsuite_dir)
+        elif args.resource_manager == 'flux':
+            returncode = run_flux_test(args, env, testsuite_dir)
+        else:
+            print(f"ERROR: Unknown resource manager: {args.resource_manager}", file=sys.stderr)
+            returncode = 1
 
         # Rename directory to include return code
-        final_dir = os.path.join(debug_dir, f'{result.returncode}_{timestamp}')
+        final_dir = os.path.join(debug_dir, f'{returncode}_{timestamp}')
         os.rename(temp_dir, final_dir)
 
         # Move spindle_output files if they exist
@@ -195,7 +304,7 @@ def main():
                 os.rename(output_file, dest)
 
         # Handle log preservation based on success/failure
-        if result.returncode == 0:
+        if returncode == 0:
             print("ALL TESTS PASSED")
             # Delete logs for successful runs unless explicitly preserving
             if not args.preserve_logs_on_success:
@@ -204,9 +313,9 @@ def main():
             print("SOME TESTS FAILED")
             # Stop at first failure unless explicitly continuing
             if not args.continue_after_failure:
-                sys.exit(result.returncode)
+                sys.exit(returncode)
 
-        sys.exit(result.returncode)
+        sys.exit(returncode)
 
 
 if __name__ == '__main__':

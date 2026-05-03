@@ -1,0 +1,88 @@
+name: debug-flux
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: debug-flux-${{github.ref}}-${{github.event.pull_request.number || github.run_number}}
+  cancel-in-progress: true
+
+jobs:
+  spindle-debug-flux:
+    name: Debug Testsuite (Flux, Ubuntu)
+    environment: Spindle CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Docker Compose
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        with:
+          version: latest
+
+      - name: Build spindle-debug-flux image
+        id: debug-flux-build
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          docker compose --progress=plain build
+
+      - name: Bring spindle-debug-flux up
+        id: debug-flux-up
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          docker compose up -d --wait --wait-timeout 60
+
+      - name: Verify munge works in spindle-debug-flux
+        id: debug-flux-munge
+        run: |
+          docker exec node-1 bash -c 'munge -n | unmunge'
+
+      - name: Run spindle-debug-flux testsuite
+        id: debug-flux-testsuite
+        run: |
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=flux --nodes=4 --tasks-per-node=3 --time-limit=5m --spindle-debug=3 --preserve-logs-on-success'
+
+      - name: Copy debug logs from all nodes
+        id: debug-flux-copy-logs
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          mkdir -p debug-logs-temp
+          # Copy logs from each node
+          for node in node-1 node-2 node-3 node-4; do
+            mkdir -p debug-logs-temp/$node
+            docker cp $node:/home/fluxuser/Spindle-build/testsuite/debug/. debug-logs-temp/$node/ || true
+          done
+          # Move only the log directories (matching returncode_timestamp pattern) to final location
+          mkdir -p debug-logs
+          for node in node-1 node-2 node-3 node-4; do
+            find debug-logs-temp/$node -maxdepth 1 -type d -name '[0-9]*_[0-9]*_[0-9]*' -exec sh -c 'mkdir -p debug-logs/'$node' && mv "$1" debug-logs/'$node'/' _ {} \;
+          done
+
+      - name: Set short SHA
+        id: short-sha
+        run: echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Upload debug artifacts
+        id: debug-flux-upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-flux-logs-${{ github.run_number }}-${{ steps.short-sha.outputs.sha_short }}
+          path: debug-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Bring spindle-debug-flux down
+        id: debug-flux-down
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          docker compose down
