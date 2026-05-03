@@ -46,46 +46,18 @@ jobs:
       - name: Run spindle-debug-flux testsuite
         id: debug-flux-testsuite
         run: |
-          docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=flux --num-nodes=4 --num-tasks=4 --cores-per-task=1 --time-limit=5m --spindle-debug=3 --preserve-logs-on-success --verbose'
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=flux --num-nodes=4 --num-tasks=4 --cores-per-task=1 --time-limit=5m --spindle-debug=3 --preserve-logs-on-success --no-shared-filesystem --verbose'
 
-      - name: Copy debug logs from all nodes
+      - name: Copy debug logs from node-1
         id: debug-flux-copy-logs
         if: ${{ always() }}
         continue-on-error: true
         run: |
-          mkdir -p debug-logs-temp
-          # Copy logs from each node
-          for node in node-1 node-2 node-3 node-4; do
-            mkdir -p debug-logs-temp/$node
-            docker cp $node:/home/fluxuser/Spindle-build/testsuite/debug/. debug-logs-temp/$node/ || true
-            # Also copy any spindle_output files from testsuite directory
-            docker cp $node:/home/fluxuser/Spindle-build/testsuite/. debug-logs-temp/$node/testsuite/ || true
-          done
-          # Move logs organized by timestamp/node structure
           mkdir -p debug-logs
-
-          # Find the timestamped directory from node-1
-          TIMESTAMP_DIR=$(find debug-logs-temp/node-1 -maxdepth 1 -type d -name '[0-9]*_[0-9]*_[0-9]*' -printf '%f\n' 2>/dev/null | head -1)
-
-          if [ -n "$TIMESTAMP_DIR" ]; then
-            mkdir -p debug-logs/$TIMESTAMP_DIR
-
-            for node in node-1 node-2 node-3 node-4; do
-              mkdir -p debug-logs/$TIMESTAMP_DIR/$node
-
-              if [ "$node" = "node-1" ]; then
-                # Move files from node-1's timestamped directory
-                if [ -d debug-logs-temp/$node/$TIMESTAMP_DIR ]; then
-                  find debug-logs-temp/$node/$TIMESTAMP_DIR -maxdepth 1 -name 'spindle_output*' -exec mv {} debug-logs/$TIMESTAMP_DIR/$node/ \; 2>/dev/null || true
-                fi
-              else
-                # Move spindle_output files from other nodes
-                if [ -d debug-logs-temp/$node/testsuite ]; then
-                  find debug-logs-temp/$node/testsuite -maxdepth 1 -name 'spindle_output*' -exec mv {} debug-logs/$TIMESTAMP_DIR/$node/ \; 2>/dev/null || true
-                fi
-              fi
-            done
-          fi
+          # With --no-shared-filesystem, all logs are already collected on node-1
+          docker cp node-1:/home/fluxuser/Spindle-build/testsuite/debug/. debug-logs/ || true
+          # Clean up - remove runTests.py script from artifact
+          rm -f debug-logs/runTests.py
 
       - name: Set short SHA
         id: short-sha

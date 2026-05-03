@@ -6,6 +6,7 @@ Spindle test runner with integrated debugging support.
 import argparse
 import glob
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -192,8 +193,55 @@ def run_flux_test(args, env, testsuite_dir):
         if args.verbose:
             print(f"Job result: {result}")
 
-        # Return 0 for success, 1 for failure
-        return 0 if result.success else 1
+        returncode = 0 if result.success else 1
+
+        # Collect logs from all nodes if no shared filesystem
+        if args.no_shared_filesystem and returncode == 0:
+            if args.verbose:
+                print("Collecting logs from all nodes to node-1...")
+
+            # Determine the timestamped directory name
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            debug_dir = os.path.join(testsuite_dir, 'debug')
+            target_dir = os.path.join(debug_dir, f'{returncode}_{timestamp}')
+
+            # Create target directory structure on node-1
+            os.makedirs(target_dir, exist_ok=True)
+            for i in range(1, args.num_nodes + 1):
+                os.makedirs(os.path.join(target_dir, f'node-{i}'), exist_ok=True)
+
+            # Launch collection job: one task per node to copy files
+            collection_cmd = f"""
+hostname=$(hostname)
+node_num=${{hostname##*-}}
+target_dir="{target_dir}/node-${{node_num}}"
+if [ "$(hostname)" != "node-1" ]; then
+    scp {testsuite_dir}/spindle_output.* node-1:$target_dir/ 2>/dev/null || \\
+    rsync -a {testsuite_dir}/spindle_output.* node-1:$target_dir/ 2>/dev/null || \\
+    echo "Warning: Could not copy logs from $(hostname)" >&2
+else
+    cp {testsuite_dir}/spindle_output.* $target_dir/ 2>/dev/null || true
+fi
+"""
+
+            try:
+                # Run collection on all nodes (1 task per node)
+                collect_result = subprocess.run(
+                    f"flux run -N {args.num_nodes} -n {args.num_nodes} bash -c {shlex.quote(collection_cmd)}",
+                    shell=True,
+                    env=env,
+                    cwd=testsuite_dir,
+                    capture_output=True,
+                    text=True
+                )
+
+                if args.verbose and collect_result.returncode != 0:
+                    print(f"Log collection warnings/errors: {collect_result.stderr}")
+            except Exception as e:
+                print(f"Warning: Log collection failed: {e}", file=sys.stderr)
+                # Don't fail the whole test just because collection failed
+
+        return returncode
 
     except Exception as e:
         print(f"ERROR running Flux job: {e}", file=sys.stderr)
@@ -260,6 +308,12 @@ def main():
         '--time-limit',
         default='20s',
         help='Time limit for job, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
+    )
+    parser.add_argument(
+        '--no-shared-filesystem',
+        action='store_true',
+        help='Copy log files from all nodes to node-1 after test completes (flux). '
+             'Use for parallel container jobs without a shared logging filesystem. Default: off.'
     )
 
     args = parser.parse_args()
