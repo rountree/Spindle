@@ -148,20 +148,17 @@ def run_flux_test(args, env, testsuite_dir):
 
     if args.verbose:
         print(f"Flux command: {' '.join(full_command)}")
-        print(f"Nodes: {args.nodes}, Tasks per node: {args.tasks_per_node}, Time limit: {args.time_limit}")
+        print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
 
     try:
         handle = flux.Flux()
 
-        # Calculate total tasks (nodes * tasks_per_node)
-        num_tasks = args.nodes * args.tasks_per_node
-
         # Create jobspec for the test
         jobspec = flux.job.JobspecV1.from_command(
             command=full_command,
-            num_tasks=num_tasks,
-            num_nodes=args.nodes,
-            cores_per_task=1,
+            num_tasks=args.num_tasks,
+            num_nodes=args.num_nodes,
+            cores_per_task=args.cores_per_task,
             duration=args.time_limit,
             cwd=testsuite_dir,
         )
@@ -225,16 +222,22 @@ def main():
         help='Resource manager to use (serial, flux)'
     )
     parser.add_argument(
-        '--nodes',
+        '--num-nodes',
         type=int,
         default=1,
-        help='Number of nodes (flux)'
+        help='Number of nodes to allocate (flux)'
     )
     parser.add_argument(
-        '--tasks-per-node',
+        '--num-tasks',
         type=int,
         default=1,
-        help='Tasks per node (flux)'
+        help='Total number of tasks to run (flux)'
+    )
+    parser.add_argument(
+        '--cores-per-task',
+        type=int,
+        default=1,
+        help='Cores per task (flux)'
     )
     parser.add_argument(
         '--time-limit',
@@ -258,7 +261,7 @@ def main():
     if args.dry_run:
         print(f"Resource manager: {args.resource_manager}")
         if args.resource_manager == 'flux':
-            print(f"Nodes: {args.nodes}, Tasks per node: {args.tasks_per_node}, Time limit: {args.time_limit}")
+            print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
         print(f"Running: ./run_driver --dependency --push")
     else:
         if args.verbose:
