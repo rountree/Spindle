@@ -394,10 +394,12 @@ runTests: $(srcdir)/runTests_template
 	$(AM_V_GEN)$(SED) -e s,BLUEGENE_TEST,$(IS_BLUEGENE),g\;s,TEST_RESOURCE_MANAGER,$(TESTRM),g\;s,SPINDLE_EXEC,$(bindir)/spindle,g < $(srcdir)/runTests_template > $(top_builddir)/testsuite/runTests
 	@chmod 700 $(top_builddir)/testsuite/runTests
 
-debug/runTests.py: $(srcdir)/debug/runTests.py
+$(top_builddir)/testsuite/debug/runTests.py: $(srcdir)/debug/runTests.py
 	@mkdir -p $(top_builddir)/testsuite/debug
 	$(AM_V_GEN)cp $(srcdir)/debug/runTests.py $(top_builddir)/testsuite/debug/runTests.py
 	@chmod 700 $(top_builddir)/testsuite/debug/runTests.py
+
+debug/runTests.py: $(top_builddir)/testsuite/debug/runTests.py
 
 run_driver: $(srcdir)/run_driver_template $(top_builddir)/Makefile
 	@rm -f ./run_driver
