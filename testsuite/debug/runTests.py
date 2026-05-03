@@ -47,6 +47,17 @@ def setup_environment():
     ]
     env['LIBRARY_LIST'] = ':'.join(f"{testsuite_dir}/{lib}" for lib in libs)
 
+    # Determine SPINDLE path if not already set
+    if 'SPINDLE' not in env:
+        # Read from run_driver file
+        run_driver_path = os.path.join(testsuite_dir, 'run_driver')
+        if os.path.exists(run_driver_path):
+            with open(run_driver_path, 'r') as f:
+                for line in f:
+                    if line.startswith('export SPINDLE='):
+                        env['SPINDLE'] = line.split('=', 1)[1].strip()
+                        break
+
     return env, testsuite_dir
 
 
