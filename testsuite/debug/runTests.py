@@ -128,6 +128,16 @@ def run_flux_test(args, env, testsuite_dir):
         print("ERROR: Flux Python module not available", file=sys.stderr)
         return 1
 
+    # Query available resources for debugging
+    if args.verbose:
+        print("Querying Flux resources...")
+        try:
+            result = subprocess.run("flux resource list", shell=True, capture_output=True, text=True)
+            print("Available resources:")
+            print(result.stdout)
+        except Exception as e:
+            print(f"Could not query resources: {e}")
+
     # Determine TEST_EXEC based on first argument (--dependency)
     test_exec = './test_driver_libs'
     test_args = ['--dependency', '--push']
@@ -152,16 +162,6 @@ def run_flux_test(args, env, testsuite_dir):
 
     try:
         handle = flux.Flux()
-
-        # Query available resources for debugging
-        if args.verbose:
-            print("Querying Flux resources...")
-            try:
-                result = subprocess.run("flux resource list", shell=True, capture_output=True, text=True)
-                print("Available resources:")
-                print(result.stdout)
-            except Exception as e:
-                print(f"Could not query resources: {e}")
 
         # Use from_command() for a regular job, not from_nest_command()
         jobspec = flux.job.JobspecV1.from_command(
