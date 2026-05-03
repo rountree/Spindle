@@ -21,7 +21,7 @@ def main():
     args = parser.parse_args()
 
     # For minimal implementation: single test --dependency --push
-    test_cmd = './run_driver --dependency --push'
+    test_cmd = '../run_driver --dependency --push'
 
     if args.dry_run:
         print(f"Running: {test_cmd}")
