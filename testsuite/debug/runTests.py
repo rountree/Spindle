@@ -159,11 +159,11 @@ def main():
                     print(f"  {key}={env[key]}")
             print()
 
-        # Create a unique directory for this test run
+        # Create a temporary directory for this test run
         debug_dir = os.path.join(testsuite_dir, 'debug')
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        run_dir = os.path.join(debug_dir, f'run_{timestamp}')
-        os.makedirs(run_dir, exist_ok=True)
+        temp_dir = os.path.join(debug_dir, f'temp_{timestamp}')
+        os.makedirs(temp_dir, exist_ok=True)
 
         # Print the "Running:" message like run_driver does
         print(f"Running: ./run_driver --dependency --push")
@@ -171,12 +171,16 @@ def main():
         # Change to testsuite directory to run
         result = subprocess.run(test_cmd, shell=True, env=env, cwd=testsuite_dir)
 
+        # Rename directory to include return code
+        final_dir = os.path.join(debug_dir, f'RC_{result.returncode}_{timestamp}')
+        os.rename(temp_dir, final_dir)
+
         # Move spindle_output files if they exist
         spindle_outputs = glob.glob(os.path.join(testsuite_dir, 'spindle_output*'))
         if spindle_outputs:
             for output_file in spindle_outputs:
                 filename = os.path.basename(output_file)
-                dest = os.path.join(run_dir, filename)
+                dest = os.path.join(final_dir, filename)
                 os.rename(output_file, dest)
 
         if result.returncode == 0:
