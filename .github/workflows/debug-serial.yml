@@ -46,7 +46,7 @@ jobs:
       - name: Run spindle-debug-serial testsuite
         id: debug-serial-testsuite
         run: |
-          docker exec spindlenode bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --preserve-logs-on-success'
+          docker exec spindlenode bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --spindle-debug=3 --preserve-logs-on-success'
 
       - name: Copy debug logs from container
         id: debug-serial-copy-logs
