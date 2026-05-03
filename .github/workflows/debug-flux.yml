@@ -67,6 +67,7 @@ jobs:
 
       - name: Set short SHA
         id: short-sha
+        if: ${{ always() }}
         run: echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Upload debug artifacts

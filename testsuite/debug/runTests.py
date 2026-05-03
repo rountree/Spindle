@@ -186,9 +186,14 @@ def run_flux_test(args, env, testsuite_dir):
             print(f"Job submitted: {jobid}")
             print("Waiting for job to complete...")
 
-        returncode = flux.job.wait(handle, jobid)
+        # wait() returns JobWaitResult(jobid, success, errstr)
+        result = flux.job.wait(handle, jobid)
 
-        return returncode
+        if args.verbose:
+            print(f"Job result: {result}")
+
+        # Return 0 for success, 1 for failure
+        return 0 if result.success else 1
 
     except Exception as e:
         print(f"ERROR running Flux job: {e}", file=sys.stderr)
