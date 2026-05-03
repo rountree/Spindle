@@ -64,8 +64,9 @@ jobs:
           # Move only the log directories (matching returncode_timestamp pattern) to final location
           mkdir -p debug-logs
           for node in node-1 node-2 node-3 node-4; do
+            mkdir -p debug-logs/$node
             # Move timestamped directories
-            find debug-logs-temp/$node -maxdepth 1 -type d -name '[0-9]*_[0-9]*_[0-9]*' -exec sh -c 'mkdir -p debug-logs/'$node' && mv "$1" debug-logs/'$node'/' _ {} \;
+            find debug-logs-temp/$node -maxdepth 1 -type d -name '[0-9]*_[0-9]*_[0-9]*' -exec mv {} debug-logs/$node/ \; 2>/dev/null || true
             # Move spindle_output files from testsuite
             if [ -d debug-logs-temp/$node/testsuite ]; then
               mkdir -p debug-logs/$node/testsuite
