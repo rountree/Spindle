@@ -6,6 +6,7 @@ Spindle test runner with integrated debugging support.
 import argparse
 import glob
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -128,6 +129,16 @@ def main():
         action='store_true',
         help='Print command and environment variables'
     )
+    parser.add_argument(
+        '--preserve-logs-on-success',
+        action='store_true',
+        help='Keep log directories from successful test runs (default: delete them)'
+    )
+    parser.add_argument(
+        '--continue-after-failure',
+        action='store_true',
+        help='Continue running tests after a failure (default: stop at first failure)'
+    )
 
     args = parser.parse_args()
 
@@ -183,10 +194,17 @@ def main():
                 dest = os.path.join(final_dir, filename)
                 os.rename(output_file, dest)
 
+        # Handle log preservation based on success/failure
         if result.returncode == 0:
             print("ALL TESTS PASSED")
+            # Delete logs for successful runs unless explicitly preserving
+            if not args.preserve_logs_on_success:
+                shutil.rmtree(final_dir)
         else:
             print("SOME TESTS FAILED")
+            # Stop at first failure unless explicitly continuing
+            if not args.continue_after_failure:
+                sys.exit(result.returncode)
 
         sys.exit(result.returncode)
 
