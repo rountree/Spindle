@@ -17519,6 +17519,15 @@ fi
 
 
 
+# Define installation prefix for use in test code
+# Expand ${prefix} if it's still set to NONE (default)
+test "x$prefix" = xNONE && prefix=$ac_default_prefix
+
+cat >>confdefs.h <<_ACEOF
+#define SPINDLE_PREFIX "$prefix"
+_ACEOF
+
+
 
 
 
