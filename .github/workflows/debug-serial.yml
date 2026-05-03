@@ -48,6 +48,24 @@ jobs:
         run: |
           docker exec spindlenode bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py'
 
+      - name: Copy debug logs from container
+        id: debug-serial-copy-logs
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          mkdir -p debug-logs
+          docker cp spindlenode:/home/spindleuser/Spindle-build/testsuite/debug/. debug-logs/ || true
+
+      - name: Upload debug artifacts
+        id: debug-serial-upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-serial-logs-${{ github.run_number }}
+          path: debug-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Bring spindle-debug-serial down
         id: debug-serial-down
         if: ${{ always() }}
