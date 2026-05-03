@@ -54,14 +54,21 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p debug-logs
-          docker cp spindlenode:/home/spindleuser/Spindle-build/testsuite/debug/. debug-logs/ || true
+          # Copy only the numbered directories (returncode_timestamp pattern), not runTests.py
+          docker exec spindlenode bash -c 'cd /home/spindleuser/Spindle-build/testsuite/debug && ls -d [0-9]*_[0-9]* 2>/dev/null' | while read dir; do
+            docker cp spindlenode:/home/spindleuser/Spindle-build/testsuite/debug/"$dir" debug-logs/ || true
+          done
+
+      - name: Set short SHA
+        id: short-sha
+        run: echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Upload debug artifacts
         id: debug-serial-upload
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: debug-serial-logs-${{ github.run_number }}
+          name: debug-serial-logs-${{ github.run_number }}-${{ steps.short-sha.outputs.sha_short }}
           path: debug-logs/
           if-no-files-found: ignore
           retention-days: 7
