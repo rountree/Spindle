@@ -28,7 +28,8 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -qq install -y --no-install-recomme
         libmunge-dev \
         libhwloc-dev \
         mpich \
-        libmpich-dev
+        libmpich-dev \
+        python3
 
 # Prevent hwloc from trying to use graphics cards
 # as this fails when X is not running.
