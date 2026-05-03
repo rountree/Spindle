@@ -153,16 +153,22 @@ def run_flux_test(args, env, testsuite_dir):
     try:
         handle = flux.Flux()
 
-        # Calculate num_slots from num_tasks and cores_per_task
-        # num_slots is the number of resource slots (usually tasks/cores_per_task)
-        num_slots = args.num_tasks // args.cores_per_task
+        # Query available resources for debugging
+        if args.verbose:
+            print("Querying Flux resources...")
+            try:
+                result = subprocess.run("flux resource list", shell=True, capture_output=True, text=True)
+                print("Available resources:")
+                print(result.stdout)
+            except Exception as e:
+                print(f"Could not query resources: {e}")
 
-        # Create a NESTED Flux instance jobspec (like flux alloc does)
-        jobspec = flux.job.JobspecV1.from_nest_command(
+        # Use from_command() for a regular job, not from_nest_command()
+        jobspec = flux.job.JobspecV1.from_command(
             command=full_command,
-            num_slots=num_slots,
-            cores_per_slot=args.cores_per_task,
+            num_tasks=args.num_tasks,
             num_nodes=args.num_nodes,
+            cores_per_task=args.cores_per_task,
             duration=args.time_limit,
             cwd=testsuite_dir,
         )
@@ -171,7 +177,7 @@ def run_flux_test(args, env, testsuite_dir):
         jobspec.environment = dict(env)
 
         if args.verbose:
-            print("Submitting nested Flux instance job...")
+            print("Submitting job to Flux...")
 
         # Submit job with waitable=True so we can wait for it
         jobid = flux.job.submit(handle, jobspec, waitable=True)
