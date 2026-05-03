@@ -172,7 +172,7 @@ def main():
         result = subprocess.run(test_cmd, shell=True, env=env, cwd=testsuite_dir)
 
         # Rename directory to include return code
-        final_dir = os.path.join(debug_dir, f'RC_{result.returncode}_{timestamp}')
+        final_dir = os.path.join(debug_dir, f'{result.returncode}_{timestamp}')
         os.rename(temp_dir, final_dir)
 
         # Move spindle_output files if they exist
