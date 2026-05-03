@@ -164,7 +164,6 @@ def main():
         result = subprocess.run(test_cmd, shell=True, env=env, cwd=testsuite_dir)
 
         if result.returncode == 0:
-            print("PASSED.")
             print("ALL TESTS PASSED")
         else:
             print("SOME TESTS FAILED")
