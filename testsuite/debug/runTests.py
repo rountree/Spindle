@@ -153,16 +153,18 @@ def run_flux_test(args, env, testsuite_dir):
     try:
         handle = flux.Flux()
 
+        # Calculate total tasks (nodes * tasks_per_node)
+        num_tasks = args.nodes * args.tasks_per_node
+
         # Create jobspec for the test
         jobspec = flux.job.JobspecV1.from_command(
             command=full_command,
+            num_tasks=num_tasks,
             num_nodes=args.nodes,
-            tasks_per_node=args.tasks_per_node,
+            cores_per_task=1,
+            duration=args.time_limit,
+            cwd=testsuite_dir,
         )
-
-        # Set time limit
-        jobspec.duration = args.time_limit
-        jobspec.cwd = testsuite_dir
 
         # Set environment variables
         jobspec.environment = dict(env)
