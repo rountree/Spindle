@@ -53,11 +53,12 @@ jobs:
         if: ${{ always() }}
         continue-on-error: true
         run: |
+          mkdir -p debug-logs-temp
+          # Copy entire debug directory from container
+          docker cp spindlenode:/home/spindleuser/Spindle-build/testsuite/debug/. debug-logs-temp/ || true
+          # Move only the log directories (matching returncode_timestamp pattern) to final location
           mkdir -p debug-logs
-          # Copy only the numbered directories (returncode_timestamp pattern), not runTests.py
-          docker exec spindlenode bash -c 'cd /home/spindleuser/Spindle-build/testsuite/debug && ls -d [0-9]*_[0-9]* 2>/dev/null' | while read dir; do
-            docker cp spindlenode:/home/spindleuser/Spindle-build/testsuite/debug/"$dir" debug-logs/ || true
-          done
+          find debug-logs-temp -maxdepth 1 -type d -name '[0-9]*_[0-9]*' -exec mv {} debug-logs/ \;
 
       - name: Set short SHA
         id: short-sha
