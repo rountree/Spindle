@@ -37,11 +37,11 @@ RUN curl --insecure -s https://adpkicert.llnl.gov/ADPKI_LLNLROOT.crt \
  && update-ca-certificates
 
 ARG USER=spindleuser
-ARG UID=1000
-ARG GID=1000
+ARG UID=1500
+ARG GID=1500
 
-# Create non-root user
-RUN groupadd -g ${GID} ${USER} && \
+# Create non-root user (use -f to not fail if group exists)
+RUN groupadd -f -g ${GID} ${USER} && \
     useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USER}
 
 # Build Spindle
