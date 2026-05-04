@@ -220,8 +220,8 @@ node_num=${{hostname##*-}}
 target_dir="{target_base}/node-${{node_num}}"
 cp {testsuite_dir}/spindle_output.* $target_dir/ 2>/dev/null || \\
     echo "Warning: Could not copy Spindle logs from $(hostname)" >&2
-cp /var/lib/flux/local-0/log $target_dir/flux-broker.log 2>/dev/null || \\
-    echo "Warning: Could not copy Flux broker log from $(hostname)" >&2
+flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
+    echo "Warning: Could not capture flux dmesg from $(hostname)" >&2
 """
 
         try:
