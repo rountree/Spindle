@@ -330,13 +330,13 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
             print(f"Warning: Could not create shared log directories: {e}", file=sys.stderr)
             return returncode
 
-        # Launch collection job: one task per node to copy files
+        # Launch collection job: one task per node to move files
         collection_cmd = f"""
 hostname=$(hostname)
 node_num=${{hostname##*-}}
 target_dir="{target_base}/node-${{node_num}}"
-cp {testsuite_dir}/spindle_output.* $target_dir/ 2>/dev/null || \\
-    echo "Warning: Could not copy Spindle logs from $(hostname)" >&2
+mv {testsuite_dir}/spindle_output.${{hostname}}.* $target_dir/ 2>/dev/null || \\
+    echo "Warning: Could not move Spindle logs from $(hostname)" >&2
 flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
     echo "Warning: Could not capture flux dmesg from $(hostname)" >&2
 """
