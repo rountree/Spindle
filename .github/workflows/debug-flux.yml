@@ -17,6 +17,8 @@ jobs:
     environment: Spindle CI
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      NUM_NODES: 4
     steps:
       - name: Check out Spindle
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -25,6 +27,12 @@ jobs:
         uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
         with:
           version: latest
+
+      - name: Generate docker-compose.yml
+        id: debug-flux-generate
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          ./generate-compose.py ${{ env.NUM_NODES }} > docker-compose.yml
 
       - name: Build spindle-debug-flux image
         id: debug-flux-build
@@ -46,7 +54,7 @@ jobs:
       - name: Run spindle-debug-flux testsuite
         id: debug-flux-testsuite
         run: |
-          docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=flux --num-nodes=4 --num-tasks=4 --cores-per-task=1 --time-limit=5m --spindle-debug=3 --preserve-logs-on-success --verbose'
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=flux --num-nodes=${{ env.NUM_NODES }} --num-tasks=${{ env.NUM_NODES }} --cores-per-task=1 --time-limit=5m --spindle-debug=3 --preserve-logs-on-success --verbose'
 
       - name: Copy debug logs from shared filesystem
         id: debug-flux-copy-logs

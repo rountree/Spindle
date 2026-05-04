@@ -1,14 +1,25 @@
-# 4-node Flux cluster
+#!/usr/bin/env python3
+"""
+Generate docker-compose.yml with specified number of nodes.
+"""
+
+import sys
+import os
+
+def generate_compose(num_nodes):
+    """Generate docker-compose.yml for num_nodes Flux nodes."""
+
+    compose = f"""# {num_nodes}-node Flux cluster
 # For information on running Flux in containers, see
 # https://flux-framework.readthedocs.io/en/latest/tutorials/containers
 
 # `replicas` must match the number of nodes defined in the services section
 x-shared-workers:
   &workers
-  replicas: 4
+  replicas: {num_nodes}
 
 # Base flux image version to use
-# ${ubuntu_version}-${flux_version}-${arch}
+# ${{ubuntu_version}}-${{flux_version}}-${{arch}}
 x-shared-build-args: &shared-build-args
   flux_sched_version: noble-v0.48.0-amd64
   <<: *workers
@@ -59,18 +70,32 @@ services:
       interval: 5s
       timeout: 10s
       retries: 5
+"""
 
-  node-2:
+    # Generate worker nodes (node-2 through node-N)
+    for i in range(2, num_nodes + 1):
+        compose += f"""
+  node-{i}:
     <<: *shared-node-parameters
-    hostname: node-2
-    container_name: node-2
+    hostname: node-{i}
+    container_name: node-{i}
+"""
 
-  node-3:
-    <<: *shared-node-parameters
-    hostname: node-3
-    container_name: node-3
+    return compose
 
-  node-4:
-    <<: *shared-node-parameters
-    hostname: node-4
-    container_name: node-4
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} NUM_NODES", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        num_nodes = int(sys.argv[1])
+        if num_nodes < 1:
+            raise ValueError("NUM_NODES must be at least 1")
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    compose_content = generate_compose(num_nodes)
+    print(compose_content, end='')
