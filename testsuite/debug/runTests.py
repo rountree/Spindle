@@ -192,8 +192,13 @@ def run_serial_test(args, env, testsuite_dir, test_type='dependency', test_mode=
     # Test-only modes: fork, forkexec, chdir
     spindle_modes = ['push', 'pull', 'numa', 'preload']
     if test_mode in spindle_modes:
-        spindle_opts = f'--{test_mode}'
-        env['SPINDLE_OPTS'] = spindle_opts
+        # Special case: preload mode needs --preload=preload_file_list
+        if test_mode == 'preload':
+            spindle_opts = '--preload=preload_file_list'
+            env['SPINDLE_OPTS'] = spindle_opts
+        else:
+            spindle_opts = f'--{test_mode}'
+            env['SPINDLE_OPTS'] = spindle_opts
     else:
         spindle_opts = ''
         env['SPINDLE_OPTS'] = ''
@@ -285,8 +290,13 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     # Test-only modes: fork, forkexec, chdir
     spindle_modes = ['push', 'pull', 'numa', 'preload']
     if test_mode in spindle_modes:
-        env['SPINDLE_OPTS'] = f'--{test_mode}'
-        spindle_mode_flag = [f'--{test_mode}']
+        # Special case: preload mode needs --preload=preload_file_list
+        if test_mode == 'preload':
+            env['SPINDLE_OPTS'] = '--preload=preload_file_list'
+            spindle_mode_flag = ['--preload=preload_file_list']
+        else:
+            env['SPINDLE_OPTS'] = f'--{test_mode}'
+            spindle_mode_flag = [f'--{test_mode}']
     else:
         env['SPINDLE_OPTS'] = ''
         spindle_mode_flag = []
