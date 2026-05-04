@@ -219,7 +219,9 @@ hostname=$(hostname)
 node_num=${{hostname##*-}}
 target_dir="{target_base}/node-${{node_num}}"
 cp {testsuite_dir}/spindle_output.* $target_dir/ 2>/dev/null || \\
-    echo "Warning: Could not copy logs from $(hostname)" >&2
+    echo "Warning: Could not copy Spindle logs from $(hostname)" >&2
+cp /var/lib/flux/local-0/log $target_dir/flux-broker.log 2>/dev/null || \\
+    echo "Warning: Could not copy Flux broker log from $(hostname)" >&2
 """
 
         try:
@@ -310,6 +312,11 @@ def main():
         default='20s',
         help='Time limit for job, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
     )
+    parser.add_argument(
+        '--flux-debug',
+        action='store_true',
+        help='Enable Flux debug logging (sets FLUX_DEBUG_FLAGS=255)'
+    )
 
     args = parser.parse_args()
 
@@ -323,6 +330,10 @@ def main():
     # Add SPINDLE_DEBUG if specified
     if args.spindle_debug is not None:
         env['SPINDLE_DEBUG'] = str(args.spindle_debug)
+
+    # Add FLUX_DEBUG_FLAGS if specified
+    if args.flux_debug:
+        env['FLUX_DEBUG_FLAGS'] = '255'
 
     if args.dry_run:
         print(f"Resource manager: {args.resource_manager}")
