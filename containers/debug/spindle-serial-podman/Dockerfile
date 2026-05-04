@@ -1,11 +1,20 @@
 # Rootless Podman-compatible Spindle container
 # Serial resource manager, no munge, no NUMA
+# LLNL-specific workarounds included
 ARG base_image=ubuntu:noble
 FROM ${base_image}
 
+ENV DEBIAN_FRONTEND=noninteractive
+
+# LLNL workaround: Fix APT sandbox for rootless Podman
+RUN echo 'APT::Sandbox::User root;' > /etc/apt/apt.conf.d/00-apt-sandbox
+
 # Install dependencies (no munge, no libnuma)
-RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
+RUN apt-get update \
     && apt-get -qq install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        openssl \
         autotools-dev \
         autoconf \
         automake \
@@ -17,6 +26,15 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
         gdb \
         software-properties-common \
     && rm -rf /var/lib/apt/lists/*
+
+# LLNL workaround: Install LLNL CA certificates
+RUN curl --insecure -s https://adpkicert.llnl.gov/ADPKI_LLNLROOT.crt \
+        -o - | openssl x509 -inform der | tee /usr/local/share/ca-certificates/LLNLROOT.crt \
+ && curl --insecure -s https://adpkicert.llnl.gov/ADPKI-13.the-lab.llnl.gov_ADPKI-13.crt \
+        -o - | openssl x509 -inform der | tee /usr/local/share/ca-certificates/ADPKI-13.crt \
+ && curl --insecure -s https://adpkicert.llnl.gov/PAN-cspca.llnl.gov.crt \
+        -o /usr/local/share/ca-certificates/cspca.crt \
+ && update-ca-certificates
 
 ARG USER=spindleuser
 ARG UID=1000

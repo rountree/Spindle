@@ -2,6 +2,7 @@
 #
 # Run Spindle tests in a single Podman container
 # Rootless-compatible, serial resource manager
+# LLNL-specific workarounds included
 #
 
 set -e
@@ -19,9 +20,15 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+echo -e "${GREEN}==> Enabling Podman (LLNL-specific)${NC}"
+enable-podman || true  # May not be needed on all systems
+
 echo -e "${GREEN}==> Building Spindle serial Podman image${NC}"
 cd "$REPO_ROOT"
 podman build \
+    --userns-uid-map=0:0:1 \
+    --userns-uid-map=1:1:1999 \
+    --userns-uid-map=65534:2000:2 \
     -t "$IMAGE_NAME" \
     -f containers/debug/spindle-serial-podman/Dockerfile \
     .
@@ -29,6 +36,8 @@ podman build \
 echo -e "${GREEN}==> Starting container${NC}"
 podman run -d \
     --name "$CONTAINER_NAME" \
+    --uidmap 0:0:2000 \
+    --uidmap 65534:2000:2 \
     --rm \
     "$IMAGE_NAME"
 
