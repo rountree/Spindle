@@ -12,18 +12,25 @@ RUN echo 'APT::Sandbox::User root;' > /etc/apt/apt.conf.d/00-apt-sandbox
 # Install dependencies (no munge, no libnuma)
 RUN apt-get update \
     && apt-get -qq install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        openssl \
-        autotools-dev \
+        apt-utils \
         autoconf \
         automake \
+        autotools-dev \
+        build-essential \
+        ca-certificates \
         cmake \
-        git \
-        python3 \
-        libdb-dev \
-        apt-utils \
+        curl \
+        g++ \
+        gcc \
         gdb \
+        git \
+        libdb-dev \
+        libgcrypt20 \
+        libgcrypt20-dev \
+        make \
+        openssl \
+        pkg-config \
+        python3 \
         software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
