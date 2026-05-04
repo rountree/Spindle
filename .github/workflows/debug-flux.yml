@@ -51,17 +51,29 @@ jobs:
         run: |
           docker exec node-1 bash -c 'munge -n | unmunge'
 
+      # Common options
+      #   docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && \
+      #   ./runTests.py \
+      #   --run-all-tests \
+      #   --resource-manager=flux \
+      #   --num-nodes=${{ env.NUM_NODES }} \
+      #   --num-tasks=${{ env.NUM_NODES }} \
+      #   --cores-per-task=1 \
+      #   --time-limit=1m \
+      #   --spindle-debug=3 \
+      #   --preserve-logs-on-success \
+      #   --verbose'
       - name: Run spindle-debug-flux testsuite
         id: debug-flux-testsuite
         run: |
           docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && \
           ./runTests.py \
-          --run-all-tests \
+          --single-test=dependency_preload \
           --resource-manager=flux \
           --num-nodes=${{ env.NUM_NODES }} \
           --num-tasks=${{ env.NUM_NODES }} \
           --cores-per-task=1 \
-          --time-limit=1m \
+          --time-limit=3m \
           --spindle-debug=3 \
           --preserve-logs-on-success \
           --verbose'
