@@ -185,9 +185,16 @@ def run_serial_test(args, env, testsuite_dir, test_type='dependency', test_mode=
     # Determine TEST_EXEC based on test type
     test_exec = './test_driver_libs'
 
-    # Set SPINDLE_OPTS based on mode
-    spindle_opts = f'--{test_mode}'
-    env['SPINDLE_OPTS'] = spindle_opts
+    # Determine which modes are Spindle options vs test_driver options
+    # Spindle options: push, pull, numa, preload
+    # Test-only modes: fork, forkexec, chdir
+    spindle_modes = ['push', 'pull', 'numa', 'preload']
+    if test_mode in spindle_modes:
+        spindle_opts = f'--{test_mode}'
+        env['SPINDLE_OPTS'] = spindle_opts
+    else:
+        spindle_opts = ''
+        env['SPINDLE_OPTS'] = ''
 
     # For serial launcher, we need to construct the full command
     # Get SPINDLE executable path from environment or construct it
@@ -270,7 +277,17 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
 
     env['SPINDLE'] = spindle_exec
     env['TEST_EXEC'] = test_exec
-    env['SPINDLE_OPTS'] = f'--{test_mode}'
+
+    # Determine which modes are Spindle options vs test_driver options
+    # Spindle options: push, pull, numa, preload
+    # Test-only modes: fork, forkexec, chdir
+    spindle_modes = ['push', 'pull', 'numa', 'preload']
+    if test_mode in spindle_modes:
+        env['SPINDLE_OPTS'] = f'--{test_mode}'
+        spindle_mode_flag = [f'--{test_mode}']
+    else:
+        env['SPINDLE_OPTS'] = ''
+        spindle_mode_flag = []
 
     # For ldpreload/preload tests, set LD_PRELOAD to LIBRARY_LIST
     if test_type == 'ldpreload' or test_mode == 'preload':
@@ -278,8 +295,9 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
             env['LD_PRELOAD'] = env['LIBRARY_LIST']
 
     # Build full command with spindle wrapper
+    # Only pass mode flag to Spindle if it's a Spindle option
     spindle_flags = env['SPINDLE_FLAGS']
-    full_command = [spindle_exec] + spindle_flags.split() + [f'--{test_mode}', '--launcher=serial', test_exec] + test_args
+    full_command = [spindle_exec] + spindle_flags.split() + spindle_mode_flag + ['--launcher=serial', test_exec] + test_args
 
     if args.verbose:
         print(f"Flux command: {' '.join(full_command)}")
