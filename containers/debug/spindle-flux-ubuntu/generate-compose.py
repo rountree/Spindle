@@ -46,9 +46,8 @@ networks:
 volumes:
   shared-logs:
 
-# Common parameters for all nodes.
+# Common parameters for all nodes (except build - only node-1 builds)
 x-shared-node-parameters: &shared-node-parameters
-  build: *shared-build-context
   networks:
     - flux
   environment: *shared-environment
@@ -60,6 +59,8 @@ x-shared-node-parameters: &shared-node-parameters
 services:
   node-1:
     <<: *shared-node-parameters
+    build: *shared-build-context
+    image: spindle-flux-ubuntu:latest
     hostname: node-1
     container_name: node-1
     # Check whether all the workers have registered
@@ -77,6 +78,7 @@ services:
         compose += f"""
   node-{i}:
     <<: *shared-node-parameters
+    image: spindle-flux-ubuntu:latest
     hostname: node-{i}
     container_name: node-{i}
 """
