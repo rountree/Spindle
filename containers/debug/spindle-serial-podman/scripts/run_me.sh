@@ -38,11 +38,18 @@ podman run -d \
     --name "$CONTAINER_NAME" \
     --uidmap 0:0:2000 \
     --uidmap 65534:2000:2 \
-    --rm \
     "$IMAGE_NAME"
 
 # Wait for container to be ready
 sleep 2
+
+# Check if container is still running
+if ! podman ps --filter "name=$CONTAINER_NAME" --format "{{.Names}}" | grep -q "$CONTAINER_NAME"; then
+    echo -e "${RED}==> Container exited immediately! Checking logs:${NC}"
+    podman logs "$CONTAINER_NAME"
+    podman rm "$CONTAINER_NAME"
+    exit 1
+fi
 
 echo -e "${GREEN}==> Running tests${NC}"
 podman exec "$CONTAINER_NAME" bash -c 'cd Spindle-build/testsuite/debug && \
@@ -57,8 +64,9 @@ echo -e "${GREEN}==> Collecting logs${NC}"
 # Copy logs out of container if they exist
 podman cp "$CONTAINER_NAME:/home/spindleuser/Spindle-build/testsuite/debug/." ./podman-logs/ 2>/dev/null || true
 
-echo -e "${GREEN}==> Stopping container${NC}"
+echo -e "${GREEN}==> Stopping and removing container${NC}"
 podman stop "$CONTAINER_NAME"
+podman rm "$CONTAINER_NAME"
 
 if [ $RESULT -eq 0 ]; then
     echo -e "${GREEN}==> Tests PASSED${NC}"
