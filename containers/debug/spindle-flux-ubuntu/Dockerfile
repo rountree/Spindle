@@ -50,8 +50,10 @@ COPY . /home/${USER}/Spindle
 COPY ${CONFIG_ROOT}/scripts/build_spindle.sh /home/${USER}/build_spindle.sh
 RUN ./build_spindle.sh
 
-RUN chown -R ${USER}:${USER} /home/fluxuser && \
-    chown -R ${USER}:${USER} /run/flux
+RUN mkdir -p /shared-logs && \
+    chown -R ${USER}:${USER} /home/fluxuser && \
+    chown -R ${USER}:${USER} /run/flux && \
+    chown -R ${USER}:${USER} /shared-logs
 
 USER ${USER}
 COPY ${CONFIG_ROOT}/scripts/flux_healthcheck.sh ./
