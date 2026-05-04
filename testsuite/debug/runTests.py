@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime
+from io import StringIO
 
 # Try to import flux - it's only available in flux containers
 try:
@@ -19,6 +20,90 @@ try:
     FLUX_AVAILABLE = True
 except ImportError:
     FLUX_AVAILABLE = False
+
+# Define all available tests from the original runTests
+ALL_TESTS = [
+    ('dependency', 'push'),
+    ('dlopen', 'push'),
+    ('dlreopen', 'push'),
+    ('thrdopen', 'push'),
+    ('reorder', 'push'),
+    ('partial', 'push'),
+    ('ldpreload', 'push'),
+    ('spindleapi', 'push'),
+    ('dependency', 'pull'),
+    ('dlopen', 'pull'),
+    ('dlreopen', 'pull'),
+    ('thrdopen', 'pull'),
+    ('reorder', 'pull'),
+    ('partial', 'pull'),
+    ('ldpreload', 'pull'),
+    ('spindleapi', 'pull'),
+    ('dependency', 'numa'),
+    ('dlopen', 'numa'),
+    ('dlreopen', 'numa'),
+    ('thrdopen', 'numa'),
+    ('reorder', 'numa'),
+    ('partial', 'numa'),
+    ('ldpreload', 'numa'),
+    ('spindleapi', 'numa'),
+    ('dependency', 'fork'),
+    ('dlopen', 'fork'),
+    ('dlreopen', 'fork'),
+    ('thrdopen', 'fork'),
+    ('reorder', 'fork'),
+    ('partial', 'fork'),
+    ('ldpreload', 'fork'),
+    ('spindleapi', 'fork'),
+    ('dependency', 'forkexec'),
+    ('dlopen', 'forkexec'),
+    ('dlreopen', 'forkexec'),
+    ('thrdopen', 'forkexec'),
+    ('reorder', 'forkexec'),
+    ('partial', 'forkexec'),
+    ('ldpreload', 'forkexec'),
+    ('spindleapi', 'forkexec'),
+    ('dependency', 'chdir'),
+    ('dlopen', 'chdir'),
+    ('dlreopen', 'chdir'),
+    ('thrdopen', 'chdir'),
+    ('reorder', 'chdir'),
+    ('partial', 'chdir'),
+    ('ldpreload', 'chdir'),
+    ('spindleapi', 'chdir'),
+    ('dependency', 'preload'),
+    ('dlopen', 'preload'),
+    ('dlreopen', 'preload'),
+    ('thrdopen', 'preload'),
+    ('reorder', 'preload'),
+    ('partial', 'preload'),
+    ('ldpreload', 'preload'),
+    ('spindleapi', 'preload'),
+]
+
+
+class TeeOutput:
+    """Capture output to both stdout and a file."""
+    def __init__(self, filepath, verbose=True):
+        self.filepath = filepath
+        self.file = open(filepath, 'w')
+        self.verbose = verbose
+        self.original_stdout = sys.stdout
+        self.original_stderr = sys.stderr
+
+    def write(self, data):
+        self.file.write(data)
+        if self.verbose:
+            self.original_stdout.write(data)
+        self.file.flush()
+
+    def flush(self):
+        self.file.flush()
+        if self.verbose:
+            self.original_stdout.flush()
+
+    def close(self):
+        self.file.close()
 
 
 def setup_environment():
@@ -83,13 +168,25 @@ def setup_environment():
     return env, testsuite_dir
 
 
-def run_serial_test(args, env, testsuite_dir):
-    """Run test using serial resource manager."""
-    # Determine TEST_EXEC based on first argument (--dependency)
+def run_serial_test(args, env, testsuite_dir, test_type='dependency', test_mode='push', log_dir=None):
+    """Run test using serial resource manager.
+
+    Args:
+        args: Command line arguments
+        env: Environment variables
+        testsuite_dir: Path to testsuite directory
+        test_type: Type of test (dependency, dlopen, etc.)
+        test_mode: Mode of test (push, pull, numa, fork, etc.)
+        log_dir: Directory to store logs (if None, use timestamp-based default)
+
+    Returns:
+        (returncode, log_directory)
+    """
+    # Determine TEST_EXEC based on test type
     test_exec = './test_driver_libs'
 
-    # Set SPINDLE_OPTS based on second argument (--push)
-    spindle_opts = '--push'
+    # Set SPINDLE_OPTS based on mode
+    spindle_opts = f'--{test_mode}'
     env['SPINDLE_OPTS'] = spindle_opts
 
     # For serial launcher, we need to construct the full command
@@ -105,8 +202,7 @@ def run_serial_test(args, env, testsuite_dir):
     env['TEST_EXEC'] = test_exec
 
     # Build the command based on run_driver_serial logic
-    # Important: pass through the test arguments (--dependency --push) to test_exec
-    test_args = '--dependency --push'
+    test_args = f'--{test_type} --{test_mode}'
     spindle_flags = env['SPINDLE_FLAGS']
 
     if 'SPINDLE_LD_PRELOAD' in env and env['SPINDLE_LD_PRELOAD']:
@@ -120,14 +216,32 @@ def run_serial_test(args, env, testsuite_dir):
 
     # Change to testsuite directory to run
     result = subprocess.run(cmd, shell=True, env=env, cwd=testsuite_dir)
-    return result.returncode
+
+    # For serial tests, log handling is simpler - just note the directory
+    if log_dir is None:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_dir = os.path.join(testsuite_dir, 'debug', f'{result.returncode}_{timestamp}')
+
+    return (result.returncode, log_dir)
 
 
-def run_flux_test(args, env, testsuite_dir):
-    """Run test using Flux resource manager."""
+def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='push', log_dir=None):
+    """Run test using Flux resource manager.
+
+    Args:
+        args: Command line arguments
+        env: Environment variables
+        testsuite_dir: Path to testsuite directory
+        test_type: Type of test (dependency, dlopen, etc.)
+        test_mode: Mode of test (push, pull, numa, fork, etc.)
+        log_dir: Directory to store logs (if None, use timestamp-based default)
+
+    Returns:
+        (returncode, log_directory)
+    """
     if not FLUX_AVAILABLE:
         print("ERROR: Flux Python module not available", file=sys.stderr)
-        return 1
+        return (1, log_dir)
 
     # Query available resources for debugging
     if args.verbose:
@@ -139,9 +253,9 @@ def run_flux_test(args, env, testsuite_dir):
         except Exception as e:
             print(f"Could not query resources: {e}")
 
-    # Determine TEST_EXEC based on first argument (--dependency)
+    # Determine TEST_EXEC based on test type
     test_exec = './test_driver_libs'
-    test_args = ['--dependency', '--push']
+    test_args = [f'--{test_type}', f'--{test_mode}']
 
     # Get SPINDLE executable path
     if 'SPINDLE' in env:
@@ -151,11 +265,11 @@ def run_flux_test(args, env, testsuite_dir):
 
     env['SPINDLE'] = spindle_exec
     env['TEST_EXEC'] = test_exec
-    env['SPINDLE_OPTS'] = '--push'
+    env['SPINDLE_OPTS'] = f'--{test_mode}'
 
     # Build full command with spindle wrapper
     spindle_flags = env['SPINDLE_FLAGS']
-    full_command = [spindle_exec] + spindle_flags.split() + ['--push', '--launcher=serial', test_exec] + test_args
+    full_command = [spindle_exec] + spindle_flags.split() + [f'--{test_mode}', '--launcher=serial', test_exec] + test_args
 
     if args.verbose:
         print(f"Flux command: {' '.join(full_command)}")
@@ -201,8 +315,11 @@ def run_flux_test(args, env, testsuite_dir):
 
         # Use shared filesystem for log aggregation
         shared_logs = '/shared-logs'
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
+        if log_dir is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
+        else:
+            target_base = log_dir
 
         # Create directory structure on shared filesystem (only need to do this once)
         try:
@@ -244,13 +361,13 @@ flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
             print(f"Warning: Log collection failed: {e}", file=sys.stderr)
             # Don't fail the whole test just because collection failed
 
-        return returncode
+        return (returncode, target_base)
 
     except Exception as e:
         print(f"ERROR running Flux job: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
-        return 1
+        return (1, log_dir)
 
 
 def main():
@@ -312,6 +429,11 @@ def main():
         default='20s',
         help='Time limit for job, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
     )
+    parser.add_argument(
+        '--run-all-tests',
+        action='store_true',
+        help='Run all tests from the original runTests script'
+    )
 
     args = parser.parse_args()
 
@@ -346,49 +468,100 @@ def main():
                     print(f"  {key}={env[key]}")
             print()
 
-        # Create a temporary directory for this test run
-        debug_dir = os.path.join(testsuite_dir, 'debug')
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        temp_dir = os.path.join(debug_dir, f'temp_{timestamp}')
-        os.makedirs(temp_dir, exist_ok=True)
-
-        # Print the "Running:" message like run_driver does
-        print(f"Running: ./run_driver --dependency --push")
-
-        # Run test with appropriate resource manager
-        if args.resource_manager == 'serial':
-            returncode = run_serial_test(args, env, testsuite_dir)
-        elif args.resource_manager == 'flux':
-            returncode = run_flux_test(args, env, testsuite_dir)
+        # Determine which tests to run
+        if args.run_all_tests:
+            tests_to_run = ALL_TESTS
         else:
-            print(f"ERROR: Unknown resource manager: {args.resource_manager}", file=sys.stderr)
-            returncode = 1
+            # Default: just run dependency/push
+            tests_to_run = [('dependency', 'push')]
 
-        # Rename directory to include return code
-        final_dir = os.path.join(debug_dir, f'{returncode}_{timestamp}')
-        os.rename(temp_dir, final_dir)
+        # Run each test
+        global_result = 0
+        for test_type, test_mode in tests_to_run:
+            test_name = f"{test_type}_{test_mode}"
 
-        # Move spindle_output files if they exist
-        spindle_outputs = glob.glob(os.path.join(testsuite_dir, 'spindle_output*'))
-        if spindle_outputs:
-            for output_file in spindle_outputs:
-                filename = os.path.basename(output_file)
-                dest = os.path.join(final_dir, filename)
-                os.rename(output_file, dest)
+            # Create directories
+            debug_dir = os.path.join(testsuite_dir, 'debug')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-        # Handle log preservation based on success/failure
-        if returncode == 0:
+            # For Flux, use shared-logs; for serial, use local debug dir
+            if args.resource_manager == 'flux':
+                shared_logs = '/shared-logs'
+                temp_dir = os.path.join(shared_logs, f'temp_{test_name}_{timestamp}')
+            else:
+                temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
+
+            os.makedirs(temp_dir, exist_ok=True)
+
+            # Set up log capture
+            runtest_log_path = os.path.join(temp_dir, 'runtest.log')
+            log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            sys.stdout = log_capture
+            sys.stderr = log_capture
+
+            try:
+                # Print the "Running:" message like run_driver does
+                print(f"Running: ./run_driver --{test_type} --{test_mode}")
+
+                # Run test with appropriate resource manager
+                if args.resource_manager == 'serial':
+                    returncode, log_dir = run_serial_test(args, env, testsuite_dir, test_type, test_mode, temp_dir)
+                elif args.resource_manager == 'flux':
+                    returncode, log_dir = run_flux_test(args, env, testsuite_dir, test_type, test_mode, temp_dir)
+                else:
+                    print(f"ERROR: Unknown resource manager: {args.resource_manager}")
+                    returncode = 1
+                    log_dir = temp_dir
+
+                if returncode != 0:
+                    global_result = -1
+
+            finally:
+                # Restore stdout/stderr
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+                log_capture.close()
+
+            # Rename directory to include return code
+            final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{test_name}_{timestamp}')
+            if os.path.exists(temp_dir):
+                os.rename(temp_dir, final_dir)
+            elif log_dir != temp_dir:
+                # Flux may have created the dir directly
+                final_dir = log_dir
+
+            # Move spindle_output files if they exist (serial only)
+            if args.resource_manager == 'serial':
+                spindle_outputs = glob.glob(os.path.join(testsuite_dir, 'spindle_output*'))
+                if spindle_outputs:
+                    for output_file in spindle_outputs:
+                        filename = os.path.basename(output_file)
+                        dest = os.path.join(final_dir, filename)
+                        if os.path.exists(output_file):
+                            os.rename(output_file, dest)
+
+            # Handle log preservation based on success/failure
+            if returncode == 0:
+                if args.verbose:
+                    print(f"Test {test_name} PASSED")
+                # Delete logs for successful runs unless explicitly preserving
+                if not args.preserve_logs_on_success and os.path.exists(final_dir):
+                    shutil.rmtree(final_dir)
+            else:
+                print(f"Test {test_name} FAILED")
+                # Stop at first failure unless explicitly continuing
+                if not args.continue_after_failure:
+                    sys.exit(returncode)
+
+        # Print final status
+        if global_result == 0:
             print("ALL TESTS PASSED")
-            # Delete logs for successful runs unless explicitly preserving
-            if not args.preserve_logs_on_success:
-                shutil.rmtree(final_dir)
         else:
             print("SOME TESTS FAILED")
-            # Stop at first failure unless explicitly continuing
-            if not args.continue_after_failure:
-                sys.exit(returncode)
 
-        sys.exit(returncode)
+        sys.exit(global_result)
 
 
 if __name__ == '__main__':
