@@ -201,6 +201,11 @@ def run_serial_test(args, env, testsuite_dir, test_type='dependency', test_mode=
     env['SPINDLE'] = spindle_exec
     env['TEST_EXEC'] = test_exec
 
+    # For ldpreload/preload tests, set LD_PRELOAD to LIBRARY_LIST
+    if test_type == 'ldpreload' or test_mode == 'preload':
+        if 'LIBRARY_LIST' in env:
+            env['LD_PRELOAD'] = env['LIBRARY_LIST']
+
     # Build the command based on run_driver_serial logic
     test_args = f'--{test_type} --{test_mode}'
     spindle_flags = env['SPINDLE_FLAGS']
@@ -266,6 +271,11 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     env['SPINDLE'] = spindle_exec
     env['TEST_EXEC'] = test_exec
     env['SPINDLE_OPTS'] = f'--{test_mode}'
+
+    # For ldpreload/preload tests, set LD_PRELOAD to LIBRARY_LIST
+    if test_type == 'ldpreload' or test_mode == 'preload':
+        if 'LIBRARY_LIST' in env:
+            env['LD_PRELOAD'] = env['LIBRARY_LIST']
 
     # Build full command with spindle wrapper
     spindle_flags = env['SPINDLE_FLAGS']
