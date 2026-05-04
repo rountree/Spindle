@@ -198,55 +198,50 @@ def run_flux_test(args, env, testsuite_dir):
         # Collect logs from all nodes if no shared filesystem
         if args.no_shared_filesystem:
             if args.verbose:
-                print("Collecting logs from all nodes to node-1...")
+                print("Collecting logs from all nodes to shared filesystem...")
 
-            # Find the existing timestamped directory that was created earlier
-            debug_dir = os.path.join(testsuite_dir, 'debug')
+            # Use shared filesystem for log aggregation
+            shared_logs = '/shared-logs'
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
 
-            # Look for the most recent timestamped directory
-            import glob as glob_module
-            timestamp_dirs = sorted(glob_module.glob(os.path.join(debug_dir, f'{returncode}_*')))
-
-            if timestamp_dirs:
-                target_dir = timestamp_dirs[-1]  # Use the most recent one
-
-                # Create node subdirectories
+            # Create directory structure on shared filesystem (only need to do this once)
+            try:
+                os.makedirs(target_base, exist_ok=True)
                 for i in range(1, args.num_nodes + 1):
-                    os.makedirs(os.path.join(target_dir, f'node-{i}'), exist_ok=True)
+                    os.makedirs(os.path.join(target_base, f'node-{i}'), exist_ok=True)
+            except Exception as e:
+                print(f"Warning: Could not create shared log directories: {e}", file=sys.stderr)
+                return returncode
 
-                # Launch collection job: one task per node to copy files
-                collection_cmd = f"""
+            # Launch collection job: one task per node to copy files
+            collection_cmd = f"""
 hostname=$(hostname)
 node_num=${{hostname##*-}}
-target_dir="{target_dir}/node-${{node_num}}"
-if [ "$(hostname)" != "node-1" ]; then
-    scp {testsuite_dir}/spindle_output.* node-1:$target_dir/ 2>/dev/null || \\
-    rsync -a {testsuite_dir}/spindle_output.* node-1:$target_dir/ 2>/dev/null || \\
+target_dir="{target_base}/node-${{node_num}}"
+cp {testsuite_dir}/spindle_output.* $target_dir/ 2>/dev/null || \\
     echo "Warning: Could not copy logs from $(hostname)" >&2
-else
-    cp {testsuite_dir}/spindle_output.* $target_dir/ 2>/dev/null || true
-fi
 """
 
-                try:
-                    # Run collection on all nodes (1 task per node)
-                    collect_result = subprocess.run(
-                        f"flux run -N {args.num_nodes} -n {args.num_nodes} bash -c {shlex.quote(collection_cmd)}",
-                        shell=True,
-                        env=env,
-                        cwd=testsuite_dir,
-                        capture_output=True,
-                        text=True
-                    )
+            try:
+                # Run collection on all nodes (1 task per node)
+                collect_result = subprocess.run(
+                    f"flux run -N {args.num_nodes} -n {args.num_nodes} bash -c {shlex.quote(collection_cmd)}",
+                    shell=True,
+                    env=env,
+                    cwd=testsuite_dir,
+                    capture_output=True,
+                    text=True
+                )
 
-                    if args.verbose and collect_result.returncode != 0:
-                        print(f"Log collection warnings/errors: {collect_result.stderr}")
-                except Exception as e:
-                    print(f"Warning: Log collection failed: {e}", file=sys.stderr)
-                    # Don't fail the whole test just because collection failed
-            else:
                 if args.verbose:
-                    print("Warning: Could not find timestamped directory for log collection")
+                    if collect_result.returncode == 0:
+                        print("Log collection completed successfully")
+                    else:
+                        print(f"Log collection warnings/errors: {collect_result.stderr}")
+            except Exception as e:
+                print(f"Warning: Log collection failed: {e}", file=sys.stderr)
+                # Don't fail the whole test just because collection failed
 
         return returncode
 

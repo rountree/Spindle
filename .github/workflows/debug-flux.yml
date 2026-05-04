@@ -48,16 +48,14 @@ jobs:
         run: |
           docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=flux --num-nodes=4 --num-tasks=4 --cores-per-task=1 --time-limit=5m --spindle-debug=3 --preserve-logs-on-success --no-shared-filesystem --verbose'
 
-      - name: Copy debug logs from node-1
+      - name: Copy debug logs from shared filesystem
         id: debug-flux-copy-logs
         if: ${{ always() }}
         continue-on-error: true
         run: |
           mkdir -p debug-logs
-          # With --no-shared-filesystem, all logs are already collected on node-1
-          docker cp node-1:/home/fluxuser/Spindle-build/testsuite/debug/. debug-logs/ || true
-          # Clean up - remove runTests.py script from artifact
-          rm -f debug-logs/runTests.py
+          # With --no-shared-filesystem, logs are in the shared volume
+          docker cp node-1:/shared-logs/. debug-logs/ || true
 
       - name: Set short SHA
         id: short-sha
