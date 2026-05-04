@@ -25,6 +25,7 @@ x-shared-build-context: &shared-build-context
 # Name of the node that runs the Flux broker
 x-shared-environment: &shared-environment
   mainHost: node-1
+  FLUX_DEBUG_FLAGS: "255"
   <<: *workers
 
 networks:
