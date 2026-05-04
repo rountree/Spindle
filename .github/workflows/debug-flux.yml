@@ -46,7 +46,7 @@ jobs:
       - name: Run spindle-debug-flux testsuite
         id: debug-flux-testsuite
         run: |
-          docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=flux --num-nodes=4 --num-tasks=4 --cores-per-task=1 --time-limit=5m --spindle-debug=3 --preserve-logs-on-success --no-shared-filesystem --verbose'
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=flux --num-nodes=4 --num-tasks=4 --cores-per-task=1 --time-limit=5m --spindle-debug=3 --preserve-logs-on-success --verbose'
 
       - name: Copy debug logs from shared filesystem
         id: debug-flux-copy-logs

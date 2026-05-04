@@ -195,27 +195,26 @@ def run_flux_test(args, env, testsuite_dir):
 
         returncode = 0 if result.success else 1
 
-        # Collect logs from all nodes if no shared filesystem
-        if args.no_shared_filesystem:
-            if args.verbose:
-                print("Collecting logs from all nodes to shared filesystem...")
+        # Collect logs from all nodes to shared filesystem
+        if args.verbose:
+            print("Collecting logs from all nodes to shared filesystem...")
 
-            # Use shared filesystem for log aggregation
-            shared_logs = '/shared-logs'
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
+        # Use shared filesystem for log aggregation
+        shared_logs = '/shared-logs'
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
 
-            # Create directory structure on shared filesystem (only need to do this once)
-            try:
-                os.makedirs(target_base, exist_ok=True)
-                for i in range(1, args.num_nodes + 1):
-                    os.makedirs(os.path.join(target_base, f'node-{i}'), exist_ok=True)
-            except Exception as e:
-                print(f"Warning: Could not create shared log directories: {e}", file=sys.stderr)
-                return returncode
+        # Create directory structure on shared filesystem (only need to do this once)
+        try:
+            os.makedirs(target_base, exist_ok=True)
+            for i in range(1, args.num_nodes + 1):
+                os.makedirs(os.path.join(target_base, f'node-{i}'), exist_ok=True)
+        except Exception as e:
+            print(f"Warning: Could not create shared log directories: {e}", file=sys.stderr)
+            return returncode
 
-            # Launch collection job: one task per node to copy files
-            collection_cmd = f"""
+        # Launch collection job: one task per node to copy files
+        collection_cmd = f"""
 hostname=$(hostname)
 node_num=${{hostname##*-}}
 target_dir="{target_base}/node-${{node_num}}"
@@ -223,25 +222,25 @@ cp {testsuite_dir}/spindle_output.* $target_dir/ 2>/dev/null || \\
     echo "Warning: Could not copy logs from $(hostname)" >&2
 """
 
-            try:
-                # Run collection on all nodes (1 task per node)
-                collect_result = subprocess.run(
-                    f"flux run -N {args.num_nodes} -n {args.num_nodes} bash -c {shlex.quote(collection_cmd)}",
-                    shell=True,
-                    env=env,
-                    cwd=testsuite_dir,
-                    capture_output=True,
-                    text=True
-                )
+        try:
+            # Run collection on all nodes (1 task per node)
+            collect_result = subprocess.run(
+                f"flux run -N {args.num_nodes} -n {args.num_nodes} bash -c {shlex.quote(collection_cmd)}",
+                shell=True,
+                env=env,
+                cwd=testsuite_dir,
+                capture_output=True,
+                text=True
+            )
 
-                if args.verbose:
-                    if collect_result.returncode == 0:
-                        print("Log collection completed successfully")
-                    else:
-                        print(f"Log collection warnings/errors: {collect_result.stderr}")
-            except Exception as e:
-                print(f"Warning: Log collection failed: {e}", file=sys.stderr)
-                # Don't fail the whole test just because collection failed
+            if args.verbose:
+                if collect_result.returncode == 0:
+                    print("Log collection completed successfully")
+                else:
+                    print(f"Log collection warnings/errors: {collect_result.stderr}")
+        except Exception as e:
+            print(f"Warning: Log collection failed: {e}", file=sys.stderr)
+            # Don't fail the whole test just because collection failed
 
         return returncode
 
@@ -310,12 +309,6 @@ def main():
         '--time-limit',
         default='20s',
         help='Time limit for job, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
-    )
-    parser.add_argument(
-        '--no-shared-filesystem',
-        action='store_true',
-        help='Copy log files from all nodes to node-1 after test completes (flux). '
-             'Use for parallel container jobs without a shared logging filesystem. Default: off.'
     )
 
     args = parser.parse_args()
