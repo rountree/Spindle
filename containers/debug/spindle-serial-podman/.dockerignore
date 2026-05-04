@@ -1,0 +1,27 @@
+# Exclude build artifacts
+build/
+install/
+local/
+
+# Exclude git and editor files
+.git/
+.gitignore
+*.swp
+*.swo
+*~
+
+# Exclude test artifacts
+testsuite/debug/__pycache__/
+*.pyc
+spindle_output*
+
+# Exclude Claude files
+.claude/
+CLAUDE.md
+
+# Exclude other development files
+reproducer/
+*.o
+*.a
+*.so
+*.log
