@@ -37,3 +37,15 @@ preload_file_list
 build
 
 .idea/
+.claude
+.github/workflows/claudenotes
+CLAUDE.md
+flux-core/
+install/
+invoke_claude.sh
+local/oslic/
+reproducer/
+resume
+src/flux/_devel_flux-spindle.c
+src/flux/_hang_flux-spindle.c
+testsuite/debug/__pycache__/
