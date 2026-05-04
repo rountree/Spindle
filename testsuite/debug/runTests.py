@@ -4,6 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 import argparse
+import fnmatch
 import glob
 import os
 import shlex
@@ -360,14 +361,19 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
             return returncode
 
         # Launch collection job: one task per node to move files
-        collection_cmd = f"""
-hostname=$(hostname)
+        collection_cmd = f"""hostname=$(hostname)
 node_num=${{hostname##*-}}
 target_dir="{target_base}/node-${{node_num}}"
 mv {testsuite_dir}/spindle_output.${{hostname}}.* $target_dir/ 2>/dev/null || \\
     echo "Warning: Could not move Spindle logs from $(hostname)" >&2
 flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
     echo "Warning: Could not capture flux dmesg from $(hostname)" >&2
+"""
+
+        # Add dmesg collection if enabled
+        if args.enable_dmesg_collection:
+            collection_cmd += """dmesg > $target_dir/dmesg.log 2>&1 || \\
+    echo "Warning: Could not capture dmesg from $(hostname)" >&2
 """
 
         try:
@@ -466,16 +472,43 @@ def main():
     parser.add_argument(
         '--single-test',
         metavar='TYPE_MODE',
-        help='Run a single test specified as "type_mode" (e.g., "dependency_preload")'
+        action='append',
+        help='Run specific test(s). Use "type_mode" format (e.g., "dependency_preload"). '
+             'Supports wildcards: "*_push" for all push tests, "dependency_*" for all dependency tests. '
+             'Can be specified multiple times.'
+    )
+    parser.add_argument(
+        '--ignore-test',
+        metavar='TYPE_MODE',
+        action='append',
+        help='Ignore specific test(s). Same wildcard format as --single-test. '
+             'Can be specified multiple times.'
+    )
+    parser.add_argument(
+        '--reps',
+        type=int,
+        default=1,
+        metavar='N',
+        help='Repeat all requested tests N times (must be positive integer)'
+    )
+    parser.add_argument(
+        '--enable-dmesg-collection',
+        action='store_true',
+        help='Enable collection of dmesg output (requires sufficient permissions)'
     )
 
     args = parser.parse_args()
 
+    # Validate reps
+    if args.reps < 1:
+        parser.error(f"--reps must be a positive integer, got {args.reps}")
+
     # Validate single-test format if provided
     if args.single_test:
-        parts = args.single_test.split('_')
-        if len(parts) != 2:
-            parser.error(f"--single-test must be in format 'type_mode' (e.g., 'dependency_push'), got '{args.single_test}'")
+        for test_spec in args.single_test:
+            parts = test_spec.split('_')
+            if len(parts) != 2:
+                parser.error(f"--single-test must be in format 'type_mode' or use wildcards (e.g., '*_push'), got '{test_spec}'")
 
     # Validate resource manager availability
     if args.resource_manager == 'flux' and not FLUX_AVAILABLE:
@@ -487,6 +520,18 @@ def main():
     # Add SPINDLE_DEBUG if specified
     if args.spindle_debug is not None:
         env['SPINDLE_DEBUG'] = str(args.spindle_debug)
+
+    # Check dmesg permissions if requested
+    if args.enable_dmesg_collection:
+        try:
+            result = subprocess.run('dmesg', capture_output=True, timeout=5)
+            if result.returncode != 0:
+                parser.error("--enable-dmesg-collection requires permission to run 'dmesg'. "
+                           "Error: " + result.stderr.decode())
+        except subprocess.TimeoutExpired:
+            parser.error("--enable-dmesg-collection: 'dmesg' command timed out")
+        except FileNotFoundError:
+            parser.error("--enable-dmesg-collection: 'dmesg' command not found")
 
     if args.dry_run:
         print(f"Resource manager: {args.resource_manager}")
@@ -508,17 +553,51 @@ def main():
                     print(f"  {key}={env[key]}")
             print()
 
+        # Helper function to match test against pattern
+        def matches_pattern(test_type, test_mode, pattern):
+            """Check if test_type_mode matches pattern with wildcards."""
+            pattern_parts = pattern.split('_')
+            if len(pattern_parts) != 2:
+                return False
+            type_pattern, mode_pattern = pattern_parts
+            return (fnmatch.fnmatch(test_type, type_pattern) and
+                    fnmatch.fnmatch(test_mode, mode_pattern))
+
         # Determine which tests to run
         if args.single_test:
-            # Parse single test format: "type_mode"
-            parts = args.single_test.split('_')
-            test_type, test_mode = parts[0], parts[1]
-            tests_to_run = [(test_type, test_mode)]
+            # Expand wildcards in single-test specifications
+            tests_to_run = []
+            for test_spec in args.single_test:
+                matched = False
+                for test_type, test_mode in ALL_TESTS:
+                    if matches_pattern(test_type, test_mode, test_spec):
+                        if (test_type, test_mode) not in tests_to_run:
+                            tests_to_run.append((test_type, test_mode))
+                        matched = True
+                if not matched and '*' not in test_spec:
+                    print(f"Warning: --single-test '{test_spec}' did not match any tests", file=sys.stderr)
         elif args.run_all_tests:
-            tests_to_run = ALL_TESTS
+            tests_to_run = list(ALL_TESTS)
         else:
             # Default: just run dependency/push
             tests_to_run = [('dependency', 'push')]
+
+        # Apply ignore-test filters
+        if args.ignore_test:
+            original_count = len(tests_to_run)
+            tests_to_run = [
+                (test_type, test_mode)
+                for test_type, test_mode in tests_to_run
+                if not any(matches_pattern(test_type, test_mode, ignore_spec)
+                          for ignore_spec in args.ignore_test)
+            ]
+            ignored_count = original_count - len(tests_to_run)
+            if ignored_count > 0 and args.verbose:
+                print(f"Ignored {ignored_count} test(s) based on --ignore-test filters")
+
+        # Repeat tests if reps > 1
+        if args.reps > 1:
+            tests_to_run = tests_to_run * args.reps
 
         # Run each test
         global_result = 0

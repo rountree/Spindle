@@ -55,15 +55,14 @@ RUN groupadd -f -g ${GID} ${USER} && \
 WORKDIR /home/${USER}
 COPY . /home/${USER}/Spindle
 COPY containers/debug/spindle-serial-podman/scripts/build_spindle.sh /home/${USER}/build_spindle.sh
-RUN chown -R ${USER}:${USER} /home/${USER}
+COPY containers/debug/spindle-serial-podman/scripts/entrypoint.sh /home/${USER}/entrypoint.sh
+RUN chown -R ${USER}:${USER} /home/${USER} && \
+    chmod +x /home/${USER}/entrypoint.sh
 
 USER ${USER}
 RUN ./build_spindle.sh
 
 # Set up environment
 ENV PATH=/home/${USER}/Spindle-inst/bin:${PATH}
-
-COPY containers/debug/spindle-serial-podman/scripts/entrypoint.sh /home/${USER}/entrypoint.sh
-RUN chmod +x /home/${USER}/entrypoint.sh
 
 ENTRYPOINT ["/bin/bash", "/home/spindleuser/entrypoint.sh"]
