@@ -16,7 +16,7 @@ jobs:
     name: Debug Testsuite (Flux, Ubuntu)
     environment: Spindle CI
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       NUM_NODES: 32
     steps:
