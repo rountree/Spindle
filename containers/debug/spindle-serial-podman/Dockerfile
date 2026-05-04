@@ -64,5 +64,6 @@ RUN ./build_spindle.sh
 ENV PATH=/home/${USER}/Spindle-inst/bin:${PATH}
 
 COPY containers/debug/spindle-serial-podman/scripts/entrypoint.sh /home/${USER}/entrypoint.sh
+RUN chmod +x /home/${USER}/entrypoint.sh
 
 ENTRYPOINT ["/bin/bash", "/home/spindleuser/entrypoint.sh"]

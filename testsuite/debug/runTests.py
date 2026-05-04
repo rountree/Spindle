@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 from io import StringIO
 
@@ -455,15 +456,26 @@ def main():
     parser.add_argument(
         '--time-limit',
         default='20s',
-        help='Time limit for job, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
+        help='Time limit PER TEST, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
     )
     parser.add_argument(
         '--run-all-tests',
         action='store_true',
         help='Run all tests from the original runTests script'
     )
+    parser.add_argument(
+        '--single-test',
+        metavar='TYPE_MODE',
+        help='Run a single test specified as "type_mode" (e.g., "dependency_preload")'
+    )
 
     args = parser.parse_args()
+
+    # Validate single-test format if provided
+    if args.single_test:
+        parts = args.single_test.split('_')
+        if len(parts) != 2:
+            parser.error(f"--single-test must be in format 'type_mode' (e.g., 'dependency_push'), got '{args.single_test}'")
 
     # Validate resource manager availability
     if args.resource_manager == 'flux' and not FLUX_AVAILABLE:
@@ -497,7 +509,12 @@ def main():
             print()
 
         # Determine which tests to run
-        if args.run_all_tests:
+        if args.single_test:
+            # Parse single test format: "type_mode"
+            parts = args.single_test.split('_')
+            test_type, test_mode = parts[0], parts[1]
+            tests_to_run = [(test_type, test_mode)]
+        elif args.run_all_tests:
             tests_to_run = ALL_TESTS
         else:
             # Default: just run dependency/push
@@ -507,6 +524,7 @@ def main():
         global_result = 0
         for test_type, test_mode in tests_to_run:
             test_name = f"{test_type}_{test_mode}"
+            test_start_time = time.time()
 
             # Create directories
             debug_dir = os.path.join(testsuite_dir, 'debug')
@@ -570,15 +588,17 @@ def main():
                         if os.path.exists(output_file):
                             os.rename(output_file, dest)
 
+            # Calculate test duration
+            test_duration = time.time() - test_start_time
+
             # Handle log preservation based on success/failure
             if returncode == 0:
-                if args.verbose:
-                    print(f"Test {test_name} PASSED")
+                print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
                 # Delete logs for successful runs unless explicitly preserving
                 if not args.preserve_logs_on_success and os.path.exists(final_dir):
                     shutil.rmtree(final_dir)
             else:
-                print(f"Test {test_name} FAILED")
+                print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
                 # Stop at first failure unless explicitly continuing
                 if not args.continue_after_failure:
                     sys.exit(returncode)
