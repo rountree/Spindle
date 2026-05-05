@@ -62,8 +62,10 @@ fi
 echo -e "${GREEN}==> Running tests${NC}"
 podman exec "$CONTAINER_NAME" bash -c 'cd /home/spindleuser/Spindle-build/testsuite/debug && \
     ./runTests.py \
+        --run-all-tests \
         --resource-manager=serial \
         --spindle-debug=3 \
+        --preserve-logs-on-success \
         --verbose'
 
 RESULT=$?
