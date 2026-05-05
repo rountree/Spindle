@@ -2,10 +2,13 @@
 
 set -euxo pipefail
 
-mkdir -p /home/${USER}/Spindle-build
-cd /home/${USER}/Spindle-build
-/home/${USER}/Spindle/configure \
-    --prefix=/home/${USER}/Spindle-inst \
+# Get the actual user from whoami (should be spindleuser)
+ACTUAL_USER=$(whoami)
+
+mkdir -p /home/${ACTUAL_USER}/Spindle-build
+cd /home/${ACTUAL_USER}/Spindle-build
+/home/${ACTUAL_USER}/Spindle/configure \
+    --prefix=/home/${ACTUAL_USER}/Spindle-inst \
     --enable-sec-none \
     --with-rm=serial \
     --with-localstorage=/tmp \
@@ -13,3 +16,8 @@ cd /home/${USER}/Spindle-build
     CXXFLAGS="-O2 -g"
 make -j$(nproc)
 make install
+
+# Build the testsuite
+echo "Building testsuite..."
+cd /home/${ACTUAL_USER}/Spindle-build/testsuite
+make

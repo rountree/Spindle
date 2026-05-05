@@ -333,7 +333,8 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
 
     # Determine TEST_EXEC based on test type
     test_exec = './test_driver_libs'
-    test_args = [f'--{test_type}', '--session']
+    # Note: --session goes to spindle, not test_driver. Test_driver just needs the test type.
+    test_args = [f'--{test_type}']
 
     # Get SPINDLE executable path
     if 'SPINDLE' in env:
@@ -1085,7 +1086,7 @@ def main():
 
                 try:
                     # Print the "Running:" message
-                    print(f"Running: ./run_driver --{test_type} --session (SESSION_ID={session_num})")
+                    print(f"Running: ./run_driver --{test_type} --session  # SESSION_ID={session_num}")
 
                     # Run session test (only Flux supported)
                     returncode, log_dir = run_flux_session_test(args, env, testsuite_dir, test_type, session_num, temp_dir)
