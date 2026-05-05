@@ -1,10 +1,7 @@
 #!/bin/bash
 
 # Simple entrypoint for flux podman container
-# Starts flux broker
+# Starts flux broker in single-node standalone mode
 
-# Set Flux state directory
-export FLUX_URI=local:///run/flux/local
-
-# Start Flux broker with proper state directory
-exec flux start --setattr=statedir=/run/flux /bin/bash -c "sleep infinity"
+# Start Flux broker with proper state directory in standalone mode (size=1)
+exec flux start --test-size=1 -Sstatedir=/run/flux /bin/bash -c "sleep infinity"
