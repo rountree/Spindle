@@ -1086,7 +1086,7 @@ def main():
 
                 try:
                     # Print the "Running:" message
-                    print(f"Running: ./run_driver --{test_type} --session  # SESSION_ID={session_num}")
+                    print(f"Running: ./run_driver --{test_type} --session (session {session_num})")
 
                     # Run session test (only Flux supported)
                     returncode, log_dir = run_flux_session_test(args, env, testsuite_dir, test_type, session_num, temp_dir)
