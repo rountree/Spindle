@@ -9,7 +9,7 @@ AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_SED
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_FILES([src/flux/Makefile src/slurm_plugin/Makefile doc/Makefile testsuite/Makefile Makefile])
+AC_CONFIG_FILES([src/flux/Makefile src/slurm_plugin/Makefile doc/Makefile Makefile])
 AC_PROG_LN_S
 LT_INIT
 
@@ -45,6 +45,11 @@ if test "x$have_C_mpi" == "xno"; then
   BUILD_TESTSUITE=no
 fi
 AM_CONDITIONAL([BLD_TESTSUITE], [test "x$BUILD_TESTSUITE" == "xyes"])
+
+# Only process testsuite/Makefile.in if building testsuite
+if test "x${BUILD_TESTSUITE}" = "xyes"; then
+   AC_CONFIG_FILES([testsuite/Makefile])
+fi
 
 AC_ARG_VAR([BE_CC], [CC for back end])
 AC_ARG_VAR([BE_CFLAGS], [CFLAGS back end])
