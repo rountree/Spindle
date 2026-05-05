@@ -53,10 +53,12 @@ ARG GID=1500
 # Create non-root user (use -f to not fail if group exists)
 RUN groupadd -f -g ${GID} ${USER} || true
 
-# Configure Flux directories
+# Configure Flux directories and certificates
 ENV STATE_DIR=/var/lib/flux
-RUN mkdir -p ${STATE_DIR} /etc/flux/system /etc/flux/system/cron.d /etc/flux/config /run/flux /etc/flux/imp/conf.d && \
-    chown -R ${USER}:${USER} /run/flux ${STATE_DIR}
+RUN mkdir -p ${STATE_DIR} /etc/flux/system /etc/flux/system/cron.d /etc/flux/config /run/flux /mnt/curve && \
+    flux keygen /mnt/curve/curve.cert && \
+    flux R encode --hosts=localhost > /etc/flux/system/R && \
+    chown -R ${USER}:${USER} /run/flux ${STATE_DIR} /mnt/curve
 
 # Build Spindle
 WORKDIR /home/${USER}

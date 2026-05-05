@@ -38,9 +38,6 @@ fi
 echo -e "${GREEN}==> Building Spindle Flux Podman image${NC}"
 cd "$REPO_ROOT"
 podman build \
-    --userns-uid-map=0:0:1 \
-    --userns-uid-map=1:1:1999 \
-    --userns-uid-map=65534:2000:2 \
     -t "$IMAGE_NAME" \
     -f containers/debug/spindle-flux-podman/Dockerfile \
     .
@@ -48,8 +45,6 @@ podman build \
 echo -e "${GREEN}==> Starting container${NC}"
 podman run -d \
     --name "$CONTAINER_NAME" \
-    --uidmap 0:0:2000 \
-    --uidmap 65534:2000:2 \
     "$IMAGE_NAME"
 
 # Wait for container to be ready
