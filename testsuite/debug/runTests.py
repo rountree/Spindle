@@ -114,9 +114,10 @@ class TeeOutput:
 
     def write(self, data):
         self.file.write(data)
+        self.file.flush()  # Flush file immediately for real-time logging
         if self.verbose:
             self.original_stdout.write(data)
-        self.file.flush()
+            self.original_stdout.flush()  # Flush stdout immediately for real-time output
 
     def flush(self):
         self.file.flush()
@@ -564,13 +565,17 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     if args.verbose:
         print(f"Flux command: {' '.join(flux_cmd)}")
         print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+        sys.stdout.flush()
+        sys.stderr.flush()
 
-    # Run the flux command
+    # Run the flux command with unbuffered output
+    # Setting bufsize=0 and using line buffering helps with real-time output
     result = subprocess.run(
         flux_cmd,
         env=env,
         cwd=testsuite_dir,
         capture_output=False,  # Let output go to stdout/stderr (captured by TeeOutput)
+        bufsize=0,  # Unbuffered
     )
 
     returncode = result.returncode
@@ -933,6 +938,10 @@ def main():
 
                 os.makedirs(temp_dir, exist_ok=True)
 
+                # Print the "Running:" message BEFORE any output redirection for real-time visibility
+                print(f"Running: ./run_driver --{test_type} --{test_mode}")
+                sys.stdout.flush()
+
                 # Set up log capture
                 runtest_log_path = os.path.join(temp_dir, 'runtest.log')
                 log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
@@ -942,9 +951,6 @@ def main():
                 sys.stderr = log_capture
 
                 try:
-                    # Print the "Running:" message like run_driver does
-                    print(f"Running: ./run_driver --{test_type} --{test_mode}")
-
                     # Run test with appropriate resource manager
                     if args.resource_manager == 'serial':
                         returncode, log_dir = run_serial_test(args, env, testsuite_dir, test_type, test_mode, temp_dir)
@@ -1009,6 +1015,10 @@ def main():
                 temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
                 os.makedirs(temp_dir, exist_ok=True)
 
+                # Print the "Running:" message BEFORE any output redirection for real-time visibility
+                print(f"Running: {test_executable}")
+                sys.stdout.flush()
+
                 # Set up log capture
                 runtest_log_path = os.path.join(temp_dir, 'runtest.log')
                 log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
@@ -1018,8 +1028,6 @@ def main():
                 sys.stderr = log_capture
 
                 try:
-                    # Print the "Running:" message
-                    print(f"Running: {test_executable}")
 
                     # Run serial-exec test
                     returncode, log_dir = run_serial_exec_test(args, env, testsuite_dir, test_executable, temp_dir)
@@ -1077,6 +1085,10 @@ def main():
                 temp_dir = os.path.join(shared_logs, f'temp_{test_name}_{timestamp}')
                 os.makedirs(temp_dir, exist_ok=True)
 
+                # Print the "Running:" message BEFORE any output redirection for real-time visibility
+                print(f"Running: ./run_driver --{test_type} --session (session {session_num})")
+                sys.stdout.flush()
+
                 # Set up log capture
                 runtest_log_path = os.path.join(temp_dir, 'runtest.log')
                 log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
@@ -1086,8 +1098,6 @@ def main():
                 sys.stderr = log_capture
 
                 try:
-                    # Print the "Running:" message
-                    print(f"Running: ./run_driver --{test_type} --session (session {session_num})")
 
                     # Run session test (only Flux supported)
                     returncode, log_dir = run_flux_session_test(args, env, testsuite_dir, test_type, session_num, temp_dir)
