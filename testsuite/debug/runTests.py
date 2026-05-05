@@ -704,7 +704,7 @@ def main():
     parser.add_argument(
         '--run-typemode-tests',
         action='store_true',
-        help='Run all type_mode tests (64 tests: 8 types × 8 modes)'
+        help='Run all type_mode tests (56 tests: 8 types × 7 modes)'
     )
     parser.add_argument(
         '--run-session-tests',
