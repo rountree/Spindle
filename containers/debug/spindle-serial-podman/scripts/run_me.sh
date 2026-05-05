@@ -71,8 +71,12 @@ podman exec "$CONTAINER_NAME" bash -c 'cd /home/spindleuser/Spindle-build/testsu
 RESULT=$?
 
 echo -e "${GREEN}==> Collecting logs${NC}"
-# Copy logs out of container if they exist
-podman cp "$CONTAINER_NAME:/home/spindleuser/Spindle-build/testsuite/debug/." ./podman-logs/ 2>/dev/null || true
+# Check what's in the debug directory
+echo -e "${YELLOW}Debug directory contents:${NC}"
+podman exec "$CONTAINER_NAME" ls -la /home/spindleuser/Spindle-build/testsuite/debug/
+# Copy logs out of container
+echo -e "${YELLOW}Copying logs to ./podman-logs/${NC}"
+podman cp "$CONTAINER_NAME:/home/spindleuser/Spindle-build/testsuite/debug/." ./podman-logs/
 
 echo -e "${GREEN}==> Stopping and removing container${NC}"
 podman stop "$CONTAINER_NAME"
