@@ -28,7 +28,6 @@ WORKDIR /home/${USER}
 # Copy the whole git repo into the container.
 COPY . /home/${USER}/Spindle
 COPY ${CONFIG_ROOT}/scripts/build_spindle.sh /home/${USER}/build_spindle.sh
-RUN ./build_spindle.sh
 
 RUN mkdir -p /shared-logs && \
     chown -R ${USER}:${USER} /home/fluxuser && \
@@ -36,6 +35,7 @@ RUN mkdir -p /shared-logs && \
     chown -R ${USER}:${USER} /shared-logs
 
 USER ${USER}
+RUN ./build_spindle.sh
 COPY ${CONFIG_ROOT}/scripts/flux_healthcheck.sh ./
 COPY ${CONFIG_ROOT}/scripts/entrypoint.sh ./
 ENV PATH /home/${USER}/Spindle-inst/bin:${PATH}
