@@ -52,7 +52,7 @@ if ! podman ps --filter "name=$CONTAINER_NAME" --format "{{.Names}}" | grep -q "
 fi
 
 echo -e "${GREEN}==> Running tests${NC}"
-podman exec "$CONTAINER_NAME" bash -c 'cd Spindle-build/testsuite/debug && \
+podman exec "$CONTAINER_NAME" bash -c 'cd /home/spindleuser/Spindle-build/testsuite/debug && \
     ./runTests.py \
         --resource-manager=serial \
         --spindle-debug=3 \
