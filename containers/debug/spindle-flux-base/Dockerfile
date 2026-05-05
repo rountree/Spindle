@@ -52,6 +52,5 @@ ENV HWLOC_COMPONENTS=-gl \
     RDMAV_FORK_SAFE=1 \
     HWLOC_HIDE_ERRORS=2
 
-ARG USER=fluxuser
-WORKDIR /home/${USER}
-USER ${USER}
+# Stay as root - derived images will switch to fluxuser as needed
+WORKDIR /root
