@@ -751,8 +751,29 @@ def main():
         action='store_true',
         help='Enable collection of dmesg output (requires sufficient permissions)'
     )
+    parser.add_argument(
+        '--list-available-tests',
+        action='store_true',
+        help='List all available tests and exit'
+    )
 
     args = parser.parse_args()
+
+    # Handle --list-available-tests
+    if args.list_available_tests:
+        print("Available tests:")
+        print("\nType-mode tests (any resource manager):")
+        for test_type, test_mode in ALL_TESTS:
+            print(f"  {test_type}_{test_mode}")
+        print(f"\nSerial-exec tests (serial only):")
+        for test_exe in SERIAL_TESTS:
+            test_name = os.path.basename(test_exe)
+            print(f"  serial:{test_exe} ({test_name})")
+        print(f"\nSession tests (flux only):")
+        for test_type in SESSION_TEST_TYPES:
+            print(f"  {test_type}_session")
+        print(f"\nTotal: {len(ALL_TESTS)} type-mode + {len(SERIAL_TESTS)} serial-exec + {len(SESSION_TEST_TYPES)} session = {len(ALL_TESTS) + len(SERIAL_TESTS) + len(SESSION_TEST_TYPES)} tests")
+        sys.exit(0)
 
     # Validate reps
     if args.reps < 1:
