@@ -17,7 +17,7 @@ path = "/etc/flux/system/R"
 [bootstrap]
 curve_cert = "/mnt/curve/curve.cert"
 default_port = 8050
-default_bind = "tcp://eth0:%%p"
+default_bind = "tcp://0.0.0.0:%%p"
 default_connect = "tcp://%%h:%%p"
 hosts = [
 	{ host="node-[1-${WORKERS}]"},
