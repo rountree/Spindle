@@ -23,6 +23,14 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}==> Enabling Podman (LLNL-specific)${NC}"
 enable-podman || true  # May not be needed on all systems
 
+echo -e "${GREEN}==> Cleaning up any existing container${NC}"
+# Remove container if it exists (from previous failed run)
+if podman ps -a --filter "name=$CONTAINER_NAME" --format "{{.Names}}" | grep -q "$CONTAINER_NAME"; then
+    echo "Found existing container, removing..."
+    podman stop "$CONTAINER_NAME" 2>/dev/null || true
+    podman rm "$CONTAINER_NAME" 2>/dev/null || true
+fi
+
 echo -e "${GREEN}==> Building Spindle serial Podman image${NC}"
 cd "$REPO_ROOT"
 podman build \
