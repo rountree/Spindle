@@ -390,6 +390,7 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
             f'--env=SESSION_ID={session_id}',
             '-o', 'userrc=spindle.rc',
             '-o', 'spindle.level=high',
+            '-t', args.time_limit,  # Time limit per test
             f'-N', str(args.num_nodes),
             f'-n', str(args.num_tasks),
             test_exec
@@ -557,6 +558,7 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     if flux_spindle_opt:
         flux_cmd.extend(flux_spindle_opt.split())
     flux_cmd.extend([
+        '-t', args.time_limit,  # Time limit per test
         f'-N', str(args.num_nodes),
         f'-n', str(args.num_tasks),
         test_exec
