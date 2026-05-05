@@ -21,6 +21,7 @@ CLAUDE.md
 
 # Exclude other development files
 reproducer/
+scratch/
 *.o
 *.a
 *.so

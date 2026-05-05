@@ -72,6 +72,7 @@ podman exec "$CONTAINER_NAME" bash -c 'cd /home/fluxuser/Spindle-build/testsuite
         --num-tasks=1 \
         --spindle-debug=3 \
         --preserve-logs-on-success \
+        --log-dir=/home/fluxuser/test-logs \
         --verbose'
 
 RESULT=$?

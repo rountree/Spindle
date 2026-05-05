@@ -1,30 +1,9 @@
 # This is based on the Flux Container Tutorial
 # See https://flux-framework.readthedocs.io/en/latest/tutorials/containers
-ARG flux_sched_version=noble
-FROM fluxrm/flux-sched:${flux_sched_version} AS builder
+FROM ghcr.io/rountree/spindle-flux-base:latest AS builder
 ARG replicas=4
 ENV workers=${replicas}
 USER root
-
-RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
-    && apt-get -qq install -y --no-install-recommends \
-        autotools-dev \
-        autoconf \
-        automake \
-        cmake \
-        git \
-        python3 \
-        openssh-server \
-        openssh-client \
-        libdb-dev \
-        apt-utils \
-        dnsutils \
-        iputils-ping \
-        python3-pip \
-        libgcrypt20 \
-        libgcrypt20-dev \
-        gdb \
-        software-properties-common
 
 ARG USER=fluxuser
 ARG CONFIG_ROOT=containers/debug/spindle-flux-ubuntu

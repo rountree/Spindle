@@ -414,11 +414,14 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
         if args.verbose:
             print("Collecting logs from all nodes to shared filesystem...")
 
-        # Use shared filesystem for log aggregation
-        shared_logs = '/shared-logs'
+        # Use shared filesystem for log aggregation (use log-dir if specified)
         if log_dir is None:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
+            if args.log_dir:
+                target_base = os.path.join(args.log_dir, f'{returncode}_{timestamp}')
+            else:
+                # Fall back to testsuite/debug
+                target_base = os.path.join(testsuite_dir, 'debug', f'{returncode}_{timestamp}')
         else:
             target_base = log_dir
 
@@ -586,11 +589,14 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     if args.verbose:
         print("Collecting logs from all nodes to shared filesystem...")
 
-    # Use shared filesystem for log aggregation
-    shared_logs = '/shared-logs'
+    # Use shared filesystem for log aggregation (use log-dir if specified)
     if log_dir is None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
+        if args.log_dir:
+            target_base = os.path.join(args.log_dir, f'{returncode}_{timestamp}')
+        else:
+            # Fall back to testsuite/debug
+            target_base = os.path.join(testsuite_dir, 'debug', f'{returncode}_{timestamp}')
     else:
         target_base = log_dir
 
@@ -756,6 +762,12 @@ def main():
         action='store_true',
         help='List all available tests and exit'
     )
+    parser.add_argument(
+        '--log-dir',
+        type=str,
+        default=None,
+        help='Base directory for test logs (default: current directory when --preserve-logs-on-success is used)'
+    )
 
     args = parser.parse_args()
 
@@ -778,6 +790,13 @@ def main():
     # Validate reps
     if args.reps < 1:
         parser.error(f"--reps must be a positive integer, got {args.reps}")
+
+    # Validate and create log directory if specified
+    if args.log_dir:
+        try:
+            os.makedirs(args.log_dir, exist_ok=True)
+        except OSError as e:
+            parser.error(f"Failed to create log directory '{args.log_dir}': {e}")
 
     # Validate single-test format if provided
     if args.single_test:
@@ -952,10 +971,9 @@ def main():
                 debug_dir = os.path.join(testsuite_dir, 'debug')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-                # For Flux, use shared-logs; for serial, use local debug dir
-                if args.resource_manager == 'flux':
-                    shared_logs = '/shared-logs'
-                    temp_dir = os.path.join(shared_logs, f'temp_{test_name}_{timestamp}')
+                # For Flux, use log-dir if specified; for serial, use local debug dir
+                if args.resource_manager == 'flux' and args.log_dir:
+                    temp_dir = os.path.join(args.log_dir, f'temp_{test_name}_{timestamp}')
                 else:
                     temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
 
@@ -1102,10 +1120,13 @@ def main():
                 test_name = f"{test_type}_session_{session_num}"
                 test_start_time = time.time()
 
-                # Create directories on shared-logs
-                shared_logs = '/shared-logs'
+                # Create directories (use log-dir if specified, otherwise debug dir)
+                debug_dir = os.path.join(testsuite_dir, 'debug')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                temp_dir = os.path.join(shared_logs, f'temp_{test_name}_{timestamp}')
+                if args.log_dir:
+                    temp_dir = os.path.join(args.log_dir, f'temp_{test_name}_{timestamp}')
+                else:
+                    temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
                 os.makedirs(temp_dir, exist_ok=True)
 
                 # Print the "Running:" message BEFORE any output redirection for real-time visibility
