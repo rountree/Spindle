@@ -46,6 +46,21 @@ jobs:
           cd containers/debug/spindle-flux-ubuntu
           docker compose up -d --wait --wait-timeout 60
 
+      - name: Dump container logs on startup failure
+        if: failure() && steps.debug-flux-up.outcome == 'failure'
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          echo "=== Container status ==="
+          docker compose ps -a
+          echo "=== Node-1 logs ==="
+          docker logs node-1 || true
+          echo "=== Node-2 logs ==="
+          docker logs node-2 || true
+          echo "=== Node-3 logs ==="
+          docker logs node-3 || true
+          echo "=== Node-4 logs ==="
+          docker logs node-4 || true
+
       - name: Verify munge works in spindle-debug-flux
         id: debug-flux-munge
         run: |
