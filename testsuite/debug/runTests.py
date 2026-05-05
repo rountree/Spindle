@@ -306,12 +306,18 @@ def run_serial_exec_test(args, env, testsuite_dir, test_executable, log_dir=None
 def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_dir=None):
     """Run a session test using Flux resource manager.
 
+    Sessions allow multiple jobs in a single allocation to share libraries.
+    This implements the session lifecycle:
+      1. Start session: spindle --start-session
+      2. Run test: flux run with --env=SESSION_ID
+      3. End session: spindle --end-session
+
     Args:
         args: Command line arguments
         env: Environment variables
         testsuite_dir: Path to testsuite directory
         test_type: Type of test (dependency, dlopen, etc.)
-        session_num: Session number (generated)
+        session_num: Session number (for tracking, not used by spindle)
         log_dir: Directory to store logs (if None, use timestamp-based default)
 
     Returns:
@@ -321,81 +327,86 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
         print("ERROR: Flux Python module not available", file=sys.stderr)
         return (1, log_dir)
 
-    # Query available resources for debugging
-    if args.verbose:
-        print("Querying Flux resources...")
-        try:
-            result = subprocess.run("flux resource list", shell=True, capture_output=True, text=True)
-            print("Available resources:")
-            print(result.stdout)
-        except Exception as e:
-            print(f"Could not query resources: {e}")
-
-    # Determine TEST_EXEC based on test type
-    test_exec = './test_driver_libs'
-    # Note: --session goes to spindle, not test_driver. Test_driver just needs the test type.
-    test_args = [f'--{test_type}']
-
     # Get SPINDLE executable path
     if 'SPINDLE' in env:
         spindle_exec = env['SPINDLE']
     else:
         spindle_exec = 'spindle'
 
-    env['SPINDLE'] = spindle_exec
-    env['TEST_EXEC'] = test_exec
+    # Start the session
+    if args.verbose:
+        print(f"Starting Spindle session...")
 
-    # Set session-specific environment variables
-    env['SESSION_ID'] = str(session_num)
-    env['SPINDLE_OPTS'] = '--session'
+    start_result = subprocess.run(
+        [spindle_exec, '--start-session', '--level=high'],
+        env=env,
+        cwd=testsuite_dir,
+        capture_output=True,
+        text=True
+    )
 
-    # For ldpreload tests, set LD_PRELOAD to LIBRARY_LIST
-    if test_type == 'ldpreload':
-        if 'LIBRARY_LIST' in env:
-            env['LD_PRELOAD'] = env['LIBRARY_LIST']
+    if start_result.returncode != 0:
+        print(f"ERROR: Failed to start session: {start_result.stderr}", file=sys.stderr)
+        return (1, log_dir)
 
-    # Build full command with spindle wrapper
-    spindle_flags = env['SPINDLE_FLAGS']
-    full_command = [spindle_exec] + spindle_flags.split() + ['--session', '--launcher=serial', test_exec] + test_args
+    session_id = start_result.stdout.strip()
+    if not session_id:
+        session_id = "ANONYMOUS_SESSION"
 
     if args.verbose:
-        print(f"Flux command: {' '.join(full_command)}")
-        print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
-        print(f"Session ID: {session_num}")
+        print(f"Session started: {session_id}")
+
+    # Set session environment variable
+    env['SESSION_ID'] = session_id
 
     try:
-        handle = flux.Flux()
+        # Query available resources for debugging
+        if args.verbose:
+            print("Querying Flux resources...")
+            try:
+                result = subprocess.run("flux resource list", shell=True, capture_output=True, text=True)
+                print("Available resources:")
+                print(result.stdout)
+            except Exception as e:
+                print(f"Could not query resources: {e}")
 
-        # Use from_command() for a regular job
-        jobspec = flux.job.JobspecV1.from_command(
-            command=full_command,
-            num_tasks=args.num_tasks,
-            num_nodes=args.num_nodes,
-            cores_per_task=args.cores_per_task,
-            duration=args.time_limit,
+        # Determine TEST_EXEC based on test type
+        test_exec = './test_driver_libs' if test_type in ['dependency', 'dlreopen'] else './test_driver'
+        test_args = [f'--{test_type}', '--session']
+
+        # For ldpreload tests, set LD_PRELOAD via Flux
+        flux_ld_preload = []
+        if test_type == 'ldpreload':
+            if 'LIBRARY_LIST' in env:
+                flux_ld_preload = [f'--env=LD_PRELOAD={env["LIBRARY_LIST"]}']
+
+        # Build flux run command - session tests just need SESSION_ID in environment
+        # The spindle.rc plugin will use the active session
+        flux_cmd = ['flux', 'run']
+        if flux_ld_preload:
+            flux_cmd.extend(flux_ld_preload)
+        flux_cmd.extend([
+            f'--env=SESSION_ID={session_id}',
+            '-o', 'userrc=spindle.rc',
+            '-o', 'spindle.level=high',
+            f'-N', str(args.num_nodes),
+            f'-n', str(args.num_tasks),
+            test_exec
+        ] + test_args)
+
+        if args.verbose:
+            print(f"Flux command: {' '.join(flux_cmd)}")
+            print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+
+        # Run the flux command
+        result = subprocess.run(
+            flux_cmd,
+            env=env,
             cwd=testsuite_dir,
+            capture_output=False,  # Let output go to stdout/stderr (captured by TeeOutput)
         )
 
-        # Set environment variables
-        jobspec.environment = dict(env)
-
-        if args.verbose:
-            print("Submitting job to Flux...")
-
-        # Submit job with waitable=True so we can wait for it
-        jobid = flux.job.submit(handle, jobspec, waitable=True)
-
-        if args.verbose:
-            print(f"Job submitted: {jobid}")
-            print("Waiting for job to complete...")
-
-        # wait() returns JobWaitResult(jobid, success, errstr)
-        result = flux.job.wait(handle, jobid)
-
-        if args.verbose:
-            print(f"Job result: {result}")
-
-        returncode = 0 if result.success else 1
+        returncode = result.returncode
 
         # Collect logs from all nodes to shared filesystem
         if args.verbose:
@@ -409,14 +420,14 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
         else:
             target_base = log_dir
 
-        # Create directory structure on shared filesystem (only need to do this once)
+        # Create directory structure on shared filesystem
         try:
             os.makedirs(target_base, exist_ok=True)
             for i in range(1, args.num_nodes + 1):
                 os.makedirs(os.path.join(target_base, f'node-{i}'), exist_ok=True)
         except Exception as e:
             print(f"Warning: Could not create shared log directories: {e}", file=sys.stderr)
-            return returncode
+            return (returncode, log_dir)
 
         # Launch collection job: one task per node to move files
         collection_cmd = f"""hostname=$(hostname)
@@ -456,15 +467,37 @@ flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
 
         return (returncode, target_base)
 
-    except Exception as e:
-        print(f"ERROR running Flux job: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
-        return (1, log_dir)
+    finally:
+        # Always end the session
+        if args.verbose:
+            print(f"Ending Spindle session {session_id}...")
+
+        if session_id == "ANONYMOUS_SESSION":
+            end_result = subprocess.run(
+                [spindle_exec, '--end-session'],
+                env=env,
+                cwd=testsuite_dir,
+                capture_output=True,
+                text=True
+            )
+        else:
+            end_result = subprocess.run(
+                [spindle_exec, f'--end-session={session_id}'],
+                env=env,
+                cwd=testsuite_dir,
+                capture_output=True,
+                text=True
+            )
+
+        if end_result.returncode != 0 and args.verbose:
+            print(f"Warning: Failed to end session: {end_result.stderr}", file=sys.stderr)
 
 
 def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='push', log_dir=None):
-    """Run test using Flux resource manager.
+    """Run test using Flux resource manager with native Spindle integration.
+
+    Uses flux run with -o spindle.* options instead of calling spindle directly.
+    This matches the behavior of run_driver_flux.
 
     Args:
         args: Command line arguments
@@ -492,105 +525,79 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
             print(f"Could not query resources: {e}")
 
     # Determine TEST_EXEC based on test type
-    test_exec = './test_driver_libs'
+    test_exec = './test_driver_libs' if test_type in ['dependency', 'dlreopen'] else './test_driver'
     test_args = [f'--{test_type}', f'--{test_mode}']
 
-    # Get SPINDLE executable path
-    if 'SPINDLE' in env:
-        spindle_exec = env['SPINDLE']
-    else:
-        spindle_exec = 'spindle'
-
-    env['SPINDLE'] = spindle_exec
-    env['TEST_EXEC'] = test_exec
-
-    # Determine which modes are Spindle options vs test_driver options
+    # Translate spindle modes to Flux spindle plugin options
     # Spindle options: push, pull, numa, preload
-    # Test-only modes: fork, forkexec, chdir
+    # Test-only modes: fork, forkexec, chdir (no spindle option needed)
     spindle_modes = ['push', 'pull', 'numa', 'preload']
+    flux_spindle_opt = None
     if test_mode in spindle_modes:
-        # Special case: preload mode needs --preload=preload_file_list
         if test_mode == 'preload':
-            env['SPINDLE_OPTS'] = '--preload=preload_file_list'
-            spindle_mode_flag = ['--preload=preload_file_list']
+            flux_spindle_opt = '-o spindle.preload=preload_file_list'
         else:
-            env['SPINDLE_OPTS'] = f'--{test_mode}'
-            spindle_mode_flag = [f'--{test_mode}']
-    else:
-        env['SPINDLE_OPTS'] = ''
-        spindle_mode_flag = []
+            flux_spindle_opt = f'-o spindle.{test_mode}'
 
-    # For ldpreload/preload tests, set LD_PRELOAD to LIBRARY_LIST
+    # For ldpreload/preload tests, set LD_PRELOAD via Flux
+    flux_ld_preload = []
     if test_type == 'ldpreload' or test_mode == 'preload':
         if 'LIBRARY_LIST' in env:
-            env['LD_PRELOAD'] = env['LIBRARY_LIST']
+            flux_ld_preload = [f'--env=LD_PRELOAD={env["LIBRARY_LIST"]}']
 
-    # Build full command with spindle wrapper
-    # Only pass mode flag to Spindle if it's a Spindle option
-    spindle_flags = env['SPINDLE_FLAGS']
-    full_command = [spindle_exec] + spindle_flags.split() + spindle_mode_flag + ['--launcher=serial', test_exec] + test_args
+    # Build flux run command using Flux's native Spindle integration
+    flux_cmd = ['flux', 'run']
+    if flux_ld_preload:
+        flux_cmd.extend(flux_ld_preload)
+    flux_cmd.extend([
+        '-o', 'userrc=spindle.rc',
+        '-o', 'spindle.level=high',
+    ])
+    if flux_spindle_opt:
+        flux_cmd.extend(flux_spindle_opt.split())
+    flux_cmd.extend([
+        f'-N', str(args.num_nodes),
+        f'-n', str(args.num_tasks),
+        test_exec
+    ] + test_args)
 
     if args.verbose:
-        print(f"Flux command: {' '.join(full_command)}")
+        print(f"Flux command: {' '.join(flux_cmd)}")
         print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
 
+    # Run the flux command
+    result = subprocess.run(
+        flux_cmd,
+        env=env,
+        cwd=testsuite_dir,
+        capture_output=False,  # Let output go to stdout/stderr (captured by TeeOutput)
+    )
+
+    returncode = result.returncode
+
+    # Collect logs from all nodes to shared filesystem
+    if args.verbose:
+        print("Collecting logs from all nodes to shared filesystem...")
+
+    # Use shared filesystem for log aggregation
+    shared_logs = '/shared-logs'
+    if log_dir is None:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
+    else:
+        target_base = log_dir
+
+    # Create directory structure on shared filesystem (only need to do this once)
     try:
-        handle = flux.Flux()
+        os.makedirs(target_base, exist_ok=True)
+        for i in range(1, args.num_nodes + 1):
+            os.makedirs(os.path.join(target_base, f'node-{i}'), exist_ok=True)
+    except Exception as e:
+        print(f"Warning: Could not create shared log directories: {e}", file=sys.stderr)
+        return (returncode, log_dir)
 
-        # Use from_command() for a regular job, not from_nest_command()
-        jobspec = flux.job.JobspecV1.from_command(
-            command=full_command,
-            num_tasks=args.num_tasks,
-            num_nodes=args.num_nodes,
-            cores_per_task=args.cores_per_task,
-            duration=args.time_limit,
-            cwd=testsuite_dir,
-        )
-
-        # Set environment variables
-        jobspec.environment = dict(env)
-
-        if args.verbose:
-            print("Submitting job to Flux...")
-
-        # Submit job with waitable=True so we can wait for it
-        jobid = flux.job.submit(handle, jobspec, waitable=True)
-
-        if args.verbose:
-            print(f"Job submitted: {jobid}")
-            print("Waiting for job to complete...")
-
-        # wait() returns JobWaitResult(jobid, success, errstr)
-        result = flux.job.wait(handle, jobid)
-
-        if args.verbose:
-            print(f"Job result: {result}")
-
-        returncode = 0 if result.success else 1
-
-        # Collect logs from all nodes to shared filesystem
-        if args.verbose:
-            print("Collecting logs from all nodes to shared filesystem...")
-
-        # Use shared filesystem for log aggregation
-        shared_logs = '/shared-logs'
-        if log_dir is None:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
-        else:
-            target_base = log_dir
-
-        # Create directory structure on shared filesystem (only need to do this once)
-        try:
-            os.makedirs(target_base, exist_ok=True)
-            for i in range(1, args.num_nodes + 1):
-                os.makedirs(os.path.join(target_base, f'node-{i}'), exist_ok=True)
-        except Exception as e:
-            print(f"Warning: Could not create shared log directories: {e}", file=sys.stderr)
-            return returncode
-
-        # Launch collection job: one task per node to move files
-        collection_cmd = f"""hostname=$(hostname)
+    # Launch collection job: one task per node to move files
+    collection_cmd = f"""hostname=$(hostname)
 node_num=${{hostname##*-}}
 target_dir="{target_base}/node-${{node_num}}"
 mv {testsuite_dir}/spindle_output.${{hostname}}.* $target_dir/ 2>/dev/null || \\
@@ -599,39 +606,33 @@ flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
     echo "Warning: Could not capture flux dmesg from $(hostname)" >&2
 """
 
-        # Add dmesg collection if enabled
-        if args.enable_dmesg_collection:
-            collection_cmd += """dmesg > $target_dir/dmesg.log 2>&1 || \\
+    # Add dmesg collection if enabled
+    if args.enable_dmesg_collection:
+        collection_cmd += """dmesg > $target_dir/dmesg.log 2>&1 || \\
     echo "Warning: Could not capture dmesg from $(hostname)" >&2
 """
 
-        try:
-            # Run collection on all nodes (1 task per node)
-            collect_result = subprocess.run(
-                f"flux run -N {args.num_nodes} -n {args.num_nodes} bash -c {shlex.quote(collection_cmd)}",
-                shell=True,
-                env=env,
-                cwd=testsuite_dir,
-                capture_output=True,
-                text=True
-            )
+    try:
+        # Run collection on all nodes (1 task per node)
+        collect_result = subprocess.run(
+            f"flux run -N {args.num_nodes} -n {args.num_nodes} bash -c {shlex.quote(collection_cmd)}",
+            shell=True,
+            env=env,
+            cwd=testsuite_dir,
+            capture_output=True,
+            text=True
+        )
 
-            if args.verbose:
-                if collect_result.returncode == 0:
-                    print("Log collection completed successfully")
-                else:
-                    print(f"Log collection warnings/errors: {collect_result.stderr}")
-        except Exception as e:
-            print(f"Warning: Log collection failed: {e}", file=sys.stderr)
-            # Don't fail the whole test just because collection failed
-
-        return (returncode, target_base)
-
+        if args.verbose:
+            if collect_result.returncode == 0:
+                print("Log collection completed successfully")
+            else:
+                print(f"Log collection warnings/errors: {collect_result.stderr}")
     except Exception as e:
-        print(f"ERROR running Flux job: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
-        return (1, log_dir)
+        print(f"Warning: Log collection failed: {e}", file=sys.stderr)
+        # Don't fail the whole test just because collection failed
+
+    return (returncode, target_base)
 
 
 def main():
