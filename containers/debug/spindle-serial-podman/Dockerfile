@@ -27,7 +27,10 @@ RUN apt-get update \
         libdb-dev \
         libgcrypt20 \
         libgcrypt20-dev \
+        libtool \
         make \
+        mpich \
+        libmpich-dev \
         openssl \
         pkg-config \
         python3 \
