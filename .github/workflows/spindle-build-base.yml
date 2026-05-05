@@ -1,0 +1,37 @@
+name: Build & Push Spindle Build Base Image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Spindle Build Base Image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        with:
+          context: .
+          file: ./containers/debug/spindle-build-base/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/llnl/spindle-build-base:latest
+          cache-from: type=registry,ref=ghcr.io/llnl/spindle-build-base:buildcache
+          cache-to: type=registry,ref=ghcr.io/llnl/spindle-build-base:buildcache,mode=max
