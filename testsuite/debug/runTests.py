@@ -83,6 +83,13 @@ ALL_TESTS = [
     ('spindleapi', 'preload'),
 ]
 
+# Serial-exec tests (use --serial launcher with specific executables)
+SERIAL_TESTS = [
+    './spindle_exec_test',
+    './symbind_test',
+    './interpreter_test',
+]
+
 
 class TeeOutput:
     """Capture output to both stdout and a file."""
@@ -240,6 +247,46 @@ def run_serial_test(args, env, testsuite_dir, test_type='dependency', test_mode=
     if log_dir is None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         log_dir = os.path.join(testsuite_dir, 'debug', f'{result.returncode}_{timestamp}')
+
+    return (result.returncode, log_dir)
+
+
+def run_serial_exec_test(args, env, testsuite_dir, test_executable, log_dir=None):
+    """Run a serial-exec test (spindle_exec_test, symbind_test, interpreter_test).
+
+    Args:
+        args: Command line arguments
+        env: Environment variables
+        testsuite_dir: Path to testsuite directory
+        test_executable: Path to test executable (e.g., './spindle_exec_test')
+        log_dir: Directory to store logs (if None, use timestamp-based default)
+
+    Returns:
+        (returncode, log_directory)
+    """
+    # Get SPINDLE executable path
+    if 'SPINDLE' in env:
+        spindle_exec = env['SPINDLE']
+    else:
+        spindle_exec = 'spindle'
+
+    env['SPINDLE'] = spindle_exec
+
+    # Build command using --serial launcher
+    spindle_flags = env['SPINDLE_FLAGS']
+    cmd = f"{spindle_exec} {spindle_flags} --launcher=serial {test_executable}"
+
+    if args.verbose:
+        print(f"Command: {cmd}")
+
+    # Change to testsuite directory to run
+    result = subprocess.run(cmd, shell=True, env=env, cwd=testsuite_dir)
+
+    # Create log directory
+    if log_dir is None:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        test_name = os.path.basename(test_executable)
+        log_dir = os.path.join(testsuite_dir, 'debug', f'{result.returncode}_{test_name}_{timestamp}')
 
     return (result.returncode, log_dir)
 
@@ -475,16 +522,34 @@ def main():
         help='Time limit PER TEST, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
     )
     parser.add_argument(
+        '--run-typemode-tests',
+        action='store_true',
+        help='Run all type_mode tests (64 tests: 8 types × 8 modes)'
+    )
+    parser.add_argument(
+        '--run-session-tests',
+        action='store_true',
+        help='Run all session tests (requires flux RM) - NOT YET IMPLEMENTED'
+    )
+    parser.add_argument(
+        '--run-serial-tests',
+        action='store_true',
+        help='Run all serial-exec tests (spindle_exec_test, symbind_test, interpreter_test) - requires serial RM'
+    )
+    parser.add_argument(
         '--run-all-tests',
         action='store_true',
-        help='Run all tests from the original runTests script'
+        help='Run all tests appropriate for the selected resource manager'
     )
     parser.add_argument(
         '--single-test',
-        metavar='TYPE_MODE',
+        metavar='SPEC',
         action='append',
-        help='Run specific test(s). Use "type_mode" format (e.g., "dependency_preload"). '
-             'Supports wildcards: "*_push" for all push tests, "dependency_*" for all dependency tests. '
+        help='Run specific test(s). Formats:\n'
+             '  - type_mode: "dependency_push", "dlopen_pull", etc.\n'
+             '  - Wildcards: "*_push" (all push tests), "dependency_*" (all dependency modes)\n'
+             '  - Serial test: "serial:path/to/test" (path can be relative, e.g., "serial:./spindle_exec_test")\n'
+             '  - Session test: "dependency_session", etc. (NOT YET IMPLEMENTED)\n'
              'Can be specified multiple times.'
     )
     parser.add_argument(
@@ -516,13 +581,35 @@ def main():
     # Validate single-test format if provided
     if args.single_test:
         for test_spec in args.single_test:
+            if test_spec.startswith('serial:'):
+                # Serial-exec test format: serial:path/to/test
+                continue
+            # Otherwise expect type_mode format
             parts = test_spec.split('_')
             if len(parts) != 2:
-                parser.error(f"--single-test must be in format 'type_mode' or use wildcards (e.g., '*_push'), got '{test_spec}'")
+                parser.error(f"--single-test must be in format 'type_mode', 'serial:path', or use wildcards (e.g., '*_push'), got '{test_spec}'")
 
     # Validate resource manager availability
     if args.resource_manager == 'flux' and not FLUX_AVAILABLE:
         parser.error("--resource-manager=flux requires Flux Python module, which is not available")
+
+    # Validate RM compatibility with test selections
+    if args.resource_manager == 'flux' and args.run_serial_tests:
+        parser.error("--run-serial-tests requires --resource-manager=serial")
+    if args.resource_manager == 'serial' and args.run_session_tests:
+        parser.error("--run-session-tests requires --resource-manager=flux")
+
+    # Check that at least some tests are selected
+    no_tests_selected = not any([
+        args.run_typemode_tests,
+        args.run_session_tests,
+        args.run_serial_tests,
+        args.run_all_tests,
+        args.single_test,
+    ])
+    if no_tests_selected:
+        # Default to typemode tests
+        args.run_typemode_tests = True
 
     # Set up environment
     env, testsuite_dir = setup_environment()
@@ -573,34 +660,60 @@ def main():
             return (fnmatch.fnmatch(test_type, type_pattern) and
                     fnmatch.fnmatch(test_mode, mode_pattern))
 
-        # Determine which tests to run
-        if args.single_test:
-            # Expand wildcards in single-test specifications
-            tests_to_run = []
-            for test_spec in args.single_test:
-                matched = False
-                for test_type, test_mode in ALL_TESTS:
-                    if matches_pattern(test_type, test_mode, test_spec):
-                        if (test_type, test_mode) not in tests_to_run:
-                            tests_to_run.append((test_type, test_mode))
-                        matched = True
-                if not matched and '*' not in test_spec:
-                    print(f"Warning: --single-test '{test_spec}' did not match any tests", file=sys.stderr)
-        elif args.run_all_tests:
-            tests_to_run = list(ALL_TESTS)
-        else:
-            # Default: just run dependency/push
-            tests_to_run = [('dependency', 'push')]
+        # Build list of tests to run
+        # Tests are stored as either ('typemode', test_type, test_mode) or ('serial', test_executable)
+        tests_to_run = []
 
-        # Apply ignore-test filters
+        if args.single_test:
+            # Parse single-test specifications
+            for test_spec in args.single_test:
+                if test_spec.startswith('serial:'):
+                    # Serial-exec test
+                    test_path = test_spec[7:]  # Strip 'serial:' prefix
+                    tests_to_run.append(('serial', test_path))
+                else:
+                    # Type_mode test with possible wildcards
+                    matched = False
+                    for test_type, test_mode in ALL_TESTS:
+                        if matches_pattern(test_type, test_mode, test_spec):
+                            if ('typemode', test_type, test_mode) not in tests_to_run:
+                                tests_to_run.append(('typemode', test_type, test_mode))
+                            matched = True
+                    if not matched and '*' not in test_spec:
+                        print(f"Warning: --single-test '{test_spec}' did not match any tests", file=sys.stderr)
+        else:
+            # Handle --run-* flags
+            if args.run_all_tests:
+                # Add appropriate tests based on RM
+                if args.resource_manager == 'serial':
+                    tests_to_run.extend([('typemode', t, m) for t, m in ALL_TESTS])
+                    tests_to_run.extend([('serial', exe) for exe in SERIAL_TESTS])
+                elif args.resource_manager == 'flux':
+                    tests_to_run.extend([('typemode', t, m) for t, m in ALL_TESTS])
+                    # Session tests not yet implemented
+            else:
+                # Individual flags
+                if args.run_typemode_tests:
+                    tests_to_run.extend([('typemode', t, m) for t, m in ALL_TESTS])
+                if args.run_serial_tests:
+                    tests_to_run.extend([('serial', exe) for exe in SERIAL_TESTS])
+                if args.run_session_tests:
+                    parser.error("--run-session-tests not yet implemented")
+
+        # Apply ignore-test filters (only to typemode tests)
         if args.ignore_test:
             original_count = len(tests_to_run)
-            tests_to_run = [
-                (test_type, test_mode)
-                for test_type, test_mode in tests_to_run
-                if not any(matches_pattern(test_type, test_mode, ignore_spec)
-                          for ignore_spec in args.ignore_test)
-            ]
+            filtered = []
+            for test_item in tests_to_run:
+                if test_item[0] == 'typemode':
+                    test_type, test_mode = test_item[1], test_item[2]
+                    if not any(matches_pattern(test_type, test_mode, ignore_spec)
+                              for ignore_spec in args.ignore_test):
+                        filtered.append(test_item)
+                else:
+                    # Keep serial tests (ignore doesn't apply)
+                    filtered.append(test_item)
+            tests_to_run = filtered
             ignored_count = original_count - len(tests_to_run)
             if ignored_count > 0 and args.verbose:
                 print(f"Ignored {ignored_count} test(s) based on --ignore-test filters")
@@ -611,64 +724,134 @@ def main():
 
         # Run each test
         global_result = 0
-        for test_type, test_mode in tests_to_run:
-            test_name = f"{test_type}_{test_mode}"
-            test_start_time = time.time()
+        for test_item in tests_to_run:
+            if test_item[0] == 'typemode':
+                # Type-mode test (e.g., dependency_push)
+                test_type, test_mode = test_item[1], test_item[2]
+                test_name = f"{test_type}_{test_mode}"
+                test_start_time = time.time()
 
-            # Create directories
-            debug_dir = os.path.join(testsuite_dir, 'debug')
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                # Create directories
+                debug_dir = os.path.join(testsuite_dir, 'debug')
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-            # For Flux, use shared-logs; for serial, use local debug dir
-            if args.resource_manager == 'flux':
-                shared_logs = '/shared-logs'
-                temp_dir = os.path.join(shared_logs, f'temp_{test_name}_{timestamp}')
-            else:
-                temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
-
-            os.makedirs(temp_dir, exist_ok=True)
-
-            # Set up log capture
-            runtest_log_path = os.path.join(temp_dir, 'runtest.log')
-            log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
-            sys.stdout = log_capture
-            sys.stderr = log_capture
-
-            try:
-                # Print the "Running:" message like run_driver does
-                print(f"Running: ./run_driver --{test_type} --{test_mode}")
-
-                # Run test with appropriate resource manager
-                if args.resource_manager == 'serial':
-                    returncode, log_dir = run_serial_test(args, env, testsuite_dir, test_type, test_mode, temp_dir)
-                elif args.resource_manager == 'flux':
-                    returncode, log_dir = run_flux_test(args, env, testsuite_dir, test_type, test_mode, temp_dir)
+                # For Flux, use shared-logs; for serial, use local debug dir
+                if args.resource_manager == 'flux':
+                    shared_logs = '/shared-logs'
+                    temp_dir = os.path.join(shared_logs, f'temp_{test_name}_{timestamp}')
                 else:
-                    print(f"ERROR: Unknown resource manager: {args.resource_manager}")
-                    returncode = 1
-                    log_dir = temp_dir
+                    temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
 
-                if returncode != 0:
-                    global_result = -1
+                os.makedirs(temp_dir, exist_ok=True)
 
-            finally:
-                # Restore stdout/stderr
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-                log_capture.close()
+                # Set up log capture
+                runtest_log_path = os.path.join(temp_dir, 'runtest.log')
+                log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
+                sys.stdout = log_capture
+                sys.stderr = log_capture
 
-            # Rename directory to include return code
-            final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{test_name}_{timestamp}')
-            if os.path.exists(temp_dir):
-                os.rename(temp_dir, final_dir)
-            elif log_dir != temp_dir:
-                # Flux may have created the dir directly
-                final_dir = log_dir
+                try:
+                    # Print the "Running:" message like run_driver does
+                    print(f"Running: ./run_driver --{test_type} --{test_mode}")
 
-            # Move spindle_output files if they exist (serial only)
-            if args.resource_manager == 'serial':
+                    # Run test with appropriate resource manager
+                    if args.resource_manager == 'serial':
+                        returncode, log_dir = run_serial_test(args, env, testsuite_dir, test_type, test_mode, temp_dir)
+                    elif args.resource_manager == 'flux':
+                        returncode, log_dir = run_flux_test(args, env, testsuite_dir, test_type, test_mode, temp_dir)
+                    else:
+                        print(f"ERROR: Unknown resource manager: {args.resource_manager}")
+                        returncode = 1
+                        log_dir = temp_dir
+
+                    if returncode != 0:
+                        global_result = -1
+
+                finally:
+                    # Restore stdout/stderr
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    log_capture.close()
+
+                # Rename directory to include return code
+                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{test_name}_{timestamp}')
+                if os.path.exists(temp_dir):
+                    os.rename(temp_dir, final_dir)
+                elif log_dir != temp_dir:
+                    # Flux may have created the dir directly
+                    final_dir = log_dir
+
+                # Move spindle_output files if they exist (serial only)
+                if args.resource_manager == 'serial':
+                    spindle_outputs = glob.glob(os.path.join(testsuite_dir, 'spindle_output*'))
+                    if spindle_outputs:
+                        for output_file in spindle_outputs:
+                            filename = os.path.basename(output_file)
+                            dest = os.path.join(final_dir, filename)
+                            if os.path.exists(output_file):
+                                os.rename(output_file, dest)
+
+                # Calculate test duration
+                test_duration = time.time() - test_start_time
+
+                # Handle log preservation based on success/failure
+                if returncode == 0:
+                    print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
+                    # Delete logs for successful runs unless explicitly preserving
+                    if not args.preserve_logs_on_success and os.path.exists(final_dir):
+                        shutil.rmtree(final_dir)
+                else:
+                    print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
+                    # Stop at first failure unless explicitly continuing
+                    if not args.continue_after_failure:
+                        sys.exit(returncode)
+
+            elif test_item[0] == 'serial':
+                # Serial-exec test (e.g., ./spindle_exec_test)
+                test_executable = test_item[1]
+                test_name = f"serial_{os.path.basename(test_executable)}"
+                test_start_time = time.time()
+
+                # Create directories (serial tests are always local)
+                debug_dir = os.path.join(testsuite_dir, 'debug')
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
+                os.makedirs(temp_dir, exist_ok=True)
+
+                # Set up log capture
+                runtest_log_path = os.path.join(temp_dir, 'runtest.log')
+                log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
+                sys.stdout = log_capture
+                sys.stderr = log_capture
+
+                try:
+                    # Print the "Running:" message
+                    print(f"Running: {test_executable}")
+
+                    # Run serial-exec test
+                    returncode, log_dir = run_serial_exec_test(args, env, testsuite_dir, test_executable, temp_dir)
+
+                    if returncode != 0:
+                        global_result = -1
+
+                finally:
+                    # Restore stdout/stderr
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    log_capture.close()
+
+                # Rename directory to include return code
+                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{test_name}_{timestamp}')
+                if os.path.exists(temp_dir):
+                    os.rename(temp_dir, final_dir)
+                elif log_dir != temp_dir:
+                    final_dir = log_dir
+
+                # Move spindle_output files if they exist
                 spindle_outputs = glob.glob(os.path.join(testsuite_dir, 'spindle_output*'))
                 if spindle_outputs:
                     for output_file in spindle_outputs:
@@ -677,20 +860,20 @@ def main():
                         if os.path.exists(output_file):
                             os.rename(output_file, dest)
 
-            # Calculate test duration
-            test_duration = time.time() - test_start_time
+                # Calculate test duration
+                test_duration = time.time() - test_start_time
 
-            # Handle log preservation based on success/failure
-            if returncode == 0:
-                print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
-                # Delete logs for successful runs unless explicitly preserving
-                if not args.preserve_logs_on_success and os.path.exists(final_dir):
-                    shutil.rmtree(final_dir)
-            else:
-                print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
-                # Stop at first failure unless explicitly continuing
-                if not args.continue_after_failure:
-                    sys.exit(returncode)
+                # Handle log preservation based on success/failure
+                if returncode == 0:
+                    print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
+                    # Delete logs for successful runs unless explicitly preserving
+                    if not args.preserve_logs_on_success and os.path.exists(final_dir):
+                        shutil.rmtree(final_dir)
+                else:
+                    print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
+                    # Stop at first failure unless explicitly continuing
+                    if not args.continue_after_failure:
+                        sys.exit(returncode)
 
         # Print final status
         if global_result == 0:
