@@ -90,6 +90,18 @@ SERIAL_TESTS = [
     './interpreter_test',
 ]
 
+# Session tests - use same test types as ALL_TESTS but with --session flag
+SESSION_TEST_TYPES = [
+    'dependency',
+    'dlopen',
+    'dlreopen',
+    'thrdopen',
+    'reorder',
+    'partial',
+    'ldpreload',
+    'spindleapi',
+]
+
 
 class TeeOutput:
     """Capture output to both stdout and a file."""
@@ -289,6 +301,165 @@ def run_serial_exec_test(args, env, testsuite_dir, test_executable, log_dir=None
         log_dir = os.path.join(testsuite_dir, 'debug', f'{result.returncode}_{test_name}_{timestamp}')
 
     return (result.returncode, log_dir)
+
+
+def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_dir=None):
+    """Run a session test using Flux resource manager.
+
+    Args:
+        args: Command line arguments
+        env: Environment variables
+        testsuite_dir: Path to testsuite directory
+        test_type: Type of test (dependency, dlopen, etc.)
+        session_num: Session number (generated)
+        log_dir: Directory to store logs (if None, use timestamp-based default)
+
+    Returns:
+        (returncode, log_directory)
+    """
+    if not FLUX_AVAILABLE:
+        print("ERROR: Flux Python module not available", file=sys.stderr)
+        return (1, log_dir)
+
+    # Query available resources for debugging
+    if args.verbose:
+        print("Querying Flux resources...")
+        try:
+            result = subprocess.run("flux resource list", shell=True, capture_output=True, text=True)
+            print("Available resources:")
+            print(result.stdout)
+        except Exception as e:
+            print(f"Could not query resources: {e}")
+
+    # Determine TEST_EXEC based on test type
+    test_exec = './test_driver_libs'
+    test_args = [f'--{test_type}', '--session']
+
+    # Get SPINDLE executable path
+    if 'SPINDLE' in env:
+        spindle_exec = env['SPINDLE']
+    else:
+        spindle_exec = 'spindle'
+
+    env['SPINDLE'] = spindle_exec
+    env['TEST_EXEC'] = test_exec
+
+    # Set session-specific environment variables
+    env['SESSION_ID'] = str(session_num)
+    env['SPINDLE_OPTS'] = '--session'
+
+    # For ldpreload tests, set LD_PRELOAD to LIBRARY_LIST
+    if test_type == 'ldpreload':
+        if 'LIBRARY_LIST' in env:
+            env['LD_PRELOAD'] = env['LIBRARY_LIST']
+
+    # Build full command with spindle wrapper
+    spindle_flags = env['SPINDLE_FLAGS']
+    full_command = [spindle_exec] + spindle_flags.split() + ['--session', '--launcher=serial', test_exec] + test_args
+
+    if args.verbose:
+        print(f"Flux command: {' '.join(full_command)}")
+        print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+        print(f"Session ID: {session_num}")
+
+    try:
+        handle = flux.Flux()
+
+        # Use from_command() for a regular job
+        jobspec = flux.job.JobspecV1.from_command(
+            command=full_command,
+            num_tasks=args.num_tasks,
+            num_nodes=args.num_nodes,
+            cores_per_task=args.cores_per_task,
+            duration=args.time_limit,
+            cwd=testsuite_dir,
+        )
+
+        # Set environment variables
+        jobspec.environment = dict(env)
+
+        if args.verbose:
+            print("Submitting job to Flux...")
+
+        # Submit job with waitable=True so we can wait for it
+        jobid = flux.job.submit(handle, jobspec, waitable=True)
+
+        if args.verbose:
+            print(f"Job submitted: {jobid}")
+            print("Waiting for job to complete...")
+
+        # wait() returns JobWaitResult(jobid, success, errstr)
+        result = flux.job.wait(handle, jobid)
+
+        if args.verbose:
+            print(f"Job result: {result}")
+
+        returncode = 0 if result.success else 1
+
+        # Collect logs from all nodes to shared filesystem
+        if args.verbose:
+            print("Collecting logs from all nodes to shared filesystem...")
+
+        # Use shared filesystem for log aggregation
+        shared_logs = '/shared-logs'
+        if log_dir is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            target_base = os.path.join(shared_logs, f'{returncode}_{timestamp}')
+        else:
+            target_base = log_dir
+
+        # Create directory structure on shared filesystem (only need to do this once)
+        try:
+            os.makedirs(target_base, exist_ok=True)
+            for i in range(1, args.num_nodes + 1):
+                os.makedirs(os.path.join(target_base, f'node-{i}'), exist_ok=True)
+        except Exception as e:
+            print(f"Warning: Could not create shared log directories: {e}", file=sys.stderr)
+            return returncode
+
+        # Launch collection job: one task per node to move files
+        collection_cmd = f"""hostname=$(hostname)
+node_num=${{hostname##*-}}
+target_dir="{target_base}/node-${{node_num}}"
+mv {testsuite_dir}/spindle_output.${{hostname}}.* $target_dir/ 2>/dev/null || \\
+    echo "Warning: Could not move Spindle logs from $(hostname)" >&2
+flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
+    echo "Warning: Could not capture flux dmesg from $(hostname)" >&2
+"""
+
+        # Add dmesg collection if enabled
+        if args.enable_dmesg_collection:
+            collection_cmd += """dmesg > $target_dir/dmesg.log 2>&1 || \\
+    echo "Warning: Could not capture dmesg from $(hostname)" >&2
+"""
+
+        try:
+            # Run collection on all nodes (1 task per node)
+            collect_result = subprocess.run(
+                f"flux run -N {args.num_nodes} -n {args.num_nodes} bash -c {shlex.quote(collection_cmd)}",
+                shell=True,
+                env=env,
+                cwd=testsuite_dir,
+                capture_output=True,
+                text=True
+            )
+
+            if args.verbose:
+                if collect_result.returncode == 0:
+                    print("Log collection completed successfully")
+                else:
+                    print(f"Log collection warnings/errors: {collect_result.stderr}")
+        except Exception as e:
+            print(f"Warning: Log collection failed: {e}", file=sys.stderr)
+            # Don't fail the whole test just because collection failed
+
+        return (returncode, target_base)
+
+    except Exception as e:
+        print(f"ERROR running Flux job: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return (1, log_dir)
 
 
 def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='push', log_dir=None):
@@ -529,7 +700,7 @@ def main():
     parser.add_argument(
         '--run-session-tests',
         action='store_true',
-        help='Run all session tests (requires flux RM) - NOT YET IMPLEMENTED'
+        help='Run all session tests (requires flux RM)'
     )
     parser.add_argument(
         '--run-serial-tests',
@@ -549,7 +720,7 @@ def main():
              '  - type_mode: "dependency_push", "dlopen_pull", etc.\n'
              '  - Wildcards: "*_push" (all push tests), "dependency_*" (all dependency modes)\n'
              '  - Serial test: "serial:path/to/test" (path can be relative, e.g., "serial:./spindle_exec_test")\n'
-             '  - Session test: "dependency_session", etc. (NOT YET IMPLEMENTED)\n'
+             '  - Session test: "dependency_session", "dlopen_session", etc.\n'
              'Can be specified multiple times.'
     )
     parser.add_argument(
@@ -584,10 +755,10 @@ def main():
             if test_spec.startswith('serial:'):
                 # Serial-exec test format: serial:path/to/test
                 continue
-            # Otherwise expect type_mode format
+            # Otherwise expect type_mode or type_session format
             parts = test_spec.split('_')
             if len(parts) != 2:
-                parser.error(f"--single-test must be in format 'type_mode', 'serial:path', or use wildcards (e.g., '*_push'), got '{test_spec}'")
+                parser.error(f"--single-test must be in format 'type_mode', 'type_session', 'serial:path', or use wildcards (e.g., '*_push'), got '{test_spec}'")
 
     # Validate resource manager availability
     if args.resource_manager == 'flux' and not FLUX_AVAILABLE:
@@ -661,8 +832,11 @@ def main():
                     fnmatch.fnmatch(test_mode, mode_pattern))
 
         # Build list of tests to run
-        # Tests are stored as either ('typemode', test_type, test_mode) or ('serial', test_executable)
+        # Tests are stored as: ('typemode', test_type, test_mode), ('serial', test_executable), or ('session', test_type, session_num)
         tests_to_run = []
+
+        # Session counter - generate unique session numbers for session tests
+        session_counter = 1
 
         if args.single_test:
             # Parse single-test specifications
@@ -671,6 +845,14 @@ def main():
                     # Serial-exec test
                     test_path = test_spec[7:]  # Strip 'serial:' prefix
                     tests_to_run.append(('serial', test_path))
+                elif test_spec.endswith('_session'):
+                    # Session test (e.g., dependency_session)
+                    test_type = test_spec[:-8]  # Strip '_session' suffix
+                    if test_type in SESSION_TEST_TYPES:
+                        tests_to_run.append(('session', test_type, session_counter))
+                        session_counter += 1
+                    else:
+                        print(f"Warning: --single-test '{test_spec}' - '{test_type}' is not a valid session test type", file=sys.stderr)
                 else:
                     # Type_mode test with possible wildcards
                     matched = False
@@ -690,7 +872,10 @@ def main():
                     tests_to_run.extend([('serial', exe) for exe in SERIAL_TESTS])
                 elif args.resource_manager == 'flux':
                     tests_to_run.extend([('typemode', t, m) for t, m in ALL_TESTS])
-                    # Session tests not yet implemented
+                    # Add session tests with generated session numbers
+                    for test_type in SESSION_TEST_TYPES:
+                        tests_to_run.append(('session', test_type, session_counter))
+                        session_counter += 1
             else:
                 # Individual flags
                 if args.run_typemode_tests:
@@ -698,7 +883,9 @@ def main():
                 if args.run_serial_tests:
                     tests_to_run.extend([('serial', exe) for exe in SERIAL_TESTS])
                 if args.run_session_tests:
-                    parser.error("--run-session-tests not yet implemented")
+                    for test_type in SESSION_TEST_TYPES:
+                        tests_to_run.append(('session', test_type, session_counter))
+                        session_counter += 1
 
         # Apply ignore-test filters (only to typemode tests)
         if args.ignore_test:
@@ -859,6 +1046,66 @@ def main():
                         dest = os.path.join(final_dir, filename)
                         if os.path.exists(output_file):
                             os.rename(output_file, dest)
+
+                # Calculate test duration
+                test_duration = time.time() - test_start_time
+
+                # Handle log preservation based on success/failure
+                if returncode == 0:
+                    print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
+                    # Delete logs for successful runs unless explicitly preserving
+                    if not args.preserve_logs_on_success and os.path.exists(final_dir):
+                        shutil.rmtree(final_dir)
+                else:
+                    print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
+                    # Stop at first failure unless explicitly continuing
+                    if not args.continue_after_failure:
+                        sys.exit(returncode)
+
+            elif test_item[0] == 'session':
+                # Session test (e.g., dependency_session)
+                test_type = test_item[1]
+                session_num = test_item[2]
+                test_name = f"{test_type}_session_{session_num}"
+                test_start_time = time.time()
+
+                # Create directories on shared-logs
+                shared_logs = '/shared-logs'
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                temp_dir = os.path.join(shared_logs, f'temp_{test_name}_{timestamp}')
+                os.makedirs(temp_dir, exist_ok=True)
+
+                # Set up log capture
+                runtest_log_path = os.path.join(temp_dir, 'runtest.log')
+                log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
+                sys.stdout = log_capture
+                sys.stderr = log_capture
+
+                try:
+                    # Print the "Running:" message
+                    print(f"Running: ./run_driver --{test_type} --session (SESSION_ID={session_num})")
+
+                    # Run session test (only Flux supported)
+                    returncode, log_dir = run_flux_session_test(args, env, testsuite_dir, test_type, session_num, temp_dir)
+
+                    if returncode != 0:
+                        global_result = -1
+
+                finally:
+                    # Restore stdout/stderr
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    log_capture.close()
+
+                # Rename directory to include return code
+                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{test_name}_{timestamp}')
+                if os.path.exists(temp_dir):
+                    os.rename(temp_dir, final_dir)
+                elif log_dir != temp_dir:
+                    # Flux may have created the dir directly
+                    final_dir = log_dir
 
                 # Calculate test duration
                 test_duration = time.time() - test_start_time
