@@ -11,6 +11,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINER_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_ROOT="$(cd "$CONTAINER_DIR/../../.." && pwd)"
 
+# Create logs directory in script directory (use absolute path)
+LOGS_DIR="$SCRIPT_DIR/podman-logs"
+mkdir -p "$LOGS_DIR"
+
 IMAGE_NAME="spindle-serial-podman:latest"
 CONTAINER_NAME="spindle-serial-test"
 
@@ -74,9 +78,10 @@ echo -e "${GREEN}==> Collecting logs${NC}"
 # Check what's in the debug directory
 echo -e "${YELLOW}Debug directory contents:${NC}"
 podman exec "$CONTAINER_NAME" ls -la /home/spindleuser/Spindle-build/testsuite/debug/
-# Copy logs out of container (without trailing /. so podman creates destination)
-echo -e "${YELLOW}Copying logs to ./podman-logs/${NC}"
-podman cp "$CONTAINER_NAME:/home/spindleuser/Spindle-build/testsuite/debug" ./podman-logs/
+# Copy logs out of container using absolute path
+echo -e "${YELLOW}Current working directory: $(pwd)${NC}"
+echo -e "${YELLOW}Copying logs to: $LOGS_DIR${NC}"
+podman cp "$CONTAINER_NAME:/home/spindleuser/Spindle-build/testsuite/debug" "$LOGS_DIR"
 
 echo -e "${GREEN}==> Stopping and removing container${NC}"
 podman stop "$CONTAINER_NAME"
@@ -86,7 +91,8 @@ if [ $RESULT -eq 0 ]; then
     echo -e "${GREEN}==> Tests PASSED${NC}"
 else
     echo -e "${RED}==> Tests FAILED${NC}"
-    echo -e "${YELLOW}==> Check ./podman-logs/ for output${NC}"
 fi
+
+echo -e "${YELLOW}==> Logs saved to: $LOGS_DIR${NC}"
 
 exit $RESULT
