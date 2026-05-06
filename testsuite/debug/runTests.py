@@ -547,12 +547,13 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     try:
         handle = flux.Flux()
 
-        # Create jobspec using Python API - don't specify cores_per_task to allow over-subscription
+        # Create jobspec using Python API
+        # Don't specify cores_per_task to use default, let Flux handle allocation
         jobspec = flux.job.JobspecV1.from_command(
             command=command,
             num_tasks=num_tasks,
             num_nodes=args.num_nodes,
-            exclusive=False,  # Explicitly allow over-subscription
+            exclusive=False,
             duration=args.time_limit,
             cwd=testsuite_dir,
         )
