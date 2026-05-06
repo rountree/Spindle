@@ -40,27 +40,23 @@ jobs:
             flux start -o --config /etc/flux/config echo "SUCCESS: flux start" || echo "FAILED: flux start"
           '
 
-      - name: Test with spindle-flux-base
-        run: |
-          docker run --rm --user=root --hostname=test-node ghcr.io/rountree/spindle-flux-base:latest bash -c '
-            flux --version
-            echo "Testing broker.toml with spindle-flux-base"
-            mkdir -p /etc/flux/config /mnt/curve /etc/flux/system
-            flux keygen /mnt/curve/curve.cert
-            flux R encode --hosts=test-node > /etc/flux/system/R
-            cat > /etc/flux/config/broker.toml <<EOF
-          [resource]
-          path = "/etc/flux/system/R"
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-          [bootstrap]
-          curve_cert = "/mnt/curve/curve.cert"
-          default_port = 8050
-          default_bind = "tcp://0.0.0.0:%p"
-          default_connect = "tcp://%h:%p"
-          hosts = [ { host="test-node" } ]
-          EOF
-            echo "Generated broker.toml:"
+      - name: Build spindle-flux-ubuntu for testing
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          # Generate compose with 1 node for quick test
+          ./generate-compose.py 1 > docker-compose.yml
+          docker compose build
+
+      - name: Test spindle-flux-ubuntu entrypoint directly
+        run: |
+          docker run --rm --hostname=node-1 spindle-flux-ubuntu:latest bash -c '
             cat /etc/flux/config/broker.toml
-            echo "Starting broker..."
-            flux broker --config-path=/etc/flux/config echo "SUCCESS" || echo "FAILED"
+            echo "---"
+            # Run just the broker start without munged or hostname resolution complexity
+            export STATE_DIRECTORY=/var/lib/flux
+            brokerOptions="-Scron.directory=/etc/flux/system/cron.d -Stbon.fanout=256 -Srundir=/run/flux -Sstatedir=/var/lib/flux -Slocal-uri=local:///run/flux/local -Slog-stderr-level=6 -Slog-stderr-mode=local"
+            flux start -o --config /etc/flux/config ${brokerOptions} echo "SUCCESS" || echo "FAILED"
           '
