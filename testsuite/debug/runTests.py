@@ -502,7 +502,7 @@ flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
 def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='push', log_dir=None):
     """Run test using Flux resource manager with native Spindle integration.
 
-    Uses flux run with -o spindle.* options instead of calling spindle directly.
+    Uses Flux Python API with JobspecV1.from_command() and spindle shell options.
     This matches the behavior of run_driver_flux.
 
     Args:
@@ -534,59 +534,68 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     test_exec = './test_driver_libs' if test_type in ['dependency', 'dlreopen'] else './test_driver'
     test_args = [f'--{test_type}', f'--{test_mode}']
 
-    # Translate spindle modes to Flux spindle plugin options
-    # Spindle options: push, pull, numa, preload
-    # Test-only modes: fork, forkexec, chdir (no spindle option needed)
-    spindle_modes = ['push', 'pull', 'numa', 'preload']
-    flux_spindle_opt = None
-    if test_mode in spindle_modes:
-        if test_mode == 'preload':
-            flux_spindle_opt = '-o spindle.preload=preload_file_list'
-        else:
-            flux_spindle_opt = f'-o spindle.{test_mode}'
-
-    # For ldpreload/preload tests, set LD_PRELOAD via Flux
-    flux_ld_preload = []
-    if test_type == 'ldpreload' or test_mode == 'preload':
-        if 'LIBRARY_LIST' in env:
-            flux_ld_preload = [f'--env=LD_PRELOAD={env["LIBRARY_LIST"]}']
-
-    # Build flux run command using Flux's native Spindle integration
+    # Build command for jobspec
+    command = [test_exec] + test_args
     num_tasks = args.num_nodes * args.tasks_per_node
-    flux_cmd = ['flux', 'run']
-    if flux_ld_preload:
-        flux_cmd.extend(flux_ld_preload)
-    flux_cmd.extend([
-        '-o', 'userrc=spindle.rc',
-        '-o', 'spindle.level=high',
-    ])
-    if flux_spindle_opt:
-        flux_cmd.extend(flux_spindle_opt.split())
-    flux_cmd.extend([
-        '-t', args.time_limit,  # Time limit per test
-        f'-N', str(args.num_nodes),
-        f'-n', str(num_tasks),
-        '--setopt=oversubscribe=true',
-        test_exec
-    ] + test_args)
 
     if args.verbose:
-        print(f"Flux command: {' '.join(flux_cmd)}")
+        print(f"Command: {' '.join(command)}")
         print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Time limit: {args.time_limit}")
         sys.stdout.flush()
         sys.stderr.flush()
 
-    # Run the flux command with unbuffered output
-    # Setting bufsize=0 and using line buffering helps with real-time output
-    result = subprocess.run(
-        flux_cmd,
-        env=env,
-        cwd=testsuite_dir,
-        capture_output=False,  # Let output go to stdout/stderr (captured by TeeOutput)
-        bufsize=0,  # Unbuffered
-    )
+    try:
+        handle = flux.Flux()
 
-    returncode = result.returncode
+        # Create jobspec using Python API - don't specify cores_per_task to allow over-subscription
+        jobspec = flux.job.JobspecV1.from_command(
+            command=command,
+            num_tasks=num_tasks,
+            num_nodes=args.num_nodes,
+            exclusive=False,  # Explicitly allow over-subscription
+            duration=args.time_limit,
+            cwd=testsuite_dir,
+        )
+
+        # Set environment variables (includes SPINDLE-related vars)
+        jobspec.environment = dict(env)
+
+        # Set Spindle shell options
+        jobspec.setattr_shell_option('userrc', 'spindle.rc')
+        jobspec.setattr_shell_option('spindle.level', 'high')
+
+        # Set Spindle mode-specific options
+        spindle_modes = ['push', 'pull', 'numa', 'preload']
+        if test_mode in spindle_modes:
+            if test_mode == 'preload':
+                jobspec.setattr_shell_option('spindle.preload', 'preload_file_list')
+            else:
+                jobspec.setattr_shell_option(f'spindle.{test_mode}', True)
+
+        if args.verbose:
+            print("Submitting job to Flux...")
+            sys.stdout.flush()
+
+        # Submit job with waitable=True so we can wait for it
+        jobid = flux.job.submit(handle, jobspec, waitable=True)
+
+        if args.verbose:
+            print(f"Job submitted: {jobid}")
+            print("Waiting for job to complete...")
+            sys.stdout.flush()
+
+        # Wait for job completion
+        returncode = flux.job.wait(handle, jobid)
+
+        if args.verbose:
+            print(f"Job completed with return code: {returncode}")
+            sys.stdout.flush()
+
+    except Exception as e:
+        print(f"ERROR running Flux job: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        returncode = 1
 
     # Collect logs from all nodes to shared filesystem
     if args.verbose:
