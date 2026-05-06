@@ -52,6 +52,8 @@ jobs:
           cd containers/debug/spindle-flux-ubuntu
           echo "=== Container status ==="
           docker compose ps -a
+          echo "=== Node-1 broker.toml ==="
+          docker run --rm spindle-flux-ubuntu:latest cat /etc/flux/config/broker.toml || true
           echo "=== Node-1 logs ==="
           docker logs node-1 || true
           echo "=== Node-2 logs ==="
