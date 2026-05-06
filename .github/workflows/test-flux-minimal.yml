@@ -33,8 +33,11 @@ jobs:
           EOF
             echo "Generated broker.toml:"
             cat /etc/flux/config/broker.toml
-            echo "Starting broker..."
-            flux broker --config-path=/etc/flux/config echo "SUCCESS" || echo "FAILED"
+            echo "Starting broker with flux broker..."
+            flux broker --config-path=/etc/flux/config echo "SUCCESS: flux broker" || echo "FAILED: flux broker"
+            echo ""
+            echo "Starting broker with flux start..."
+            flux start -o --config /etc/flux/config echo "SUCCESS: flux start" || echo "FAILED: flux start"
           '
 
       - name: Test with spindle-flux-base
