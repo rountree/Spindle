@@ -92,7 +92,6 @@ jobs:
           --resource-manager=flux \
           --num-nodes=${{ env.NUM_NODES }} \
           --tasks-per-node=${{ env.TASKS_PER_NODE }} \
-          --cores-per-task=1 \
           --time-limit=1m \
           --spindle-debug=3 \
           --preserve-logs-on-success \

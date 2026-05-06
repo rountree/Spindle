@@ -566,12 +566,13 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
         '-t', args.time_limit,  # Time limit per test
         f'-N', str(args.num_nodes),
         f'-n', str(num_tasks),
+        '--setopt=oversubscribe=true',
         test_exec
     ] + test_args)
 
     if args.verbose:
         print(f"Flux command: {' '.join(flux_cmd)}")
-        print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+        print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Time limit: {args.time_limit}")
         sys.stdout.flush()
         sys.stderr.flush()
 
@@ -697,12 +698,6 @@ def main():
         type=int,
         default=1,
         help='Number of tasks per node (flux)'
-    )
-    parser.add_argument(
-        '--cores-per-task',
-        type=int,
-        default=1,
-        help='Cores per task (flux)'
     )
     parser.add_argument(
         '--time-limit',
