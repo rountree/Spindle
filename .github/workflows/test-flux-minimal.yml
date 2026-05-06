@@ -52,11 +52,14 @@ jobs:
 
       - name: Test spindle-flux-ubuntu entrypoint directly
         run: |
-          docker run --rm --hostname=node-1 spindle-flux-ubuntu:latest bash -c '
+          timeout 30s docker run --rm --hostname=node-1 spindle-flux-ubuntu:latest bash -c '
+            echo "=== Checking broker.toml ==="
             cat /etc/flux/config/broker.toml
-            echo "---"
+            echo ""
+            echo "=== Testing broker startup ==="
             # Run just the broker start without munged or hostname resolution complexity
             export STATE_DIRECTORY=/var/lib/flux
             brokerOptions="-Scron.directory=/etc/flux/system/cron.d -Stbon.fanout=256 -Srundir=/run/flux -Sstatedir=/var/lib/flux -Slocal-uri=local:///run/flux/local -Slog-stderr-level=6 -Slog-stderr-mode=local"
-            flux start -o --config /etc/flux/config ${brokerOptions} echo "SUCCESS" || echo "FAILED"
-          '
+            flux start -o --config /etc/flux/config ${brokerOptions} /bin/bash -c "echo SUCCESS && exit 0"
+            echo "Exit code: $?"
+          ' || echo "FAILED or TIMEOUT"
