@@ -18,7 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      NUM_NODES: 4
+      NUM_NODES: 32
+      TASKS_PER_NODE: 3
     steps:
       - name: Check out Spindle
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -74,7 +75,7 @@ jobs:
       #   --run-all-tests \
       #   --resource-manager=flux \
       #   --num-nodes=${{ env.NUM_NODES }} \
-      #   --num-tasks=${{ env.NUM_NODES }} \
+      #   --tasks-per-node=${{ env.TASKS_PER_NODE }} \
       #   --cores-per-task=1 \
       #   --time-limit=1m \
       #   --spindle-debug=3 \
@@ -90,7 +91,7 @@ jobs:
           --single-test=dependency_push \
           --resource-manager=flux \
           --num-nodes=${{ env.NUM_NODES }} \
-          --num-tasks=${{ env.NUM_NODES }} \
+          --tasks-per-node=${{ env.TASKS_PER_NODE }} \
           --cores-per-task=1 \
           --time-limit=1m \
           --spindle-debug=3 \

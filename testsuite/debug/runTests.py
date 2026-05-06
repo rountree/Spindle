@@ -383,6 +383,7 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
 
         # Build flux run command - session tests just need SESSION_ID in environment
         # The spindle.rc plugin will use the active session
+        num_tasks = args.num_nodes * args.tasks_per_node
         flux_cmd = ['flux', 'run']
         if flux_ld_preload:
             flux_cmd.extend(flux_ld_preload)
@@ -392,13 +393,13 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
             '-o', 'spindle.level=high',
             '-t', args.time_limit,  # Time limit per test
             f'-N', str(args.num_nodes),
-            f'-n', str(args.num_tasks),
+            f'-n', str(num_tasks),
             test_exec
         ] + test_args)
 
         if args.verbose:
             print(f"Flux command: {' '.join(flux_cmd)}")
-            print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+            print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
 
         # Run the flux command
         result = subprocess.run(
@@ -551,6 +552,7 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
             flux_ld_preload = [f'--env=LD_PRELOAD={env["LIBRARY_LIST"]}']
 
     # Build flux run command using Flux's native Spindle integration
+    num_tasks = args.num_nodes * args.tasks_per_node
     flux_cmd = ['flux', 'run']
     if flux_ld_preload:
         flux_cmd.extend(flux_ld_preload)
@@ -563,13 +565,13 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     flux_cmd.extend([
         '-t', args.time_limit,  # Time limit per test
         f'-N', str(args.num_nodes),
-        f'-n', str(args.num_tasks),
+        f'-n', str(num_tasks),
         test_exec
     ] + test_args)
 
     if args.verbose:
         print(f"Flux command: {' '.join(flux_cmd)}")
-        print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+        print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
         sys.stdout.flush()
         sys.stderr.flush()
 
@@ -691,10 +693,10 @@ def main():
         help='Number of nodes to allocate (flux)'
     )
     parser.add_argument(
-        '--num-tasks',
+        '--tasks-per-node',
         type=int,
         default=1,
-        help='Total number of tasks to run (flux)'
+        help='Number of tasks per node (flux)'
     )
     parser.add_argument(
         '--cores-per-task',
@@ -853,7 +855,8 @@ def main():
     if args.dry_run:
         print(f"Resource manager: {args.resource_manager}")
         if args.resource_manager == 'flux':
-            print(f"Nodes: {args.num_nodes}, Tasks: {args.num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+            num_tasks = args.num_nodes * args.tasks_per_node
+            print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
         print(f"Running: ./run_driver --dependency --push")
     else:
         if args.verbose:
