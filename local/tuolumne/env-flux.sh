@@ -1,8 +1,8 @@
 # For now, these are common across versions.
 
 # Only used for path construction (bottom of this file)
-ROOT=/p/vast1/rountree/machines/${LCSCHEDCLUSTER}
-export SPINDLE_REPO=/p/vast1/rountree/repos/Spindle
+ROOT=/p/vast1/rountree/machines/${LCSCHEDCLUSTER}/claude/Spindle
+export SPINDLE_REPO=${ROOT}
 export SPINDLE_SCRIPTS=${SPINDLE_REPO}/local/${LCSCHEDCLUSTER}
 export TEST_RESOURCE_MANAGER=flux
 
