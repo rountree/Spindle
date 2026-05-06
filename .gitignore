@@ -49,3 +49,4 @@ resume
 src/flux/_devel_flux-spindle.c
 src/flux/_hang_flux-spindle.c
 testsuite/debug/__pycache__/
+LESSONS_LEARNED.md
