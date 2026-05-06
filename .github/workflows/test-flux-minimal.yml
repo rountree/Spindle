@@ -1,0 +1,34 @@
+name: test-flux-minimal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-flux-broker:
+    name: Test Flux Broker Minimal
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Test with fluxrm/flux-sched directly
+        run: |
+          docker run --rm fluxrm/flux-sched:noble bash -c '
+            flux --version
+            echo "Testing broker.toml with placeholders"
+            mkdir -p /etc/flux/config /mnt/curve
+            flux keygen /mnt/curve/curve.cert
+            cat > /etc/flux/config/broker.toml <<EOF
+          [bootstrap]
+          curve_cert = "/mnt/curve/curve.cert"
+          default_port = 8050
+          default_bind = "tcp://0.0.0.0:%p"
+          default_connect = "tcp://%h:%p"
+          hosts = [ { host="test-node" } ]
+          EOF
+            echo "Generated broker.toml:"
+            cat /etc/flux/config/broker.toml
+            echo "Starting broker..."
+            flux broker --config-path=/etc/flux/config echo "SUCCESS" || echo "FAILED"
+          '
