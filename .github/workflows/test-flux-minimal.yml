@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Test with fluxrm/flux-sched directly
         run: |
-          docker run --rm fluxrm/flux-sched:noble bash -c '
+          docker run --rm --user=root fluxrm/flux-sched:noble bash -c '
             flux --version
             echo "Testing broker.toml with placeholders"
             mkdir -p /etc/flux/config /mnt/curve
