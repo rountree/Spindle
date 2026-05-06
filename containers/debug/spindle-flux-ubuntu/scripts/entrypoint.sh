@@ -14,13 +14,23 @@ brokerOptions="-Scron.directory=/etc/flux/system/cron.d \
   -Slog-stderr-mode=local"
 
 # Get the hostname that will resolve for the Docker bridge network.
+echo "=== Entrypoint Debug ==="
+echo "hostname: $(hostname)"
+echo "hostname -i: $(hostname -i)"
 address=$(echo $( nslookup "$( hostname -i )" | head -n 1 ))
+echo "nslookup result: $address"
 parts=(${address//=/ })
 hostName=${parts[2]}
+echo "parsed hostName: $hostName"
 thisHost=(${hostName//./ })
 thisHost=${thisHost[0]}
-echo $thisHost
+echo "thisHost (first part): $thisHost"
 export FLUX_FAKE_HOSTNAME=$thisHost
+echo "FLUX_FAKE_HOSTNAME: $FLUX_FAKE_HOSTNAME"
+echo "mainHost: $mainHost"
+echo "broker.toml contents:"
+cat /etc/flux/config/broker.toml
+echo "=== End Debug ==="
 
 # Start munged
 sudo -u munge /usr/sbin/munged
