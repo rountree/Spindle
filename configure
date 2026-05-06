@@ -5762,7 +5762,7 @@ $as_echo "$ac_cv_path_SED" >&6; }
 
 ac_config_headers="$ac_config_headers config.h"
 
-ac_config_files="$ac_config_files src/flux/Makefile src/slurm_plugin/Makefile doc/Makefile testsuite/Makefile Makefile"
+ac_config_files="$ac_config_files src/flux/Makefile src/slurm_plugin/Makefile doc/Makefile Makefile"
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether ln -s works" >&5
 $as_echo_n "checking whether ln -s works... " >&6; }
@@ -18676,6 +18676,12 @@ else
 fi
 
 
+# Only process testsuite/Makefile.in if building testsuite
+if test "x${BUILD_TESTSUITE}" = "xyes"; then
+   ac_config_files="$ac_config_files testsuite/Makefile"
+
+fi
+
 
 
 
@@ -20033,9 +20039,9 @@ do
     "src/flux/Makefile") CONFIG_FILES="$CONFIG_FILES src/flux/Makefile" ;;
     "src/slurm_plugin/Makefile") CONFIG_FILES="$CONFIG_FILES src/slurm_plugin/Makefile" ;;
     "doc/Makefile") CONFIG_FILES="$CONFIG_FILES doc/Makefile" ;;
-    "testsuite/Makefile") CONFIG_FILES="$CONFIG_FILES testsuite/Makefile" ;;
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "libtool") CONFIG_COMMANDS="$CONFIG_COMMANDS libtool" ;;
+    "testsuite/Makefile") CONFIG_FILES="$CONFIG_FILES testsuite/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac
