@@ -20,7 +20,7 @@ RUN /tmp/generate-broker-toml.sh ${workers} > /etc/flux/config/broker.toml && \
     mkdir -p /etc/flux/system/cron.d && \
     mkdir -p /mnt/curve && \
     flux keygen /mnt/curve/curve.cert && \
-    flux R encode --hosts="node-[1-${workers}]" --cores=0-1 --property=core:8 > /etc/flux/system/R && \
+    flux R encode --hosts="node-[1-${workers}]" > /etc/flux/system/R && \
     chown -R ${USER}:${USER} /run/flux ${STATE_DIR} /mnt/curve/curve.cert 
 
 # Build Spindle
