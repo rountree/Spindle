@@ -78,13 +78,17 @@ The number of cores per node is configured during the Docker image build via the
 
 Look for the line:
 ```dockerfile
-flux R encode --hosts="node-[1-${workers}]" --cores=8 > /etc/flux/system/R
+flux R encode --hosts="node-[1-${workers}]" --cores=0-7 > /etc/flux/system/R
 ```
 
-To change from 8 cores per node to a different value (e.g., 16):
+The `--cores` flag takes a **range** of core IDs (e.g., `0-7` for 8 cores, `0-15` for 16 cores).
+
+To change from 8 cores per node to a different value (e.g., 16 cores):
 ```dockerfile
-flux R encode --hosts="node-[1-${workers}]" --cores=16 > /etc/flux/system/R
+flux R encode --hosts="node-[1-${workers}]" --cores=0-15 > /etc/flux/system/R
 ```
+
+**Important**: Use a core ID range (`0-N`) rather than a count. Using `--cores=8` (without the range) causes Flux to look for a single core with ID 8, resulting in "missing resources: core8" errors.
 
 **Important considerations**:
 
@@ -98,8 +102,8 @@ flux R encode --hosts="node-[1-${workers}]" --cores=16 > /etc/flux/system/R
 
 **Example scenarios**:
 
-- **32 nodes, 8 cores each**: 256 total cores → can run up to 8 tasks per node
-- **32 nodes, 4 cores each**: 128 total cores → can run up to 4 tasks per node  
-- **4 nodes, 16 cores each**: 64 total cores → can run up to 16 tasks per node
+- **32 nodes, 8 cores each** (`--cores=0-7`): 256 total cores → can run up to 8 tasks per node
+- **32 nodes, 4 cores each** (`--cores=0-3`): 128 total cores → can run up to 4 tasks per node  
+- **4 nodes, 16 cores each** (`--cores=0-15`): 64 total cores → can run up to 16 tasks per node
 
 If you request more tasks than available cores, Flux will reject the job with an "unsatisfiable" error.
