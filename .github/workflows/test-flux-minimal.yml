@@ -14,12 +14,16 @@ jobs:
     steps:
       - name: Test with fluxrm/flux-sched directly
         run: |
-          docker run --rm --user=root fluxrm/flux-sched:noble bash -c '
+          docker run --rm --user=root --hostname=test-node fluxrm/flux-sched:noble bash -c '
             flux --version
             echo "Testing broker.toml with placeholders"
-            mkdir -p /etc/flux/config /mnt/curve
+            mkdir -p /etc/flux/config /mnt/curve /etc/flux/system
             flux keygen /mnt/curve/curve.cert
+            flux R encode --hosts=test-node > /etc/flux/system/R
             cat > /etc/flux/config/broker.toml <<EOF
+          [resource]
+          path = "/etc/flux/system/R"
+
           [bootstrap]
           curve_cert = "/mnt/curve/curve.cert"
           default_port = 8050
