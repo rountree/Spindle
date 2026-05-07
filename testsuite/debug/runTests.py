@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 import argparse
 import fnmatch
@@ -1036,13 +1036,13 @@ def main():
             if ignored_count > 0 and args.verbose:
                 print(f"Ignored {ignored_count} test(s) based on --ignore-test filters")
 
-        # Repeat tests if reps > 1
-        if args.reps > 1:
-            tests_to_run = tests_to_run * args.reps
-
-        # Run each test
+        # Run each test with repetitions
         global_result = 0
-        for test_item in tests_to_run:
+        original_tests = tests_to_run[:]
+
+        for rep in range(args.reps):
+            iteration = rep + 1  # 1-indexed for user-friendliness
+            for test_item in original_tests:
             if test_item[0] == 'typemode':
                 # Type-mode test (e.g., dependency_push)
                 test_type, test_mode = test_item[1], test_item[2]
@@ -1055,9 +1055,9 @@ def main():
 
                 # For Flux, use log-dir if specified; for serial, use local debug dir
                 if args.resource_manager == 'flux' and args.log_dir:
-                    temp_dir = os.path.join(args.log_dir, f'temp_{test_name}_{timestamp}')
+                    temp_dir = os.path.join(args.log_dir, f'temp_{iteration}_{test_name}_{timestamp}')
                 else:
-                    temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
+                    temp_dir = os.path.join(debug_dir, f'temp_{iteration}_{test_name}_{timestamp}')
 
                 os.makedirs(temp_dir, exist_ok=True)
 
@@ -1093,8 +1093,8 @@ def main():
                     sys.stderr = old_stderr
                     log_capture.close()
 
-                # Rename directory to include return code
-                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{test_name}_{timestamp}')
+                # Rename directory to include return code and iteration
+                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{iteration}_{test_name}_{timestamp}')
                 if os.path.exists(temp_dir):
                     os.rename(temp_dir, final_dir)
                 elif log_dir != temp_dir:
@@ -1135,7 +1135,7 @@ def main():
                 # Create directories (serial tests are always local)
                 debug_dir = os.path.join(testsuite_dir, 'debug')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
+                temp_dir = os.path.join(debug_dir, f'temp_{iteration}_{test_name}_{timestamp}')
                 os.makedirs(temp_dir, exist_ok=True)
 
                 # Print the "Running:" message BEFORE any output redirection for real-time visibility
@@ -1164,8 +1164,8 @@ def main():
                     sys.stderr = old_stderr
                     log_capture.close()
 
-                # Rename directory to include return code
-                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{test_name}_{timestamp}')
+                # Rename directory to include return code and iteration
+                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{iteration}_{test_name}_{timestamp}')
                 if os.path.exists(temp_dir):
                     os.rename(temp_dir, final_dir)
                 elif log_dir != temp_dir:
@@ -1206,9 +1206,9 @@ def main():
                 debug_dir = os.path.join(testsuite_dir, 'debug')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 if args.log_dir:
-                    temp_dir = os.path.join(args.log_dir, f'temp_{test_name}_{timestamp}')
+                    temp_dir = os.path.join(args.log_dir, f'temp_{iteration}_{test_name}_{timestamp}')
                 else:
-                    temp_dir = os.path.join(debug_dir, f'temp_{test_name}_{timestamp}')
+                    temp_dir = os.path.join(debug_dir, f'temp_{iteration}_{test_name}_{timestamp}')
                 os.makedirs(temp_dir, exist_ok=True)
 
                 # Print the "Running:" message BEFORE any output redirection for real-time visibility
@@ -1237,8 +1237,8 @@ def main():
                     sys.stderr = old_stderr
                     log_capture.close()
 
-                # Rename directory to include return code
-                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{test_name}_{timestamp}')
+                # Rename directory to include return code and iteration
+                final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{iteration}_{test_name}_{timestamp}')
                 if os.path.exists(temp_dir):
                     os.rename(temp_dir, final_dir)
                 elif log_dir != temp_dir:
