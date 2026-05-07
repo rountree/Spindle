@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 import argparse
 import fnmatch
@@ -965,10 +965,13 @@ def main():
             if test_spec.startswith('serial:'):
                 # Serial-exec test format: serial:path/to/test
                 continue
+            if test_spec == '*':
+                # Special case: bare '*' means all type-mode tests (same as '*_*')
+                continue
             # Otherwise expect type_mode or type_session format
             parts = test_spec.split('_')
             if len(parts) != 2:
-                parser.error(f"--single-test must be in format 'type_mode', 'type_session', 'serial:path', or use wildcards (e.g., '*_push'), got '{test_spec}'")
+                parser.error(f"--single-test must be in format 'type_mode', 'type_session', 'serial:path', or use wildcards (e.g., '*_push', '*'), got '{test_spec}'")
 
     # Validate resource manager availability
     if args.resource_manager == 'flux' and not FLUX_AVAILABLE:
@@ -1071,9 +1074,11 @@ def main():
                     print(f"Ignoring: {test_spec}", file=sys.stderr)
                 else:
                     # Type_mode test with possible wildcards
+                    # Special case: bare '*' means all tests (convert to '*_*')
+                    pattern = '*_*' if test_spec == '*' else test_spec
                     matching_tests = [
                         ('typemode', t, m) for t, m in ALL_TESTS
-                        if matches_pattern(t, m, test_spec)
+                        if matches_pattern(t, m, pattern)
                     ]
                     # Add unique matches
                     for test in matching_tests:
