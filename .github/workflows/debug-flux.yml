@@ -85,13 +85,15 @@ jobs:
         run: |
           docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && \
           ./runTests.py \
-          --single-test=dependency_push \
           --resource-manager=flux \
+          --flux-interface=API \
           --num-nodes=${{ env.NUM_NODES }} \
           --tasks-per-node=${{ env.TASKS_PER_NODE }} \
           --time-limit=1m \
           --spindle-debug=3 \
           --preserve-logs-on-success \
+          --single-test=dependency_push \
+          --version \
           --verbose'
 
       - name: Copy debug logs from shared filesystem
