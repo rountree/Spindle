@@ -934,17 +934,18 @@ def main():
     # Handle --list-available-tests
     if args.list_available_tests:
         print("Available tests:")
-        print("\nType-mode tests (any resource manager):")
+        print("\nType-mode tests (serial or flux):")
         for test_type, test_mode in ALL_TESTS:
             print(f"  {test_type}_{test_mode}")
         print(f"\nSerial-exec tests (serial only):")
         for test_exe in SERIAL_TESTS:
             test_name = os.path.basename(test_exe)
             print(f"  serial:{test_exe} ({test_name})")
-        print(f"\nSession tests (flux only):")
+        print(f"\nSession tests (NOT IMPLEMENTED - requires slurm-plugin with SPANK):")
         for test_type in SESSION_TEST_TYPES:
-            print(f"  {test_type}_session")
-        print(f"\nTotal: {len(ALL_TESTS)} type-mode + {len(SERIAL_TESTS)} serial-exec + {len(SESSION_TEST_TYPES)} session = {len(ALL_TESTS) + len(SERIAL_TESTS) + len(SESSION_TEST_TYPES)} tests")
+            print(f"  {test_type}_session (disabled)")
+        print(f"\nTotal available: {len(ALL_TESTS)} type-mode + {len(SERIAL_TESTS)} serial-exec = {len(ALL_TESTS) + len(SERIAL_TESTS)} tests")
+        print(f"(Session tests: {len(SESSION_TEST_TYPES)} disabled)")
         sys.exit(0)
 
     # Validate reps
