@@ -502,11 +502,14 @@ flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
 def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='push', log_dir=None):
     """Run test using Flux resource manager with native Spindle integration.
 
-    Uses Flux Python API with JobspecV1.from_command() and spindle shell options.
-    This matches the behavior of run_driver_flux.
+    Supports two interfaces selected by --flux-interface:
+    - API: Uses Flux Python API with per_resource() for over-subscription
+    - CLI: Uses flux run command-line tool (default)
+
+    Both use --tasks-per-node for over-subscription and Spindle shell options.
 
     Args:
-        args: Command line arguments
+        args: Command line arguments (including flux_interface)
         env: Environment variables
         testsuite_dir: Path to testsuite directory
         test_type: Type of test (dependency, dlopen, etc.)
@@ -541,52 +544,115 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     if args.verbose:
         print(f"Command: {' '.join(command)}")
         print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Time limit: {args.time_limit}")
+        print(f"Using Flux interface: {args.flux_interface}")
         sys.stdout.flush()
         sys.stderr.flush()
 
-    # Build flux run command using --tasks-per-node for over-subscription
-    # This avoids Python API issues with userrc shell options
-    flux_cmd = ['flux', 'run']
-
-    # Set LD_PRELOAD if needed for ldpreload/preload tests
-    if test_type == 'ldpreload' or test_mode == 'preload':
-        if 'LIBRARY_LIST' in env:
-            flux_cmd.extend([f'--env=LD_PRELOAD={env["LIBRARY_LIST"]}'])
-
-    # Spindle shell options
-    flux_cmd.extend(['-o', 'userrc=spindle.rc', '-o', 'spindle.level=high'])
-
-    # Spindle mode-specific options
+    # Spindle mode configuration
     spindle_modes = ['push', 'pull', 'numa', 'preload']
-    if test_mode in spindle_modes:
-        if test_mode == 'preload':
-            flux_cmd.extend(['-o', 'spindle.preload=preload_file_list'])
-        else:
-            flux_cmd.extend(['-o', f'spindle.{test_mode}'])
 
-    # Resource specification using --tasks-per-node for over-subscription
-    flux_cmd.extend([
-        '-t', args.time_limit,
-        '--nodes', str(args.num_nodes),
-        '--tasks-per-node', str(args.tasks_per_node),
-    ])
+    if args.flux_interface == 'API':
+        # Use Flux Python API with per_resource() for over-subscription
+        try:
+            handle = flux.Flux()
 
-    # Add the command and args
-    flux_cmd.extend(command)
+            # Create jobspec using per_resource() for tasks-per-node scheduling
+            jobspec = flux.job.JobspecV1.per_resource(
+                command=command,
+                nnodes=args.num_nodes,
+                ncores=args.num_nodes,  # Minimal: 1 core per node
+                per_resource_type="node",
+                per_resource_count=args.tasks_per_node,
+                duration=args.time_limit,
+                cwd=testsuite_dir,
+            )
 
-    if args.verbose:
-        print(f"Flux command: {' '.join(flux_cmd)}")
-        sys.stdout.flush()
+            # Set environment variables
+            jobspec.environment = dict(env)
 
-    # Run the flux command
-    result = subprocess.run(
-        flux_cmd,
-        env=env,
-        cwd=testsuite_dir,
-        capture_output=False,
-    )
+            # Set Spindle shell options
+            jobspec.setattr_shell_option('userrc', 'spindle.rc')
+            jobspec.setattr_shell_option('spindle.level', 'high')
 
-    returncode = result.returncode
+            # Set Spindle mode-specific options - use INTEGER not boolean!
+            if test_mode in spindle_modes:
+                if test_mode == 'preload':
+                    jobspec.setattr_shell_option('spindle.preload', 'preload_file_list')
+                else:
+                    # IMPORTANT: Must be integer (1) not boolean (True)
+                    # Spindle's C code expects integer in JSON unpacking
+                    jobspec.setattr_shell_option(f'spindle.{test_mode}', 1)
+
+            if args.verbose:
+                print("Submitting job via Flux Python API...")
+                sys.stdout.flush()
+
+            # Submit job with waitable=True so we can wait for it
+            jobid = flux.job.submit(handle, jobspec, waitable=True)
+
+            if args.verbose:
+                print(f"Job submitted: {jobid}")
+                print("Waiting for job to complete...")
+                sys.stdout.flush()
+
+            # Wait for job completion
+            result = flux.job.wait(handle, jobid)
+
+            if args.verbose:
+                print(f"Job completed: {result}")
+                sys.stdout.flush()
+
+            # Extract return code from result
+            returncode = 0 if result.success else 1
+
+        except Exception as e:
+            print(f"ERROR running Flux job via API: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            returncode = 1
+
+    else:  # CLI interface
+        # Build flux run command using --tasks-per-node for over-subscription
+        flux_cmd = ['flux', 'run']
+
+        # Set LD_PRELOAD if needed for ldpreload/preload tests
+        if test_type == 'ldpreload' or test_mode == 'preload':
+            if 'LIBRARY_LIST' in env:
+                flux_cmd.extend([f'--env=LD_PRELOAD={env["LIBRARY_LIST"]}'])
+
+        # Spindle shell options
+        flux_cmd.extend(['-o', 'userrc=spindle.rc', '-o', 'spindle.level=high'])
+
+        # Spindle mode-specific options
+        if test_mode in spindle_modes:
+            if test_mode == 'preload':
+                flux_cmd.extend(['-o', 'spindle.preload=preload_file_list'])
+            else:
+                flux_cmd.extend(['-o', f'spindle.{test_mode}'])
+
+        # Resource specification using --tasks-per-node for over-subscription
+        flux_cmd.extend([
+            '-t', args.time_limit,
+            '--nodes', str(args.num_nodes),
+            '--tasks-per-node', str(args.tasks_per_node),
+        ])
+
+        # Add the command and args
+        flux_cmd.extend(command)
+
+        if args.verbose:
+            print(f"Flux command: {' '.join(flux_cmd)}")
+            sys.stdout.flush()
+
+        # Run the flux command
+        result = subprocess.run(
+            flux_cmd,
+            env=env,
+            cwd=testsuite_dir,
+            capture_output=False,
+        )
+
+        returncode = result.returncode
 
     # Collect logs from all nodes to shared filesystem
     if args.verbose:
@@ -703,6 +769,12 @@ def main():
         '--time-limit',
         default='20s',
         help='Time limit PER TEST, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
+    )
+    parser.add_argument(
+        '--flux-interface',
+        choices=['API', 'CLI'],
+        default='CLI',
+        help='Interface to use with Flux: API (Python API) or CLI (command-line, default). Only valid with --resource-manager=flux.'
     )
     parser.add_argument(
         '--run-typemode-tests',
