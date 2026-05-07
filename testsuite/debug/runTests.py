@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 import argparse
 import fnmatch
@@ -411,14 +411,22 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
     # Start the session
     if args.verbose:
         print(f"Starting Spindle session...")
+        print(f"Command: {spindle_exec} --start-session --level=high")
+        print(f"Working directory: {testsuite_dir}")
 
-    start_result = subprocess.run(
-        [spindle_exec, '--start-session', '--level=high'],
-        env=env,
-        cwd=testsuite_dir,
-        capture_output=True,
-        text=True
-    )
+    try:
+        start_result = subprocess.run(
+            [spindle_exec, '--start-session', '--level=high'],
+            env=env,
+            cwd=testsuite_dir,
+            capture_output=True,
+            text=True,
+            timeout=30  # 30 second timeout to prevent infinite hang
+        )
+    except subprocess.TimeoutExpired as e:
+        print(f"ERROR: Session start timed out after 30 seconds", file=sys.stderr)
+        print(f"This may indicate spindle is waiting for input or a resource", file=sys.stderr)
+        return (1, log_dir)
 
     if start_result.returncode != 0:
         print(f"ERROR: Failed to start session: {start_result.stderr}", file=sys.stderr)
@@ -473,7 +481,7 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
 
         if args.verbose:
             print(f"Flux command: {' '.join(flux_cmd)}")
-            print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+            print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Time limit: {args.time_limit}")
 
         # Run the flux command
         result = subprocess.run(
@@ -876,7 +884,7 @@ def main():
     parser.add_argument(
         '--run-session-tests',
         action='store_true',
-        help='Run all session tests (requires flux RM)'
+        help='Run all session tests (NOT IMPLEMENTED - requires slurm-plugin RM with SPANK)'
     )
     parser.add_argument(
         '--run-typemode-tests',
@@ -968,8 +976,10 @@ def main():
     # Validate RM compatibility with test selections
     if args.resource_manager == 'flux' and args.run_serial_tests:
         parser.error("--run-serial-tests requires --resource-manager=serial")
-    if args.resource_manager == 'serial' and args.run_session_tests:
-        parser.error("--run-session-tests requires --resource-manager=flux")
+
+    # Session tests are only for SLURM with SPANK (not implemented)
+    if args.run_session_tests:
+        parser.error("--run-session-tests is not implemented (requires slurm-plugin RM with SPANK_SPINDLE_USE_SESSION)")
 
     # Check that at least some tests are selected
     no_tests_selected = not any([
@@ -1006,7 +1016,7 @@ def main():
         print(f"Resource manager: {args.resource_manager}")
         if args.resource_manager == 'flux':
             num_tasks = args.num_nodes * args.tasks_per_node
-            print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Cores per task: {args.cores_per_task}, Time limit: {args.time_limit}")
+            print(f"Nodes: {args.num_nodes}, Tasks per node: {args.tasks_per_node}, Total tasks: {num_tasks}, Time limit: {args.time_limit}")
         print(f"Running: ./run_driver --dependency --push")
     else:
         if args.verbose:
@@ -1055,13 +1065,9 @@ def main():
                     test_path = test_spec[7:]  # Strip 'serial:' prefix
                     tests_to_run.append(('serial', test_path))
                 elif test_spec.endswith('_session'):
-                    # Session test (e.g., dependency_session)
-                    test_type = test_spec[:-8]  # Strip '_session' suffix
-                    if test_type in SESSION_TEST_TYPES:
-                        tests_to_run.append(('session', test_type, session_counter))
-                        session_counter += 1
-                    else:
-                        print(f"Warning: --single-test '{test_spec}' - '{test_type}' is not a valid session test type", file=sys.stderr)
+                    # Session tests are not implemented (SLURM-only)
+                    print(f"ERROR: Session tests are not implemented (requires slurm-plugin RM with SPANK)", file=sys.stderr)
+                    print(f"Ignoring: {test_spec}", file=sys.stderr)
                 else:
                     # Type_mode test with possible wildcards
                     matching_tests = [
@@ -1084,8 +1090,7 @@ def main():
                     tests_to_run.extend([('serial', exe) for exe in SERIAL_TESTS])
                 elif args.resource_manager == 'flux':
                     tests_to_run.extend([('typemode', t, m) for t, m in ALL_TESTS])
-                    # Add session tests with generated session numbers
-                    session_counter = add_session_tests(session_counter)
+                    # Note: Session tests are SLURM-only (not added for flux)
             else:
                 # Individual flags
                 if args.run_typemode_tests:
