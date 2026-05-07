@@ -547,13 +547,16 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
     try:
         handle = flux.Flux()
 
-        # Create jobspec using Python API
-        # Don't specify cores_per_task to use default, let Flux handle allocation
-        jobspec = flux.job.JobspecV1.from_command(
+        # Create jobspec using per_resource() to enable tasks-per-node scheduling
+        # This mimics flux run --tasks-per-node behavior and allows over-subscription
+        # ncores=num_nodes creates minimal allocation (1 core per node)
+        # per_resource_count tells shell to run tasks_per_node tasks per node
+        jobspec = flux.job.JobspecV1.per_resource(
             command=command,
-            num_tasks=num_tasks,
-            num_nodes=args.num_nodes,
-            exclusive=False,
+            nnodes=args.num_nodes,
+            ncores=args.num_nodes,  # Minimal: 1 core per node
+            per_resource_type="node",
+            per_resource_count=args.tasks_per_node,
             duration=args.time_limit,
             cwd=testsuite_dir,
         )
