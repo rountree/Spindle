@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 
 import argparse
 import fnmatch
@@ -129,6 +129,77 @@ class TeeOutput:
 
     def close(self):
         self.file.close()
+
+    def __enter__(self):
+        """Context manager entry - redirect stdout/stderr."""
+        self.saved_stdout = sys.stdout
+        self.saved_stderr = sys.stderr
+        sys.stdout = self
+        sys.stderr = self
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - restore stdout/stderr."""
+        sys.stdout = self.saved_stdout
+        sys.stderr = self.saved_stderr
+        self.close()
+        return False
+
+
+def create_test_dir(args, testsuite_dir, iteration, test_name):
+    """Create a temporary test directory with standardized naming.
+
+    Returns: (temp_dir, timestamp)
+    """
+    debug_dir = os.path.join(testsuite_dir, 'debug')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    # Determine base directory based on resource manager and log-dir setting
+    if args.resource_manager == 'flux' and args.log_dir:
+        base_dir = args.log_dir
+    else:
+        base_dir = debug_dir
+
+    temp_dir = os.path.join(base_dir, f'temp_{iteration}_{test_name}_{timestamp}')
+    os.makedirs(temp_dir, exist_ok=True)
+
+    return temp_dir, timestamp
+
+
+def finalize_test_dir(temp_dir, returncode, iteration, test_name, timestamp):
+    """Rename temp directory to include return code and iteration.
+
+    Returns: final_dir path
+    """
+    final_dir = os.path.join(
+        os.path.dirname(temp_dir),
+        f'{returncode}_{iteration}_{test_name}_{timestamp}'
+    )
+
+    if os.path.exists(temp_dir):
+        os.rename(temp_dir, final_dir)
+        return final_dir
+    else:
+        # Directory might have been created directly (e.g., by Flux)
+        return temp_dir
+
+
+def handle_test_completion(test_name, returncode, test_duration, final_dir,
+                          args, preserve_logs=False):
+    """Print test result and handle log cleanup.
+
+    Returns: None, but may call sys.exit() on failure
+    """
+    if returncode == 0:
+        print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
+        # Delete logs for successful runs unless explicitly preserving
+        if not args.preserve_logs_on_success and not preserve_logs and os.path.exists(final_dir):
+            shutil.rmtree(final_dir)
+    else:
+        print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
+        # Stop at first failure unless explicitly continuing
+        if not args.continue_after_failure:
+            sys.exit(returncode)
 
 
 def setup_environment():
@@ -952,7 +1023,7 @@ def main():
                     print(f"  {key}={env[key]}")
             print()
 
-        # Helper function to match test against pattern
+        # Helper functions
         def matches_pattern(test_type, test_mode, pattern):
             """Check if test_type_mode matches pattern with wildcards."""
             pattern_parts = pattern.split('_')
@@ -961,6 +1032,13 @@ def main():
             type_pattern, mode_pattern = pattern_parts
             return (fnmatch.fnmatch(test_type, type_pattern) and
                     fnmatch.fnmatch(test_mode, mode_pattern))
+
+        def add_session_tests(counter):
+            """Add all session tests with sequential counter. Returns updated counter."""
+            for test_type in SESSION_TEST_TYPES:
+                tests_to_run.append(('session', test_type, counter))
+                counter += 1
+            return counter
 
         # Build list of tests to run
         # Tests are stored as: ('typemode', test_type, test_mode), ('serial', test_executable), or ('session', test_type, session_num)
@@ -986,13 +1064,16 @@ def main():
                         print(f"Warning: --single-test '{test_spec}' - '{test_type}' is not a valid session test type", file=sys.stderr)
                 else:
                     # Type_mode test with possible wildcards
-                    matched = False
-                    for test_type, test_mode in ALL_TESTS:
-                        if matches_pattern(test_type, test_mode, test_spec):
-                            if ('typemode', test_type, test_mode) not in tests_to_run:
-                                tests_to_run.append(('typemode', test_type, test_mode))
-                            matched = True
-                    if not matched and '*' not in test_spec:
+                    matching_tests = [
+                        ('typemode', t, m) for t, m in ALL_TESTS
+                        if matches_pattern(t, m, test_spec)
+                    ]
+                    # Add unique matches
+                    for test in matching_tests:
+                        if test not in tests_to_run:
+                            tests_to_run.append(test)
+                    # Warn if no matches and not a wildcard pattern
+                    if not matching_tests and '*' not in test_spec:
                         print(f"Warning: --single-test '{test_spec}' did not match any tests", file=sys.stderr)
         else:
             # Handle --run-* flags
@@ -1004,9 +1085,7 @@ def main():
                 elif args.resource_manager == 'flux':
                     tests_to_run.extend([('typemode', t, m) for t, m in ALL_TESTS])
                     # Add session tests with generated session numbers
-                    for test_type in SESSION_TEST_TYPES:
-                        tests_to_run.append(('session', test_type, session_counter))
-                        session_counter += 1
+                    session_counter = add_session_tests(session_counter)
             else:
                 # Individual flags
                 if args.run_typemode_tests:
@@ -1049,31 +1128,16 @@ def main():
                     test_name = f"{test_type}_{test_mode}"
                     test_start_time = time.time()
 
-                    # Create directories
-                    debug_dir = os.path.join(testsuite_dir, 'debug')
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    # Create test directory
+                    temp_dir, timestamp = create_test_dir(args, testsuite_dir, iteration, test_name)
 
-                    # For Flux, use log-dir if specified; for serial, use local debug dir
-                    if args.resource_manager == 'flux' and args.log_dir:
-                        temp_dir = os.path.join(args.log_dir, f'temp_{iteration}_{test_name}_{timestamp}')
-                    else:
-                        temp_dir = os.path.join(debug_dir, f'temp_{iteration}_{test_name}_{timestamp}')
-
-                    os.makedirs(temp_dir, exist_ok=True)
-
-                    # Print the "Running:" message BEFORE any output redirection for real-time visibility
+                    # Print status message before capturing output
                     print(f"Running: ./run_driver --{test_type} --{test_mode}")
                     sys.stdout.flush()
 
-                    # Set up log capture
+                    # Run test with log capture
                     runtest_log_path = os.path.join(temp_dir, 'runtest.log')
-                    log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
-                    old_stdout = sys.stdout
-                    old_stderr = sys.stderr
-                    sys.stdout = log_capture
-                    sys.stderr = log_capture
-
-                    try:
+                    with TeeOutput(runtest_log_path, verbose=args.verbose):
                         # Run test with appropriate resource manager
                         if args.resource_manager == 'serial':
                             returncode, log_dir = run_serial_test(args, env, testsuite_dir, test_type, test_mode, temp_dir)
@@ -1084,47 +1148,23 @@ def main():
                             returncode = 1
                             log_dir = temp_dir
 
-                        if returncode != 0:
-                            global_result = -1
+                    if returncode != 0:
+                        global_result = -1
 
-                    finally:
-                        # Restore stdout/stderr
-                        sys.stdout = old_stdout
-                        sys.stderr = old_stderr
-                        log_capture.close()
-
-                    # Rename directory to include return code and iteration
-                    final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{iteration}_{test_name}_{timestamp}')
-                    if os.path.exists(temp_dir):
-                        os.rename(temp_dir, final_dir)
-                    elif log_dir != temp_dir:
-                        # Flux may have created the dir directly
-                        final_dir = log_dir
+                    # Finalize directory naming
+                    final_dir = finalize_test_dir(log_dir, returncode, iteration, test_name, timestamp)
 
                     # Move spindle_output files if they exist (serial only)
                     if args.resource_manager == 'serial':
                         spindle_outputs = glob.glob(os.path.join(testsuite_dir, 'spindle_output*'))
-                        if spindle_outputs:
-                            for output_file in spindle_outputs:
-                                filename = os.path.basename(output_file)
-                                dest = os.path.join(final_dir, filename)
-                                if os.path.exists(output_file):
-                                    os.rename(output_file, dest)
+                        for output_file in spindle_outputs:
+                            if os.path.exists(output_file):
+                                dest = os.path.join(final_dir, os.path.basename(output_file))
+                                os.rename(output_file, dest)
 
-                    # Calculate test duration
+                    # Handle test completion
                     test_duration = time.time() - test_start_time
-
-                    # Handle log preservation based on success/failure
-                    if returncode == 0:
-                        print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
-                        # Delete logs for successful runs unless explicitly preserving
-                        if not args.preserve_logs_on_success and os.path.exists(final_dir):
-                            shutil.rmtree(final_dir)
-                    else:
-                        print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
-                        # Stop at first failure unless explicitly continuing
-                        if not args.continue_after_failure:
-                            sys.exit(returncode)
+                    handle_test_completion(test_name, returncode, test_duration, final_dir, args)
 
                 elif test_item[0] == 'serial':
                     # Serial-exec test (e.g., ./spindle_exec_test)
@@ -1132,68 +1172,34 @@ def main():
                     test_name = f"serial_{os.path.basename(test_executable)}"
                     test_start_time = time.time()
 
-                    # Create directories (serial tests are always local)
-                    debug_dir = os.path.join(testsuite_dir, 'debug')
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    temp_dir = os.path.join(debug_dir, f'temp_{iteration}_{test_name}_{timestamp}')
-                    os.makedirs(temp_dir, exist_ok=True)
+                    # Create test directory
+                    temp_dir, timestamp = create_test_dir(args, testsuite_dir, iteration, test_name)
 
-                    # Print the "Running:" message BEFORE any output redirection for real-time visibility
+                    # Print status message before capturing output
                     print(f"Running: {test_executable}")
                     sys.stdout.flush()
 
-                    # Set up log capture
+                    # Run test with log capture
                     runtest_log_path = os.path.join(temp_dir, 'runtest.log')
-                    log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
-                    old_stdout = sys.stdout
-                    old_stderr = sys.stderr
-                    sys.stdout = log_capture
-                    sys.stderr = log_capture
-
-                    try:
-
-                        # Run serial-exec test
+                    with TeeOutput(runtest_log_path, verbose=args.verbose):
                         returncode, log_dir = run_serial_exec_test(args, env, testsuite_dir, test_executable, temp_dir)
 
-                        if returncode != 0:
-                            global_result = -1
+                    if returncode != 0:
+                        global_result = -1
 
-                    finally:
-                        # Restore stdout/stderr
-                        sys.stdout = old_stdout
-                        sys.stderr = old_stderr
-                        log_capture.close()
-
-                    # Rename directory to include return code and iteration
-                    final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{iteration}_{test_name}_{timestamp}')
-                    if os.path.exists(temp_dir):
-                        os.rename(temp_dir, final_dir)
-                    elif log_dir != temp_dir:
-                        final_dir = log_dir
+                    # Finalize directory naming
+                    final_dir = finalize_test_dir(log_dir, returncode, iteration, test_name, timestamp)
 
                     # Move spindle_output files if they exist
                     spindle_outputs = glob.glob(os.path.join(testsuite_dir, 'spindle_output*'))
-                    if spindle_outputs:
-                        for output_file in spindle_outputs:
-                            filename = os.path.basename(output_file)
-                            dest = os.path.join(final_dir, filename)
-                            if os.path.exists(output_file):
-                                os.rename(output_file, dest)
+                    for output_file in spindle_outputs:
+                        if os.path.exists(output_file):
+                            dest = os.path.join(final_dir, os.path.basename(output_file))
+                            os.rename(output_file, dest)
 
-                    # Calculate test duration
+                    # Handle test completion
                     test_duration = time.time() - test_start_time
-
-                    # Handle log preservation based on success/failure
-                    if returncode == 0:
-                        print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
-                        # Delete logs for successful runs unless explicitly preserving
-                        if not args.preserve_logs_on_success and os.path.exists(final_dir):
-                            shutil.rmtree(final_dir)
-                    else:
-                        print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
-                        # Stop at first failure unless explicitly continuing
-                        if not args.continue_after_failure:
-                            sys.exit(returncode)
+                    handle_test_completion(test_name, returncode, test_duration, final_dir, args)
 
                 elif test_item[0] == 'session':
                     # Session test (e.g., dependency_session)
@@ -1202,63 +1208,27 @@ def main():
                     test_name = f"{test_type}_session_{session_num}"
                     test_start_time = time.time()
 
-                    # Create directories (use log-dir if specified, otherwise debug dir)
-                    debug_dir = os.path.join(testsuite_dir, 'debug')
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    if args.log_dir:
-                        temp_dir = os.path.join(args.log_dir, f'temp_{iteration}_{test_name}_{timestamp}')
-                    else:
-                        temp_dir = os.path.join(debug_dir, f'temp_{iteration}_{test_name}_{timestamp}')
-                    os.makedirs(temp_dir, exist_ok=True)
+                    # Create test directory
+                    temp_dir, timestamp = create_test_dir(args, testsuite_dir, iteration, test_name)
 
-                    # Print the "Running:" message BEFORE any output redirection for real-time visibility
+                    # Print status message before capturing output
                     print(f"Running: ./run_driver --{test_type} --session (session {session_num})")
                     sys.stdout.flush()
 
-                    # Set up log capture
+                    # Run test with log capture
                     runtest_log_path = os.path.join(temp_dir, 'runtest.log')
-                    log_capture = TeeOutput(runtest_log_path, verbose=args.verbose)
-                    old_stdout = sys.stdout
-                    old_stderr = sys.stderr
-                    sys.stdout = log_capture
-                    sys.stderr = log_capture
-
-                    try:
-
-                        # Run session test (only Flux supported)
+                    with TeeOutput(runtest_log_path, verbose=args.verbose):
                         returncode, log_dir = run_flux_session_test(args, env, testsuite_dir, test_type, session_num, temp_dir)
 
-                        if returncode != 0:
-                            global_result = -1
+                    if returncode != 0:
+                        global_result = -1
 
-                    finally:
-                        # Restore stdout/stderr
-                        sys.stdout = old_stdout
-                        sys.stderr = old_stderr
-                        log_capture.close()
+                    # Finalize directory naming
+                    final_dir = finalize_test_dir(log_dir, returncode, iteration, test_name, timestamp)
 
-                    # Rename directory to include return code and iteration
-                    final_dir = os.path.join(os.path.dirname(temp_dir), f'{returncode}_{iteration}_{test_name}_{timestamp}')
-                    if os.path.exists(temp_dir):
-                        os.rename(temp_dir, final_dir)
-                    elif log_dir != temp_dir:
-                        # Flux may have created the dir directly
-                        final_dir = log_dir
-
-                    # Calculate test duration
+                    # Handle test completion
                     test_duration = time.time() - test_start_time
-
-                    # Handle log preservation based on success/failure
-                    if returncode == 0:
-                        print(f"Test {test_name} PASSED ({test_duration:.1f}s)")
-                        # Delete logs for successful runs unless explicitly preserving
-                        if not args.preserve_logs_on_success and os.path.exists(final_dir):
-                            shutil.rmtree(final_dir)
-                    else:
-                        print(f"Test {test_name} FAILED ({test_duration:.1f}s)")
-                        # Stop at first failure unless explicitly continuing
-                        if not args.continue_after_failure:
-                            sys.exit(returncode)
+                    handle_test_completion(test_name, returncode, test_duration, final_dir, args)
 
         # Print final status
         if global_result == 0:
