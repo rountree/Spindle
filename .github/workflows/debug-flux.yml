@@ -92,6 +92,7 @@ jobs:
           --time-limit=1m \
           --spindle-debug=3 \
           --preserve-logs-on-success \
+          --log-dir=/shared-logs \
           --single-test=dependency_push \
           --verbose'
 
