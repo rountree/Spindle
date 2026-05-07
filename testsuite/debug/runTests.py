@@ -569,7 +569,6 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
         '-t', args.time_limit,
         '--nodes', str(args.num_nodes),
         '--tasks-per-node', str(args.tasks_per_node),
-        '--cwd', testsuite_dir,  # Set job working directory so spindle.rc can be found
     ])
 
     # Add the command and args
