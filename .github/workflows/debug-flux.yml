@@ -93,7 +93,6 @@ jobs:
           --spindle-debug=3 \
           --preserve-logs-on-success \
           --single-test=dependency_push \
-          --version \
           --verbose'
 
       - name: Copy debug logs from shared filesystem
