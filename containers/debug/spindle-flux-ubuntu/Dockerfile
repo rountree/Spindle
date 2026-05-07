@@ -39,6 +39,11 @@ RUN ./build_spindle.sh
 COPY ${CONFIG_ROOT}/scripts/flux_healthcheck.sh ./
 COPY ${CONFIG_ROOT}/scripts/entrypoint.sh ./
 ENV PATH /home/${USER}/Spindle-inst/bin:${PATH}
+# Set PYTHONPATH to include Flux Python modules
+# Base image (fluxrm/flux-sched:noble = Ubuntu 24.04) uses Python 3.12
+# Flux installs Python modules in /usr/lib64/flux/python3.12/
+# If base image changes, update this path to match the Python version
+ENV PYTHONPATH /usr/lib64/flux/python3.12:${PYTHONPATH}
 # Make libfabric work with fork.
 ENV RDMAV_FORK_SAFE 1
 # Silence warning from hwloc about unsupported PCI device
