@@ -3,6 +3,9 @@
 Spindle test runner with integrated debugging support.
 """
 
+# Version number - IMPORTANT: Bump this with every change!
+__version__ = "1.0.0"
+
 import argparse
 import fnmatch
 import glob
@@ -720,6 +723,11 @@ flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
 def main():
     parser = argparse.ArgumentParser(
         description='Run Spindle tests with optional debugging features'
+    )
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
     )
     parser.add_argument(
         '--dry-run',
