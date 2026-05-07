@@ -544,62 +544,49 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
         sys.stdout.flush()
         sys.stderr.flush()
 
-    try:
-        handle = flux.Flux()
+    # Build flux run command using --tasks-per-node for over-subscription
+    # This avoids Python API issues with userrc shell options
+    flux_cmd = ['flux', 'run']
 
-        # Create jobspec using per_resource() to enable tasks-per-node scheduling
-        # This mimics flux run --tasks-per-node behavior and allows over-subscription
-        # ncores=num_nodes creates minimal allocation (1 core per node)
-        # per_resource_count tells shell to run tasks_per_node tasks per node
-        jobspec = flux.job.JobspecV1.per_resource(
-            command=command,
-            nnodes=args.num_nodes,
-            ncores=args.num_nodes,  # Minimal: 1 core per node
-            per_resource_type="node",
-            per_resource_count=args.tasks_per_node,
-            duration=args.time_limit,
-            cwd=testsuite_dir,
-        )
+    # Set LD_PRELOAD if needed for ldpreload/preload tests
+    if test_type == 'ldpreload' or test_mode == 'preload':
+        if 'LIBRARY_LIST' in env:
+            flux_cmd.extend([f'--env=LD_PRELOAD={env["LIBRARY_LIST"]}'])
 
-        # Set environment variables (includes SPINDLE-related vars)
-        jobspec.environment = dict(env)
+    # Spindle shell options
+    flux_cmd.extend(['-o', 'userrc=spindle.rc', '-o', 'spindle.level=high'])
 
-        # Set Spindle shell options
-        jobspec.setattr_shell_option('userrc', 'spindle.rc')
-        jobspec.setattr_shell_option('spindle.level', 'high')
+    # Spindle mode-specific options
+    spindle_modes = ['push', 'pull', 'numa', 'preload']
+    if test_mode in spindle_modes:
+        if test_mode == 'preload':
+            flux_cmd.extend(['-o', 'spindle.preload=preload_file_list'])
+        else:
+            flux_cmd.extend(['-o', f'spindle.{test_mode}'])
 
-        # Set Spindle mode-specific options
-        spindle_modes = ['push', 'pull', 'numa', 'preload']
-        if test_mode in spindle_modes:
-            if test_mode == 'preload':
-                jobspec.setattr_shell_option('spindle.preload', 'preload_file_list')
-            else:
-                jobspec.setattr_shell_option(f'spindle.{test_mode}', True)
+    # Resource specification using --tasks-per-node for over-subscription
+    flux_cmd.extend([
+        '-t', args.time_limit,
+        '--nodes', str(args.num_nodes),
+        '--tasks-per-node', str(args.tasks_per_node),
+    ])
 
-        if args.verbose:
-            print("Submitting job to Flux...")
-            sys.stdout.flush()
+    # Add the command and args
+    flux_cmd.extend(command)
 
-        # Submit job with waitable=True so we can wait for it
-        jobid = flux.job.submit(handle, jobspec, waitable=True)
+    if args.verbose:
+        print(f"Flux command: {' '.join(flux_cmd)}")
+        sys.stdout.flush()
 
-        if args.verbose:
-            print(f"Job submitted: {jobid}")
-            print("Waiting for job to complete...")
-            sys.stdout.flush()
+    # Run the flux command
+    result = subprocess.run(
+        flux_cmd,
+        env=env,
+        cwd=testsuite_dir,
+        capture_output=False,
+    )
 
-        # Wait for job completion
-        returncode = flux.job.wait(handle, jobid)
-
-        if args.verbose:
-            print(f"Job completed with return code: {returncode}")
-            sys.stdout.flush()
-
-    except Exception as e:
-        print(f"ERROR running Flux job: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
-        returncode = 1
+    returncode = result.returncode
 
     # Collect logs from all nodes to shared filesystem
     if args.verbose:
