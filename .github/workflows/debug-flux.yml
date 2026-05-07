@@ -2,6 +2,55 @@ name: debug-flux
 
 on:
   workflow_dispatch:
+    inputs:
+      num_nodes:
+        description: 'Number of nodes (1-32)'
+        required: true
+        default: 32
+        type: number
+      tasks_per_node:
+        description: 'Tasks per node (1-8)'
+        required: true
+        default: 3
+        type: number
+      reps:
+        description: 'Number of repetitions'
+        required: true
+        default: 50
+        type: number
+      timeout_minutes:
+        description: 'Workflow timeout in minutes (max 360)'
+        required: true
+        default: 120
+        type: number
+      flux_interface:
+        description: 'Flux interface to use'
+        required: true
+        default: 'API'
+        type: choice
+        options:
+          - API
+          - CLI
+      single_test:
+        description: 'Test to run (e.g., dependency_push, or * for all)'
+        required: false
+        default: 'dependency_push'
+        type: string
+      spindle_debug:
+        description: 'SPINDLE_DEBUG level (0-3)'
+        required: true
+        default: 3
+        type: choice
+        options:
+          - '0'
+          - '1'
+          - '2'
+          - '3'
+      preserve_logs:
+        description: 'Preserve logs on success'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -13,16 +62,41 @@ concurrency:
 
 jobs:
   spindle-debug-flux:
-    name: Debug Testsuite (Flux, Ubuntu)
+    name: Debug Flux - ${{ inputs.num_nodes }}n × ${{ inputs.tasks_per_node }}t × ${{ inputs.reps }}r
     environment: Spindle CI
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     env:
-      NUM_NODES: 32
-      TASKS_PER_NODE: 3
+      NUM_NODES: ${{ inputs.num_nodes }}
+      TASKS_PER_NODE: ${{ inputs.tasks_per_node }}
     steps:
       - name: Check out Spindle
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Record workflow configuration
+        run: |
+          cat > workflow-config.txt << EOF
+          Workflow: ${{ github.workflow }}
+          Run ID: ${{ github.run_id }}
+          Run Number: ${{ github.run_number }}
+          Triggered by: ${{ github.actor }}
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref_name }}
+          Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          Input Parameters:
+            num_nodes: ${{ inputs.num_nodes }}
+            tasks_per_node: ${{ inputs.tasks_per_node }}
+            reps: ${{ inputs.reps }}
+            timeout_minutes: ${{ inputs.timeout_minutes }}
+            flux_interface: ${{ inputs.flux_interface }}
+            single_test: ${{ inputs.single_test }}
+            spindle_debug: ${{ inputs.spindle_debug }}
+            preserve_logs: ${{ inputs.preserve_logs }}
+          EOF
+
+          echo "=== Workflow Configuration ==="
+          cat workflow-config.txt
 
       - name: Setup Docker Compose
         uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
@@ -83,18 +157,35 @@ jobs:
       - name: Run spindle-debug-flux testsuite
         id: debug-flux-testsuite
         run: |
+          # Create metadata file in container
+          docker exec node-1 bash -c "cat > /shared-logs/test-metadata.txt << 'EOF'
+          Test Configuration:
+            Resource Manager: flux
+            Interface: ${{ inputs.flux_interface }}
+            Nodes: ${{ inputs.num_nodes }}
+            Tasks per node: ${{ inputs.tasks_per_node }}
+            Repetitions: ${{ inputs.reps }}
+            Test: ${{ inputs.single_test }}
+            Spindle Debug Level: ${{ inputs.spindle_debug }}
+            Preserve Logs: ${{ inputs.preserve_logs }}
+            Workflow Run: ${{ github.run_id }}
+            Commit: ${{ github.sha }}
+          EOF
+          "
+
+          # Run tests
           docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && \
           ./runTests.py \
           --resource-manager=flux \
-          --flux-interface=API \
-          --num-nodes=${{ env.NUM_NODES }} \
-          --tasks-per-node=${{ env.TASKS_PER_NODE }} \
+          --flux-interface=${{ inputs.flux_interface }} \
+          --num-nodes=${{ inputs.num_nodes }} \
+          --tasks-per-node=${{ inputs.tasks_per_node }} \
+          --reps=${{ inputs.reps }} \
           --time-limit=1m \
-          --spindle-debug=3 \
-          --preserve-logs-on-success \
+          --spindle-debug=${{ inputs.spindle_debug }} \
+          ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
           --log-dir=/shared-logs \
-          --single-test=dependency_push \
-          --reps=50 \
+          ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
           --verbose'
 
       - name: Copy debug logs from shared filesystem
@@ -103,7 +194,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p debug-logs
-          # With --no-shared-filesystem, logs are in the shared volume
+          # Copy workflow configuration
+          cp workflow-config.txt debug-logs/ || true
+          # Copy logs from shared volume
           docker cp node-1:/shared-logs/. debug-logs/ || true
 
       - name: Set short SHA
@@ -116,7 +209,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: debug-flux-logs-${{ github.run_number }}-${{ steps.short-sha.outputs.sha_short }}
+          name: debug-flux-n${{ inputs.num_nodes }}-t${{ inputs.tasks_per_node }}-r${{ inputs.reps }}-${{ github.run_number }}-${{ steps.short-sha.outputs.sha_short }}
           path: debug-logs/
           if-no-files-found: ignore
           retention-days: 7
