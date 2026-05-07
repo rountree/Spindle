@@ -62,13 +62,13 @@ concurrency:
 
 jobs:
   spindle-debug-flux:
-    name: Debug Flux - ${{ inputs.num_nodes }}n × ${{ inputs.tasks_per_node }}t × ${{ inputs.reps }}r
+    name: Debug Flux - ${{ inputs.num_nodes || 32 }}n × ${{ inputs.tasks_per_node || 3 }}t × ${{ inputs.reps || 50 }}r
     environment: Spindle CI
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.timeout_minutes }}
+    timeout-minutes: ${{ fromJSON(inputs.timeout_minutes || '120') }}
     env:
-      NUM_NODES: ${{ inputs.num_nodes }}
-      TASKS_PER_NODE: ${{ inputs.tasks_per_node }}
+      NUM_NODES: ${{ inputs.num_nodes || 32 }}
+      TASKS_PER_NODE: ${{ inputs.tasks_per_node || 3 }}
     steps:
       - name: Check out Spindle
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
