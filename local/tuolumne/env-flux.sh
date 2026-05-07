@@ -1,9 +1,12 @@
 # For now, these are common across versions.
 
+# For flux
+PYTHONPATH=/usr/lib64/flux/python3.12:${PYTHONPATH}
+
 # Only used for path construction (bottom of this file)
-ROOT=/p/vast1/rountree/machines/${LCSCHEDCLUSTER}/claude/Spindle
-export SPINDLE_REPO=${ROOT}
-export SPINDLE_SCRIPTS=${SPINDLE_REPO}/local/${LCSCHEDCLUSTER}
+ROOT=/p/vast1/rountree/machines/tuolumne/claude/Spindle
+export SPINDLE_REPO=/p/vast1/rountree/machines/tuolumne/claude/Spindle
+export SPINDLE_SCRIPTS=${SPINDLE_REPO}/local/tuolumne
 export TEST_RESOURCE_MANAGER=flux
 
 # Get the current branch and commit
@@ -19,9 +22,8 @@ fi
 cd - > /dev/null
 
 # Sets build, patch, and install directories
-export SPINDLE_BUILD=${ROOT}/build/Spindle-${SPINDLE_TAG}-${TEST_RESOURCE_MANAGER}
-export SPINDLE_INSTALL=${ROOT}/install/Spindle-${SPINDLE_TAG}
-export SPINDLE_PATCHES=${ROOT}/patches/Spindle-${SPINDLE_TAG}
+export SPINDLE_BUILD=${ROOT}/build/${LCSCHEDCLUSTER}/Spindle-${SPINDLE_TAG}-${TEST_RESOURCE_MANAGER}
+export SPINDLE_INSTALL=${ROOT}/install/${LCSCHEDCLUSTER}/Spindle-${SPINDLE_TAG}
 
 # Prevents flux from using the system spindle.
 export SPINDLE_FLUXOPT=disable
