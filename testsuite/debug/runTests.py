@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 import argparse
 import fnmatch
@@ -730,53 +730,19 @@ def main():
         version=f'%(prog)s {__version__}'
     )
     parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Print commands that would be run without executing them'
-    )
-    parser.add_argument(
-        '--spindle-debug',
-        type=int,
-        choices=[0, 1, 2, 3],
-        help='Set SPINDLE_DEBUG level'
-    )
-    parser.add_argument(
-        '--verbose',
-        action='store_true',
-        help='Print command and environment variables'
-    )
-    parser.add_argument(
-        '--preserve-logs-on-success',
-        action='store_true',
-        help='Keep log directories from successful test runs (default: delete them)'
-    )
-    parser.add_argument(
         '--continue-after-failure',
         action='store_true',
         help='Continue running tests after a failure (default: stop at first failure)'
     )
     parser.add_argument(
-        '--resource-manager',
-        choices=['serial', 'flux'],
-        default='serial',
-        help='Resource manager to use (serial, flux)'
+        '--dry-run',
+        action='store_true',
+        help='Print commands that would be run without executing them'
     )
     parser.add_argument(
-        '--num-nodes',
-        type=int,
-        default=1,
-        help='Number of nodes to allocate (flux)'
-    )
-    parser.add_argument(
-        '--tasks-per-node',
-        type=int,
-        default=1,
-        help='Number of tasks per node (flux)'
-    )
-    parser.add_argument(
-        '--time-limit',
-        default='20s',
-        help='Time limit PER TEST, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
+        '--enable-dmesg-collection',
+        action='store_true',
+        help='Enable collection of dmesg output (requires sufficient permissions)'
     )
     parser.add_argument(
         '--flux-interface',
@@ -785,14 +751,51 @@ def main():
         help='Interface to use with Flux: API (Python API) or CLI (command-line, default). Only valid with --resource-manager=flux.'
     )
     parser.add_argument(
-        '--run-typemode-tests',
-        action='store_true',
-        help='Run all type_mode tests (56 tests: 8 types × 7 modes)'
+        '--ignore-test',
+        metavar='TYPE_MODE',
+        action='append',
+        help='Ignore specific test(s). Same wildcard format as --single-test. '
+             'Can be specified multiple times.'
     )
     parser.add_argument(
-        '--run-session-tests',
+        '--list-available-tests',
         action='store_true',
-        help='Run all session tests (requires flux RM)'
+        help='List all available tests and exit'
+    )
+    parser.add_argument(
+        '--log-dir',
+        type=str,
+        default=None,
+        help='Base directory for test logs (default: current directory when --preserve-logs-on-success is used)'
+    )
+    parser.add_argument(
+        '--num-nodes',
+        type=int,
+        default=1,
+        help='Number of nodes to allocate (flux)'
+    )
+    parser.add_argument(
+        '--preserve-logs-on-success',
+        action='store_true',
+        help='Keep log directories from successful test runs (default: delete them)'
+    )
+    parser.add_argument(
+        '--reps',
+        type=int,
+        default=1,
+        metavar='N',
+        help='Repeat all requested tests N times (must be positive integer)'
+    )
+    parser.add_argument(
+        '--resource-manager',
+        choices=['serial', 'flux'],
+        default='serial',
+        help='Resource manager to use (serial, flux)'
+    )
+    parser.add_argument(
+        '--run-all-tests',
+        action='store_true',
+        help='Run all tests appropriate for the selected resource manager'
     )
     parser.add_argument(
         '--run-serial-tests',
@@ -800,9 +803,14 @@ def main():
         help='Run all serial-exec tests (spindle_exec_test, symbind_test, interpreter_test) - requires serial RM'
     )
     parser.add_argument(
-        '--run-all-tests',
+        '--run-session-tests',
         action='store_true',
-        help='Run all tests appropriate for the selected resource manager'
+        help='Run all session tests (requires flux RM)'
+    )
+    parser.add_argument(
+        '--run-typemode-tests',
+        action='store_true',
+        help='Run all type_mode tests (56 tests: 8 types × 7 modes)'
     )
     parser.add_argument(
         '--single-test',
@@ -816,37 +824,33 @@ def main():
              'Can be specified multiple times.'
     )
     parser.add_argument(
-        '--ignore-test',
-        metavar='TYPE_MODE',
-        action='append',
-        help='Ignore specific test(s). Same wildcard format as --single-test. '
-             'Can be specified multiple times.'
+        '--spindle-debug',
+        type=int,
+        choices=[0, 1, 2, 3],
+        help='Set SPINDLE_DEBUG level'
     )
     parser.add_argument(
-        '--reps',
+        '--tasks-per-node',
         type=int,
         default=1,
-        metavar='N',
-        help='Repeat all requested tests N times (must be positive integer)'
+        help='Number of tasks per node (flux)'
     )
     parser.add_argument(
-        '--enable-dmesg-collection',
+        '--time-limit',
+        default='20s',
+        help='Time limit PER TEST, e.g., "5m", "30s" (flux). Accepts Flux duration format.'
+    )
+    parser.add_argument(
+        '--verbose',
         action='store_true',
-        help='Enable collection of dmesg output (requires sufficient permissions)'
-    )
-    parser.add_argument(
-        '--list-available-tests',
-        action='store_true',
-        help='List all available tests and exit'
-    )
-    parser.add_argument(
-        '--log-dir',
-        type=str,
-        default=None,
-        help='Base directory for test logs (default: current directory when --preserve-logs-on-success is used)'
+        help='Print command and environment variables. Also prints version at startup.'
     )
 
     args = parser.parse_args()
+
+    # Print version if verbose
+    if args.verbose:
+        print(f"runTests.py version {__version__}")
 
     # Handle --list-available-tests
     if args.list_available_tests:
