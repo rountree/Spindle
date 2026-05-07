@@ -55,14 +55,11 @@ jobs:
           docker compose ps -a
           echo "=== Node-1 broker.toml ==="
           docker run --rm spindle-flux-ubuntu:latest cat /etc/flux/config/broker.toml || true
-          echo "=== Node-1 logs ==="
-          docker logs node-1 || true
-          echo "=== Node-2 logs ==="
-          docker logs node-2 || true
-          echo "=== Node-3 logs ==="
-          docker logs node-3 || true
-          echo "=== Node-4 logs ==="
-          docker logs node-4 || true
+          echo "=== Dumping logs for all ${{ env.NUM_NODES }} nodes ==="
+          for i in $(seq 1 ${{ env.NUM_NODES }}); do
+            echo "=== Node-${i} logs ==="
+            docker logs node-${i} || true
+          done
 
       - name: Verify munge works in spindle-debug-flux
         id: debug-flux-munge
