@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 import argparse
 import fnmatch
@@ -650,7 +650,14 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
             )
 
             # Set environment variables
-            jobspec.environment = dict(env)
+            job_env = dict(env)
+
+            # Set LD_PRELOAD if needed for ldpreload/preload tests
+            if test_type == 'ldpreload' or test_mode == 'preload':
+                if 'LIBRARY_LIST' in env:
+                    job_env['LD_PRELOAD'] = env['LIBRARY_LIST']
+
+            jobspec.environment = job_env
 
             # Set Spindle shell options
             jobspec.setattr_shell_option('userrc', 'spindle.rc')
