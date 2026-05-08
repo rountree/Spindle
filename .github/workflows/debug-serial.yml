@@ -37,6 +37,18 @@ jobs:
         run: |
           cd containers/debug/spindle-serial-ubuntu
           docker compose up -d
+          # Give munged time to start
+          sleep 2
+
+      - name: Verify munged is running
+        id: debug-serial-munge
+        run: |
+          echo "=== Checking munged process ==="
+          docker exec spindlenode ps aux | grep munge || true
+          echo "=== Checking munge socket ==="
+          docker exec spindlenode ls -la /run/munge/ || true
+          echo "=== Testing munge ==="
+          docker exec spindlenode bash -c 'munge -n | unmunge' || echo "Munge test failed"
 
       - name: Run spindle-debug-serial testsuite
         id: debug-serial-testsuite
