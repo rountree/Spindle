@@ -52,21 +52,20 @@ ENV LANG=en_US.UTF-8 \
 # Environment variables
 ENV HWLOC_COMPONENTS=-gl
 
-# Set up munge directories and key
+# Set up munge directories
+# Note: munge package installs with a default key, so we don't generate one
 RUN mkdir -p /run/munge && \
     chown munge:munge /run/munge && \
-    chmod 0755 /run/munge && \
-    dd if=/dev/urandom bs=1 count=1024 > /etc/munge/munge.key && \
-    chown munge:munge /etc/munge/munge.key && \
-    chmod 0400 /etc/munge/munge.key
+    chmod 0755 /run/munge
 
 ARG USER=spindleuser
 ARG UID=1001
 ARG GID=1001
 
-# Create user
+# Create user with sudo access (needed to start munged)
 RUN groupadd -f -g ${GID} ${USER} && \
-    useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USER}
+    useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USER} && \
+    sh -c "printf \"${USER} ALL=(ALL) NOPASSWD: ALL\\n\" >> /etc/sudoers"
 
 WORKDIR /home/${USER}
 USER ${USER}

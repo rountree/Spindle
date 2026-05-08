@@ -3,10 +3,6 @@ FROM ghcr.io/rountree/spindle-serial-base:latest
 ARG USER=spindleuser
 ARG BUILD_ROOT=./containers/debug/spindle-serial-ubuntu
 
-# Allow user to run as other users so it can start munged (like flux container)
-USER root
-RUN sh -c "printf \"${USER} ALL=(ALL) NOPASSWD: ALL\\n\" >> /etc/sudoers"
-
 USER ${USER}
 WORKDIR /home/${USER}
 RUN mkdir -p /home/${USER}/Spindle
