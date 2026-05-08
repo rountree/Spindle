@@ -52,10 +52,13 @@ ENV LANG=en_US.UTF-8 \
 # Environment variables
 ENV HWLOC_COMPONENTS=-gl
 
-# Set up munge directories
+# Set up munge directories and key
 RUN mkdir -p /run/munge && \
     chown munge:munge /run/munge && \
-    chmod 0755 /run/munge
+    chmod 0755 /run/munge && \
+    dd if=/dev/urandom bs=1 count=1024 > /etc/munge/munge.key && \
+    chown munge:munge /etc/munge/munge.key && \
+    chmod 0400 /etc/munge/munge.key
 
 ARG USER=spindleuser
 ARG UID=1001

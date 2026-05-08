@@ -1,4 +1,10 @@
-printf "\nStarting munged\n"
+#!/bin/bash
 
-sudo -u munge /usr/sbin/munged --foreground
+# Start munged in background
+echo "Starting munged..."
+sudo -u munge /usr/sbin/munged
+
+# Keep container running
+echo "Container ready. Keeping alive..."
+sleep infinity
 
