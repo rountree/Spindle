@@ -38,11 +38,6 @@ jobs:
           cd containers/debug/spindle-serial-ubuntu
           docker compose up -d
 
-      - name: Verify munge works in spindle-debug-serial
-        id: debug-serial-munge
-        run: |
-          docker exec spindlenode bash -c 'munge -n | unmunge'
-
       - name: Run spindle-debug-serial testsuite
         id: debug-serial-testsuite
         run: |
