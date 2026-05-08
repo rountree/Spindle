@@ -40,6 +40,15 @@ jobs:
           # Give munged time to start
           sleep 2
 
+      - name: Check container status and logs
+        id: debug-serial-status
+        if: always()
+        run: |
+          echo "=== Container status ==="
+          docker ps -a | grep spindlenode || true
+          echo "=== Container logs ==="
+          docker logs spindlenode || true
+
       - name: Verify munged is running
         id: debug-serial-munge
         run: |
