@@ -529,7 +529,7 @@ flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
 
         # Add dmesg collection if enabled
         if args.enable_dmesg_collection:
-            collection_cmd += """dmesg > $target_dir/dmesg.log 2>&1 || \\
+            collection_cmd += """sudo dmesg > $target_dir/dmesg.log 2>&1 || \\
     echo "Warning: Could not capture dmesg from $(hostname)" >&2
 """
 
@@ -779,7 +779,7 @@ flux dmesg > $target_dir/flux-dmesg.log 2>&1 || \\
 
     # Add dmesg collection if enabled
     if args.enable_dmesg_collection:
-        collection_cmd += """dmesg > $target_dir/dmesg.log 2>&1 || \\
+        collection_cmd += """sudo dmesg > $target_dir/dmesg.log 2>&1 || \\
     echo "Warning: Could not capture dmesg from $(hostname)" >&2
 """
 
@@ -1014,14 +1014,14 @@ def main():
     # Check dmesg permissions if requested
     if args.enable_dmesg_collection:
         try:
-            result = subprocess.run('dmesg', capture_output=True, timeout=5)
+            result = subprocess.run(['sudo', 'dmesg'], capture_output=True, timeout=5)
             if result.returncode != 0:
-                parser.error("--enable-dmesg-collection requires permission to run 'dmesg'. "
+                parser.error("--enable-dmesg-collection requires permission to run 'sudo dmesg'. "
                            "Error: " + result.stderr.decode())
         except subprocess.TimeoutExpired:
-            parser.error("--enable-dmesg-collection: 'dmesg' command timed out")
+            parser.error("--enable-dmesg-collection: 'sudo dmesg' command timed out")
         except FileNotFoundError:
-            parser.error("--enable-dmesg-collection: 'dmesg' command not found")
+            parser.error("--enable-dmesg-collection: 'sudo' or 'dmesg' command not found")
 
     if args.dry_run:
         print(f"Resource manager: {args.resource_manager}")
