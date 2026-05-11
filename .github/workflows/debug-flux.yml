@@ -214,6 +214,7 @@ jobs:
 
           # Loop iterations with Flux restart
           cd containers/debug/spindle-flux-ubuntu
+          FAILURE_ITERATION=""
           for i in $(seq 1 ${{ inputs.reps }}); do
             echo "=== Iteration $i/${{ inputs.reps }} ==="
             echo "Starting Flux cluster..."
@@ -242,14 +243,11 @@ jobs:
               echo "Test iteration $i passed"
             else
               echo "Test iteration $i failed (exit code: $?)"
-              # Copy logs before potentially exiting
-              mkdir -p ../../../debug-logs/iteration_${i}
-              docker cp node-1:/shared-logs/iteration_${i}/. ../../../debug-logs/iteration_${i}/ || true
+              FAILURE_ITERATION=$i
               # Stop if continue_on_failure is false
               if [ "${{ inputs.continue_on_failure }}" != "true" ]; then
                 echo "Stopping due to test failure (continue_on_failure=false)"
-                docker compose down
-                exit 1
+                break
               fi
             fi
 
@@ -257,13 +255,34 @@ jobs:
             mkdir -p ../../../debug-logs/iteration_${i}
             docker cp node-1:/shared-logs/iteration_${i}/. ../../../debug-logs/iteration_${i}/ || true
 
-            # Tear down containers and Flux
-            echo "Stopping Flux cluster..."
+            # Tear down containers and Flux only if continuing
+            if [ -z "$FAILURE_ITERATION" ] || [ "${{ inputs.continue_on_failure }}" == "true" ]; then
+              echo "Stopping Flux cluster..."
+              docker compose down
+              sleep 2
+            fi
+          done
+
+          # Handle failure case - containers still up for debugging
+          if [ -n "$FAILURE_ITERATION" ]; then
+            echo "=== Failure detected in iteration $FAILURE_ITERATION ==="
+            echo "Containers still running for log extraction and debugging"
+
+            # Copy logs from failed iteration
+            mkdir -p ../../../debug-logs/iteration_${FAILURE_ITERATION}
+            docker cp node-1:/shared-logs/iteration_${FAILURE_ITERATION}/. ../../../debug-logs/iteration_${FAILURE_ITERATION}/ || true
+
+            # TODO: Additional debugging here (backtraces, proc info, etc.)
+
+            # Now tear down containers
+            echo "Tearing down containers..."
             docker compose down
 
-            # Brief pause between iterations
-            sleep 2
-          done
+            # Exit with failure if continue_on_failure was false
+            if [ "${{ inputs.continue_on_failure }}" != "true" ]; then
+              exit 1
+            fi
+          fi
 
       - name: Copy debug logs from shared filesystem
         id: debug-flux-copy-logs
