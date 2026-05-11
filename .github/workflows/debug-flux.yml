@@ -49,7 +49,12 @@ on:
       preserve_logs:
         description: 'Preserve logs on success'
         required: false
-        default: true
+        default: false
+        type: boolean
+      continue_on_failure:
+        description: 'Continue testing after a test failure'
+        required: false
+        default: false
         type: boolean
       restart_flux_each_iteration:
         description: 'Restart Flux between iterations (tests infrastructure, slower)'
@@ -179,6 +184,7 @@ jobs:
           --time-limit=1m \
           --spindle-debug=${{ inputs.spindle_debug }} \
           ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
+          ${{ inputs.continue_on_failure && '--continue-on-failure' || '' }} \
           --log-dir=/shared-logs \
           ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
           --verbose'
@@ -220,7 +226,7 @@ jobs:
 
             # Run single test iteration
             echo "Running test iteration $i..."
-            docker exec node-1 bash -c "cd Spindle-build/testsuite/debug && \
+            if docker exec node-1 bash -c "cd Spindle-build/testsuite/debug && \
               ./runTests.py \
               --resource-manager=flux \
               --flux-interface=${{ inputs.flux_interface }} \
@@ -229,9 +235,23 @@ jobs:
               --time-limit=1m \
               --spindle-debug=${{ inputs.spindle_debug }} \
               ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
+              ${{ inputs.continue_on_failure && '--continue-on-failure' || '' }} \
               --log-dir=/shared-logs/iteration_${i} \
               ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
-              --verbose" || echo "Test iteration $i failed (continuing)"
+              --verbose"; then
+              echo "Test iteration $i passed"
+            else
+              echo "Test iteration $i failed (exit code: $?)"
+              # Copy logs before potentially exiting
+              mkdir -p ../../../debug-logs/iteration_${i}
+              docker cp node-1:/shared-logs/iteration_${i}/. ../../../debug-logs/iteration_${i}/ || true
+              # Stop if continue_on_failure is false
+              if [ "${{ inputs.continue_on_failure }}" != "true" ]; then
+                echo "Stopping due to test failure (continue_on_failure=false)"
+                docker compose down
+                exit 1
+              fi
+            fi
 
             # Copy logs for this iteration
             mkdir -p ../../../debug-logs/iteration_${i}
