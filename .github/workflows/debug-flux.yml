@@ -51,6 +51,11 @@ on:
         required: false
         default: true
         type: boolean
+      restart_flux_each_iteration:
+        description: 'Restart Flux between iterations (tests infrastructure, slower)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -137,25 +142,14 @@ jobs:
 
       - name: Verify munge works in spindle-debug-flux
         id: debug-flux-munge
+        if: ${{ !inputs.restart_flux_each_iteration }}
         run: |
           docker exec node-1 bash -c 'munge -n | unmunge'
 
-      # Common options
-      #   docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && \
-      #   ./runTests.py \
-      #   --run-all-tests \
-      #   --resource-manager=flux \
-      #   --num-nodes=${{ env.NUM_NODES }} \
-      #   --tasks-per-node=${{ env.TASKS_PER_NODE }} \
-      #   --cores-per-task=1 \
-      #   --time-limit=1m \
-      #   --spindle-debug=3 \
-      #   --preserve-logs-on-success \
-      #   --verbose'
-      #   Single-test example
-      #   --single-test=dependency_preload \
-      - name: Run spindle-debug-flux testsuite
-        id: debug-flux-testsuite
+      # Single run mode: Start Flux once, run all reps
+      - name: Run spindle-debug-flux testsuite (single Flux instance)
+        id: debug-flux-testsuite-single
+        if: ${{ !inputs.restart_flux_each_iteration }}
         run: |
           # Create metadata file in container
           docker exec node-1 bash -c "cat > /shared-logs/test-metadata.txt << 'EOF'
@@ -165,6 +159,7 @@ jobs:
             Nodes: ${{ inputs.num_nodes }}
             Tasks per node: ${{ inputs.tasks_per_node }}
             Repetitions: ${{ inputs.reps }}
+            Restart Flux: false
             Test: ${{ inputs.single_test }}
             Spindle Debug Level: ${{ inputs.spindle_debug }}
             Preserve Logs: ${{ inputs.preserve_logs }}
@@ -187,6 +182,68 @@ jobs:
           --log-dir=/shared-logs \
           ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
           --verbose'
+
+      # Restart mode: Tear down and restart Flux between each iteration
+      - name: Run spindle-debug-flux testsuite (restart Flux each iteration)
+        id: debug-flux-testsuite-restart
+        if: ${{ inputs.restart_flux_each_iteration }}
+        continue-on-error: true
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+
+          # Create metadata file
+          cat > ../../debug-logs/test-metadata.txt << EOF
+          Test Configuration:
+            Resource Manager: flux
+            Interface: ${{ inputs.flux_interface }}
+            Nodes: ${{ inputs.num_nodes }}
+            Tasks per node: ${{ inputs.tasks_per_node }}
+            Repetitions: ${{ inputs.reps }}
+            Restart Flux: true (each iteration)
+            Test: ${{ inputs.single_test }}
+            Spindle Debug Level: ${{ inputs.spindle_debug }}
+            Preserve Logs: ${{ inputs.preserve_logs }}
+            Workflow Run: ${{ github.run_id }}
+            Commit: ${{ github.sha }}
+          EOF
+
+          # Loop iterations with Flux restart
+          for i in $(seq 1 ${{ inputs.reps }}); do
+            echo "=== Iteration $i/${{ inputs.reps }} ==="
+            echo "Starting Flux cluster..."
+
+            # Start containers and Flux
+            docker compose up -d --wait --wait-timeout 60
+
+            # Verify munge
+            docker exec node-1 bash -c 'munge -n | unmunge' || echo "Munge check failed"
+
+            # Run single test iteration
+            echo "Running test iteration $i..."
+            docker exec node-1 bash -c "cd Spindle-build/testsuite/debug && \
+              ./runTests.py \
+              --resource-manager=flux \
+              --flux-interface=${{ inputs.flux_interface }} \
+              --num-nodes=${{ inputs.num_nodes }} \
+              --tasks-per-node=${{ inputs.tasks_per_node }} \
+              --time-limit=1m \
+              --spindle-debug=${{ inputs.spindle_debug }} \
+              ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
+              --log-dir=/shared-logs/iteration_${i} \
+              ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
+              --verbose" || echo "Test iteration $i failed (continuing)"
+
+            # Copy logs for this iteration
+            mkdir -p ../../debug-logs/iteration_${i}
+            docker cp node-1:/shared-logs/iteration_${i}/. ../../debug-logs/iteration_${i}/ || true
+
+            # Tear down containers and Flux
+            echo "Stopping Flux cluster..."
+            docker compose down
+
+            # Brief pause between iterations
+            sleep 2
+          done
 
       - name: Copy debug logs from shared filesystem
         id: debug-flux-copy-logs
