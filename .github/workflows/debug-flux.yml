@@ -289,7 +289,7 @@ jobs:
 
             # Copy logs from failed iteration
             mkdir -p ../../../debug-logs/iteration_${FAILURE_ITERATION}
-            docker cp node-1:/shared-logs/iteration_${FAILURE_ITERATION}/. ../../../debug-logs/iteration_${FAILURE_ITERATION}/ || true
+            docker cp node-1:/shared-logs/iteration_${FAILURE_ITERATION}/. ../../../debug-logs/iteration_${FAILURE_ITERATION}/
 
             # TODO: Additional debugging here (backtraces, proc info, etc.)
 
