@@ -36,6 +36,11 @@ on:
         required: false
         default: 'dependency_push'
         type: string
+      time_limit:
+        description: 'Time limit per test (e.g., 1m, 90s, 2m)'
+        required: true
+        default: '2m'
+        type: string
       spindle_debug:
         description: 'SPINDLE_DEBUG level (0-3)'
         required: true
@@ -191,7 +196,7 @@ jobs:
           --num-nodes=${{ inputs.num_nodes }} \
           --tasks-per-node=${{ inputs.tasks_per_node }} \
           --reps=${{ inputs.reps }} \
-          --time-limit=1m \
+          --time-limit=${{ inputs.time_limit }} \
           --spindle-debug=${{ inputs.spindle_debug }} \
           ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
           ${{ inputs.continue_on_failure && '--continue-on-failure' || '' }} \
@@ -251,7 +256,7 @@ jobs:
               --flux-interface=${{ inputs.flux_interface }} \
               --num-nodes=${{ inputs.num_nodes }} \
               --tasks-per-node=${{ inputs.tasks_per_node }} \
-              --time-limit=1m \
+              --time-limit=${{ inputs.time_limit }} \
               --spindle-debug=${{ inputs.spindle_debug }} \
               ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
               ${{ inputs.continue_on_failure && '--continue-on-failure' || '' }} \
