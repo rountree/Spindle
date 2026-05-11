@@ -189,10 +189,9 @@ jobs:
         if: ${{ inputs.restart_flux_each_iteration }}
         continue-on-error: true
         run: |
-          cd containers/debug/spindle-flux-ubuntu
-
           # Create metadata file
-          cat > ../../debug-logs/test-metadata.txt << EOF
+          mkdir -p debug-logs
+          cat > debug-logs/test-metadata.txt << EOF
           Test Configuration:
             Resource Manager: flux
             Interface: ${{ inputs.flux_interface }}
@@ -208,6 +207,7 @@ jobs:
           EOF
 
           # Loop iterations with Flux restart
+          cd containers/debug/spindle-flux-ubuntu
           for i in $(seq 1 ${{ inputs.reps }}); do
             echo "=== Iteration $i/${{ inputs.reps }} ==="
             echo "Starting Flux cluster..."
@@ -234,8 +234,8 @@ jobs:
               --verbose" || echo "Test iteration $i failed (continuing)"
 
             # Copy logs for this iteration
-            mkdir -p ../../debug-logs/iteration_${i}
-            docker cp node-1:/shared-logs/iteration_${i}/. ../../debug-logs/iteration_${i}/ || true
+            mkdir -p ../../../debug-logs/iteration_${i}
+            docker cp node-1:/shared-logs/iteration_${i}/. ../../../debug-logs/iteration_${i}/ || true
 
             # Tear down containers and Flux
             echo "Stopping Flux cluster..."
