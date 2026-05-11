@@ -161,10 +161,8 @@ jobs:
         id: debug-flux-testsuite-single
         if: ${{ !inputs.restart_flux_each_iteration }}
         run: |
-          # Enable dmesg access if requested
+          # Clear dmesg buffer if requested
           if [ "${{ inputs.enable_dmesg_collection }}" == "true" ]; then
-            echo "Enabling dmesg access..."
-            echo 0 | sudo tee /proc/sys/kernel/dmesg_restrict
             sudo dmesg -C
           fi
 
@@ -224,12 +222,6 @@ jobs:
             Workflow Run: ${{ github.run_id }}
             Commit: ${{ github.sha }}
           EOF
-
-          # Enable dmesg access if requested (once before loop)
-          if [ "${{ inputs.enable_dmesg_collection }}" == "true" ]; then
-            echo "Enabling dmesg access..."
-            echo 0 | sudo tee /proc/sys/kernel/dmesg_restrict
-          fi
 
           # Loop iterations with Flux restart
           cd containers/debug/spindle-flux-ubuntu
