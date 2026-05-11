@@ -55,7 +55,7 @@ x-shared-node-parameters: &shared-node-parameters
     - shared-logs:/shared-logs
   cap_add:
     - SYS_NICE  # Required for libnuma
-    - SYS_ADMIN # Required for dmesg collection
+    - SYSLOG    # Required for dmesg collection
 
 services:
   node-1:
