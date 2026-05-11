@@ -208,6 +208,7 @@ jobs:
         run: |
           # Create metadata file
           mkdir -p debug-logs
+          cp workflow-config.txt debug-logs/ || true
           cat > debug-logs/test-metadata.txt << EOF
           Test Configuration:
             Resource Manager: flux
@@ -304,7 +305,7 @@ jobs:
 
       - name: Copy debug logs from shared filesystem
         id: debug-flux-copy-logs
-        if: ${{ always() }}
+        if: ${{ always() && !inputs.restart_flux_each_iteration }}
         continue-on-error: true
         run: |
           mkdir -p debug-logs
