@@ -56,6 +56,11 @@ on:
         required: false
         default: false
         type: boolean
+      enable_dmesg_collection:
+        description: 'Collect dmesg logs from nodes'
+        required: false
+        default: false
+        type: boolean
       restart_flux_each_iteration:
         description: 'Restart Flux between iterations (tests infrastructure, slower)'
         required: false
@@ -156,6 +161,13 @@ jobs:
         id: debug-flux-testsuite-single
         if: ${{ !inputs.restart_flux_each_iteration }}
         run: |
+          # Enable dmesg access if requested
+          if [ "${{ inputs.enable_dmesg_collection }}" == "true" ]; then
+            echo "Enabling dmesg access..."
+            echo 0 | sudo tee /proc/sys/kernel/dmesg_restrict
+            sudo dmesg -C
+          fi
+
           # Create metadata file in container
           docker exec node-1 bash -c "cat > /shared-logs/test-metadata.txt << 'EOF'
           Test Configuration:
@@ -185,6 +197,7 @@ jobs:
           --spindle-debug=${{ inputs.spindle_debug }} \
           ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
           ${{ inputs.continue_on_failure && '--continue-on-failure' || '' }} \
+          ${{ inputs.enable_dmesg_collection && '--enable-dmesg-collection' || '' }} \
           --log-dir=/shared-logs \
           ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
           --verbose'
@@ -212,11 +225,23 @@ jobs:
             Commit: ${{ github.sha }}
           EOF
 
+          # Enable dmesg access if requested (once before loop)
+          if [ "${{ inputs.enable_dmesg_collection }}" == "true" ]; then
+            echo "Enabling dmesg access..."
+            echo 0 | sudo tee /proc/sys/kernel/dmesg_restrict
+          fi
+
           # Loop iterations with Flux restart
           cd containers/debug/spindle-flux-ubuntu
           FAILURE_ITERATION=""
           for i in $(seq 1 ${{ inputs.reps }}); do
             echo "=== Iteration $i/${{ inputs.reps }} ==="
+
+            # Clear dmesg buffer before this iteration
+            if [ "${{ inputs.enable_dmesg_collection }}" == "true" ]; then
+              sudo dmesg -C
+            fi
+
             echo "Starting Flux cluster..."
 
             # Start containers and Flux
@@ -237,6 +262,7 @@ jobs:
               --spindle-debug=${{ inputs.spindle_debug }} \
               ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
               ${{ inputs.continue_on_failure && '--continue-on-failure' || '' }} \
+              ${{ inputs.enable_dmesg_collection && '--enable-dmesg-collection' || '' }} \
               --log-dir=/shared-logs/iteration_${i} \
               ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
               --verbose"; then
