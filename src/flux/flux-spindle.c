@@ -486,6 +486,8 @@ static int sp_post_init (flux_plugin_t *p,
             fprintf(fp, "Namespace: %s\n", ns);
             fprintf(fp, "Error counts: lookup=%d wait=%d get=%d\n\n", lookup_errors, wait_errors, get_errors);
             fprintf(fp, "%s\n", eventlog_copy ? eventlog_copy : "(null)");
+            fflush(fp);  /* Ensure data is written to kernel buffers */
+            fsync(fileno(fp));  /* Force kernel to write to disk/volume */
             fclose(fp);
             debug_printf(1, "[SPINDLE rank=%d] Eventlog saved to %s\n",
                         ctx->shell_rank, direct_log);
