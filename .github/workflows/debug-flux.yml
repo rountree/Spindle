@@ -316,8 +316,16 @@ jobs:
           mkdir -p debug-logs
           # Copy workflow configuration
           cp workflow-config.txt debug-logs/ || true
+          # Debug: List what's actually in /shared-logs before copying
+          echo "=== Contents of /shared-logs in container ==="
+          docker exec node-1 ls -laR /shared-logs/ || true
+          echo "=== Specifically looking for kvs_direct files ==="
+          docker exec node-1 find /shared-logs -name "kvs_direct*" -ls || true
           # Copy logs from shared volume
           docker cp node-1:/shared-logs/. debug-logs/ || true
+          # Debug: Show what we actually copied
+          echo "=== Contents of debug-logs after copy ==="
+          ls -laR debug-logs/ || true
 
       - name: Set short SHA
         id: short-sha
