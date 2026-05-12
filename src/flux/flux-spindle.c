@@ -398,6 +398,9 @@ static int sp_post_init (flux_plugin_t *p,
     if (flux_job_kvs_namespace (ns, sizeof (ns), ctx->id) < 0)
         logerrno_printf_and_return(1, "flux_job_kvs_namespace failed\n");
 
+    debug_printf(1, "[SPINDLE rank=%d] Looking up exec.eventlog in namespace: %s\n",
+                 ctx->shell_rank, ns);
+
     /*  Retry loop: Poll eventlog until shell.init appears.
      *  Non-zero ranks may reach this point before rank 0 finishes writing
      *  the shell.init event to the eventlog (no barrier between emit and
@@ -407,35 +410,81 @@ static int sp_post_init (flux_plugin_t *p,
      *  10 seconds (1000 retries × 10ms).
      */
     rc = -1;
+    int lookup_errors = 0;
+    int wait_errors = 0;
+    int get_errors = 0;
     for (int retry = 0; retry < 1000; retry++) {
+        int saved_errno;
         f = flux_kvs_lookup (h, ns, 0, "exec.eventlog");
-        if (f && flux_future_wait_for (f, -1.0) == 0
-            && flux_kvs_lookup_get (f, &eventlog_str) == 0) {
-            /*  Make a copy of eventlog before destroying future, since
-             *  eventlog_str points to data owned by the future.
-             */
-            free (eventlog_copy);
-            eventlog_copy = eventlog_str ? strdup (eventlog_str) : NULL;
-
-            rc = parse_eventlog_for_shell_init (eventlog_str,
-                                                &ctx->params.port,
-                                                &ctx->params.num_ports);
-            flux_future_destroy (f);
-            if (rc == 0) {
-                debug_printf(1, "[SPINDLE rank=%d] Found shell.init after %d retries\n",
-                        ctx->shell_rank, retry);
-                free (eventlog_copy);
-                break;  /* Found shell.init, we're done */
-            }
-        } else if (f) {
-            flux_future_destroy (f);
+        if (!f) {
+            saved_errno = errno;
+            debug_printf(1, "[SPINDLE rank=%d] flux_kvs_lookup returned NULL on retry %d, errno=%d (%s)\n",
+                        ctx->shell_rank, retry, saved_errno, strerror(saved_errno));
+            lookup_errors++;
+            usleep (10000);
+            continue;
         }
+
+        if (flux_future_wait_for (f, -1.0) < 0) {
+            saved_errno = errno;
+            debug_printf(1, "[SPINDLE rank=%d] flux_future_wait_for failed on retry %d, errno=%d (%s)\n",
+                        ctx->shell_rank, retry, saved_errno, strerror(saved_errno));
+            flux_future_destroy (f);
+            wait_errors++;
+            usleep (10000);
+            continue;
+        }
+
+        if (flux_kvs_lookup_get (f, &eventlog_str) < 0) {
+            saved_errno = errno;
+            debug_printf(1, "[SPINDLE rank=%d] flux_kvs_lookup_get failed on retry %d, errno=%d (%s)\n",
+                        ctx->shell_rank, retry, saved_errno, strerror(saved_errno));
+            flux_future_destroy (f);
+            get_errors++;
+            usleep (10000);
+            continue;
+        }
+
+        /*  Make a copy of eventlog before destroying future, since
+         *  eventlog_str points to data owned by the future.
+         */
+        free (eventlog_copy);
+        eventlog_copy = eventlog_str ? strdup (eventlog_str) : NULL;
+
+        rc = parse_eventlog_for_shell_init (eventlog_str,
+                                            &ctx->params.port,
+                                            &ctx->params.num_ports);
+        flux_future_destroy (f);
+        if (rc == 0) {
+            debug_printf(1, "[SPINDLE rank=%d] Found shell.init after %d retries\n",
+                    ctx->shell_rank, retry);
+            free (eventlog_copy);
+            break;  /* Found shell.init, we're done */
+        }
+
         usleep (10000);  /* 10ms sleep between retries */
     }
 
     if (rc < 0) {
-        debug_printf(1, "[SPINDLE rank=%d] FAILED after 1000 retries. Eventlog contents:\n%s\n",
-                ctx->shell_rank, eventlog_copy ? eventlog_copy : "(null)");
+        char cmd[512];
+        char direct_log[256];
+
+        debug_printf(1, "[SPINDLE rank=%d] FAILED after 1000 retries\n", ctx->shell_rank);
+        debug_printf(1, "[SPINDLE rank=%d] Error counts: lookup=%d wait=%d get=%d\n",
+                    ctx->shell_rank, lookup_errors, wait_errors, get_errors);
+        debug_printf(1, "[SPINDLE rank=%d] Eventlog contents:\n%s\n",
+                    ctx->shell_rank, eventlog_copy ? eventlog_copy : "(null)");
+
+        /*  Try direct flux kvs command to see if it shows different results */
+        snprintf(direct_log, sizeof(direct_log), "/tmp/kvs_direct_rank_%d.log", ctx->shell_rank);
+        snprintf(cmd, sizeof(cmd), "flux kvs get --namespace=%s exec.eventlog > %s 2>&1",
+                 ns, direct_log);
+        debug_printf(1, "[SPINDLE rank=%d] Running direct kvs command: %s\n",
+                    ctx->shell_rank, cmd);
+        system(cmd);
+        debug_printf(1, "[SPINDLE rank=%d] Direct kvs result written to %s\n",
+                    ctx->shell_rank, direct_log);
+
         free (eventlog_copy);
         logerrno_printf_and_return(1, "shell.init event not found in eventlog after retries\n");
     }
