@@ -392,6 +392,7 @@ static int sp_post_init (flux_plugin_t *p,
         return 0;
 
     debug_printf(1, "sp_post_init: synchronously reading eventlog for shell.init\n");
+    fprintf(stderr, "[SPINDLE rank=%d] sp_post_init: starting eventlog poll\n", ctx->shell_rank);
 
     /*  Build path to guest.exec.eventlog in job's KVS namespace */
     if (flux_job_kvs_namespace (ns, sizeof (ns), ctx->id) < 0)
@@ -411,16 +412,22 @@ static int sp_post_init (flux_plugin_t *p,
                                                 &ctx->params.port,
                                                 &ctx->params.num_ports);
             flux_future_destroy (f);
-            if (rc == 0)
+            if (rc == 0) {
+                fprintf(stderr, "[SPINDLE rank=%d] Found shell.init after %d retries\n",
+                        ctx->shell_rank, retry);
                 break;  /* Found shell.init, we're done */
+            }
         } else if (f) {
             flux_future_destroy (f);
         }
         usleep (10000);  /* 10ms sleep between retries */
     }
 
-    if (rc < 0)
+    if (rc < 0) {
+        fprintf(stderr, "[SPINDLE rank=%d] FAILED after 100 retries. Eventlog contents:\n%s\n",
+                ctx->shell_rank, eventlog_str ? eventlog_str : "(null)");
         logerrno_printf_and_return(1, "shell.init event not found in eventlog after retries\n");
+    }
 
     debug_printf(2, "Found shell.init: port=%d num_ports=%d\n",
                  ctx->params.port, ctx->params.num_ports);
