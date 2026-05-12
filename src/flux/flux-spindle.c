@@ -402,9 +402,12 @@ static int sp_post_init (flux_plugin_t *p,
      *  Non-zero ranks may reach this point before rank 0 finishes writing
      *  the shell.init event to the eventlog (no barrier between emit and
      *  shell.post-init callbacks).
+     *  On heavily oversubscribed systems (e.g., GitHub Actions with 32
+     *  containers), rank 0 may be delayed significantly, so allow up to
+     *  10 seconds (1000 retries × 10ms).
      */
     rc = -1;
-    for (int retry = 0; retry < 100; retry++) {
+    for (int retry = 0; retry < 1000; retry++) {
         f = flux_kvs_lookup (h, ns, 0, "exec.eventlog");
         if (f && flux_future_wait_for (f, -1.0) == 0
             && flux_kvs_lookup_get (f, &eventlog_str) == 0) {
@@ -431,7 +434,7 @@ static int sp_post_init (flux_plugin_t *p,
     }
 
     if (rc < 0) {
-        debug_printf(1, "[SPINDLE rank=%d] FAILED after 100 retries. Eventlog contents:\n%s\n",
+        debug_printf(1, "[SPINDLE rank=%d] FAILED after 1000 retries. Eventlog contents:\n%s\n",
                 ctx->shell_rank, eventlog_copy ? eventlog_copy : "(null)");
         free (eventlog_copy);
         logerrno_printf_and_return(1, "shell.init event not found in eventlog after retries\n");
