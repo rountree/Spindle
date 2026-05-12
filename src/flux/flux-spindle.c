@@ -383,6 +383,7 @@ static int sp_post_init (flux_plugin_t *p,
     char path[128];
     char ns[128];
     const char *eventlog_str = NULL;
+    char *eventlog_copy = NULL;  /* Owned copy for error reporting */
     int rc;
 
     if (!ctx || !spindle_is_enabled(ctx))
@@ -407,6 +408,12 @@ static int sp_post_init (flux_plugin_t *p,
         f = flux_kvs_lookup (h, ns, 0, "exec.eventlog");
         if (f && flux_future_wait_for (f, -1.0) == 0
             && flux_kvs_lookup_get (f, &eventlog_str) == 0) {
+            /*  Make a copy of eventlog before destroying future, since
+             *  eventlog_str points to data owned by the future.
+             */
+            free (eventlog_copy);
+            eventlog_copy = eventlog_str ? strdup (eventlog_str) : NULL;
+
             rc = parse_eventlog_for_shell_init (eventlog_str,
                                                 &ctx->params.port,
                                                 &ctx->params.num_ports);
@@ -414,6 +421,7 @@ static int sp_post_init (flux_plugin_t *p,
             if (rc == 0) {
                 debug_printf(1, "[SPINDLE rank=%d] Found shell.init after %d retries\n",
                         ctx->shell_rank, retry);
+                free (eventlog_copy);
                 break;  /* Found shell.init, we're done */
             }
         } else if (f) {
@@ -424,7 +432,8 @@ static int sp_post_init (flux_plugin_t *p,
 
     if (rc < 0) {
         debug_printf(1, "[SPINDLE rank=%d] FAILED after 100 retries. Eventlog contents:\n%s\n",
-                ctx->shell_rank, eventlog_str ? eventlog_str : "(null)");
+                ctx->shell_rank, eventlog_copy ? eventlog_copy : "(null)");
+        free (eventlog_copy);
         logerrno_printf_and_return(1, "shell.init event not found in eventlog after retries\n");
     }
 
