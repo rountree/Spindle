@@ -475,8 +475,10 @@ static int sp_post_init (flux_plugin_t *p,
         debug_printf(1, "[SPINDLE rank=%d] Eventlog contents:\n%s\n",
                     ctx->shell_rank, eventlog_copy ? eventlog_copy : "(null)");
 
-        /*  Try direct flux kvs command to see if it shows different results */
-        snprintf(direct_log, sizeof(direct_log), "/tmp/kvs_direct_rank_%d.log", ctx->shell_rank);
+        /*  Try direct flux kvs command to see if it shows different results.
+         *  Write to /shared-logs so it's included in artifacts automatically.
+         */
+        snprintf(direct_log, sizeof(direct_log), "/shared-logs/kvs_direct_rank_%d.log", ctx->shell_rank);
         snprintf(cmd, sizeof(cmd), "flux kvs get --namespace=%s exec.eventlog > %s 2>&1",
                  ns, direct_log);
         debug_printf(1, "[SPINDLE rank=%d] Running direct kvs command: %s\n",
