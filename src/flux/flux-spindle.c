@@ -466,8 +466,8 @@ static int sp_post_init (flux_plugin_t *p,
     }
 
     if (rc < 0) {
-        char cmd[512];
         char direct_log[256];
+        FILE *fp;
 
         debug_printf(1, "[SPINDLE rank=%d] FAILED after 1000 retries\n", ctx->shell_rank);
         debug_printf(1, "[SPINDLE rank=%d] Error counts: lookup=%d wait=%d get=%d\n",
@@ -475,17 +475,24 @@ static int sp_post_init (flux_plugin_t *p,
         debug_printf(1, "[SPINDLE rank=%d] Eventlog contents:\n%s\n",
                     ctx->shell_rank, eventlog_copy ? eventlog_copy : "(null)");
 
-        /*  Try direct flux kvs command to see if it shows different results.
-         *  Write to /shared-logs so it's included in artifacts automatically.
+        /*  Write eventlog to file for artifact collection.
+         *  This uses the same data we just retrieved, so we can see exactly
+         *  what the API returned at the time of failure.
          */
         snprintf(direct_log, sizeof(direct_log), "/shared-logs/kvs_direct_rank_%d.log", ctx->shell_rank);
-        snprintf(cmd, sizeof(cmd), "flux kvs get --namespace=%s exec.eventlog > %s 2>&1",
-                 ns, direct_log);
-        debug_printf(1, "[SPINDLE rank=%d] Running direct kvs command: %s\n",
-                    ctx->shell_rank, cmd);
-        system(cmd);
-        debug_printf(1, "[SPINDLE rank=%d] Direct kvs result written to %s\n",
-                    ctx->shell_rank, direct_log);
+        fp = fopen(direct_log, "w");
+        if (fp) {
+            fprintf(fp, "Eventlog from rank %d after 1000 retries (10 seconds):\n", ctx->shell_rank);
+            fprintf(fp, "Namespace: %s\n", ns);
+            fprintf(fp, "Error counts: lookup=%d wait=%d get=%d\n\n", lookup_errors, wait_errors, get_errors);
+            fprintf(fp, "%s\n", eventlog_copy ? eventlog_copy : "(null)");
+            fclose(fp);
+            debug_printf(1, "[SPINDLE rank=%d] Eventlog saved to %s\n",
+                        ctx->shell_rank, direct_log);
+        } else {
+            debug_printf(1, "[SPINDLE rank=%d] Failed to open %s for writing: %s\n",
+                        ctx->shell_rank, direct_log, strerror(errno));
+        }
 
         free (eventlog_copy);
         logerrno_printf_and_return(1, "shell.init event not found in eventlog after retries\n");
