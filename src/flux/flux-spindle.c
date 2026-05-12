@@ -392,7 +392,6 @@ static int sp_post_init (flux_plugin_t *p,
         return 0;
 
     debug_printf(1, "sp_post_init: synchronously reading eventlog for shell.init\n");
-    fprintf(stderr, "[SPINDLE rank=%d] sp_post_init: starting eventlog poll\n", ctx->shell_rank);
 
     /*  Build path to guest.exec.eventlog in job's KVS namespace */
     if (flux_job_kvs_namespace (ns, sizeof (ns), ctx->id) < 0)
