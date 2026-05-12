@@ -475,25 +475,37 @@ static int sp_post_init (flux_plugin_t *p,
         debug_printf(1, "[SPINDLE rank=%d] Eventlog contents:\n%s\n",
                     ctx->shell_rank, eventlog_copy ? eventlog_copy : "(null)");
 
-        /*  Write eventlog to file for artifact collection.
+        /*  Write eventlog to MULTIPLE files for artifact collection.
          *  This uses the same data we just retrieved, so we can see exactly
          *  what the API returned at the time of failure.
+         *  Writing to 3 locations to maximize chance of getting it into artifacts.
          */
-        snprintf(direct_log, sizeof(direct_log), "/shared-logs/kvs_direct_rank_%d.log", ctx->shell_rank);
-        fp = fopen(direct_log, "w");
-        if (fp) {
-            fprintf(fp, "Eventlog from rank %d after 1000 retries (10 seconds):\n", ctx->shell_rank);
-            fprintf(fp, "Namespace: %s\n", ns);
-            fprintf(fp, "Error counts: lookup=%d wait=%d get=%d\n\n", lookup_errors, wait_errors, get_errors);
-            fprintf(fp, "%s\n", eventlog_copy ? eventlog_copy : "(null)");
-            fflush(fp);  /* Ensure data is written to kernel buffers */
-            fsync(fileno(fp));  /* Force kernel to write to disk/volume */
-            fclose(fp);
-            debug_printf(1, "[SPINDLE rank=%d] Eventlog saved to %s\n",
-                        ctx->shell_rank, direct_log);
-        } else {
-            debug_printf(1, "[SPINDLE rank=%d] Failed to open %s for writing: %s\n",
-                        ctx->shell_rank, direct_log, strerror(errno));
+        const char *locations[] = {
+            "/shared-logs/kvs_direct_rank_%d.log",
+            "/tmp/kvs_direct_rank_%d.log",
+            "/shared-logs/FAILED_RANK_%d.log"
+        };
+        const char *content_fmt = "Eventlog from rank %d after 1000 retries (10 seconds):\n"
+                                  "Namespace: %s\n"
+                                  "Error counts: lookup=%d wait=%d get=%d\n\n"
+                                  "%s\n";
+
+        for (int i = 0; i < 3; i++) {
+            snprintf(direct_log, sizeof(direct_log), locations[i], ctx->shell_rank);
+            fp = fopen(direct_log, "w");
+            if (fp) {
+                fprintf(fp, content_fmt, ctx->shell_rank, ns,
+                       lookup_errors, wait_errors, get_errors,
+                       eventlog_copy ? eventlog_copy : "(null)");
+                fflush(fp);
+                fsync(fileno(fp));
+                fclose(fp);
+                debug_printf(1, "[SPINDLE rank=%d] Eventlog saved to %s\n",
+                            ctx->shell_rank, direct_log);
+            } else {
+                debug_printf(1, "[SPINDLE rank=%d] Failed to open %s: %s\n",
+                            ctx->shell_rank, direct_log, strerror(errno));
+            }
         }
 
         free (eventlog_copy);

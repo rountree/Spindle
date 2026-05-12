@@ -314,23 +314,52 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p debug-logs
+          mkdir -p debug-logs/kvs_direct_files
+
           # Copy workflow configuration
           cp workflow-config.txt debug-logs/ || true
-          # Debug: List what's actually in /shared-logs before copying
-          echo "=== Contents of /shared-logs in container ==="
-          docker exec node-1 ls -laR /shared-logs/ || true
-          echo "=== Specifically looking for kvs_direct files ==="
-          docker exec node-1 find /shared-logs -name "kvs_direct*" -ls || true
-          # Copy logs from shared volume
+
+          # Method 1: docker cp entire /shared-logs
           docker cp node-1:/shared-logs/. debug-logs/ || true
-          # Debug: Show what we actually copied
-          echo "=== Contents of debug-logs after copy ==="
+
+          # Method 2: Explicitly cat out any kvs_direct files using docker exec
+          for rank in {0..31}; do
+            if docker exec node-1 test -f /shared-logs/kvs_direct_rank_${rank}.log 2>/dev/null; then
+              echo "Found kvs_direct_rank_${rank}.log, extracting..."
+              docker exec node-1 cat /shared-logs/kvs_direct_rank_${rank}.log > debug-logs/kvs_direct_files/kvs_direct_rank_${rank}.log || true
+            fi
+            if docker exec node-1 test -f /tmp/kvs_direct_rank_${rank}.log 2>/dev/null; then
+              echo "Found /tmp/kvs_direct_rank_${rank}.log, extracting..."
+              docker exec node-1 cat /tmp/kvs_direct_rank_${rank}.log > debug-logs/kvs_direct_files/kvs_direct_rank_${rank}_from_tmp.log || true
+            fi
+            if docker exec node-1 test -f /shared-logs/FAILED_RANK_${rank}.log 2>/dev/null; then
+              echo "Found FAILED_RANK_${rank}.log, extracting..."
+              docker exec node-1 cat /shared-logs/FAILED_RANK_${rank}.log > debug-logs/kvs_direct_files/FAILED_RANK_${rank}.log || true
+            fi
+          done
+
+          # Method 3: Use find and tar to extract
+          docker exec node-1 sh -c 'cd /shared-logs && find . -name "kvs_direct*" -o -name "FAILED_RANK*" | tar czf /tmp/kvs_files.tar.gz -T - 2>/dev/null' || true
+          docker cp node-1:/tmp/kvs_files.tar.gz debug-logs/ 2>/dev/null || true
+          cd debug-logs && tar xzf kvs_files.tar.gz 2>/dev/null || true && cd ..
+
+          echo "=== Final contents of debug-logs ==="
           ls -laR debug-logs/ || true
 
       - name: Set short SHA
         id: short-sha
         if: ${{ always() }}
         run: echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Upload KVS direct files artifact (separate for visibility)
+        id: debug-flux-upload-kvs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kvs-direct-files-${{ github.run_number }}-${{ steps.short-sha.outputs.sha_short }}
+          path: debug-logs/kvs_direct_files/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload debug artifacts
         id: debug-flux-upload
