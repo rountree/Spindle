@@ -466,47 +466,34 @@ static int sp_post_init (flux_plugin_t *p,
     }
 
     if (rc < 0) {
-        char direct_log[256];
-        FILE *fp;
-
         debug_printf(1, "[SPINDLE rank=%d] FAILED after 1000 retries\n", ctx->shell_rank);
         debug_printf(1, "[SPINDLE rank=%d] Error counts: lookup=%d wait=%d get=%d\n",
                     ctx->shell_rank, lookup_errors, wait_errors, get_errors);
-        debug_printf(1, "[SPINDLE rank=%d] Eventlog contents:\n%s\n",
-                    ctx->shell_rank, eventlog_copy ? eventlog_copy : "(null)");
+        debug_printf(1, "[SPINDLE rank=%d] Namespace: %s\n",
+                    ctx->shell_rank, ns);
 
-        /*  Write eventlog to MULTIPLE files for artifact collection.
-         *  This uses the same data we just retrieved, so we can see exactly
-         *  what the API returned at the time of failure.
-         *  Writing to 3 locations to maximize chance of getting it into artifacts.
+        /*  Dump eventlog line-by-line with [EVENTLOG] tag for easy grepping.
+         *  This goes directly to the Spindle log which is already captured in artifacts.
          */
-        const char *locations[] = {
-            "/shared-logs/kvs_direct_rank_%d.log",
-            "/tmp/kvs_direct_rank_%d.log",
-            "/shared-logs/FAILED_RANK_%d.log"
-        };
-        const char *content_fmt = "Eventlog from rank %d after 1000 retries (10 seconds):\n"
-                                  "Namespace: %s\n"
-                                  "Error counts: lookup=%d wait=%d get=%d\n\n"
-                                  "%s\n";
-
-        for (int i = 0; i < 3; i++) {
-            snprintf(direct_log, sizeof(direct_log), locations[i], ctx->shell_rank);
-            fp = fopen(direct_log, "w");
-            if (fp) {
-                fprintf(fp, content_fmt, ctx->shell_rank, ns,
-                       lookup_errors, wait_errors, get_errors,
-                       eventlog_copy ? eventlog_copy : "(null)");
-                fflush(fp);
-                fsync(fileno(fp));
-                fclose(fp);
-                debug_printf(1, "[SPINDLE rank=%d] Eventlog saved to %s\n",
-                            ctx->shell_rank, direct_log);
-            } else {
-                debug_printf(1, "[SPINDLE rank=%d] Failed to open %s: %s\n",
-                            ctx->shell_rank, direct_log, strerror(errno));
+        debug_printf(1, "[SPINDLE rank=%d] === BEGIN EVENTLOG DUMP ===\n", ctx->shell_rank);
+        if (eventlog_copy) {
+            const char *line = eventlog_copy;
+            const char *newline;
+            while (line && *line) {
+                newline = strchr(line, '\n');
+                if (newline) {
+                    debug_printf(1, "[EVENTLOG rank=%d] %.*s\n",
+                               ctx->shell_rank, (int)(newline - line), line);
+                    line = newline + 1;
+                } else {
+                    debug_printf(1, "[EVENTLOG rank=%d] %s\n", ctx->shell_rank, line);
+                    break;
+                }
             }
+        } else {
+            debug_printf(1, "[EVENTLOG rank=%d] (null)\n", ctx->shell_rank);
         }
+        debug_printf(1, "[SPINDLE rank=%d] === END EVENTLOG DUMP ===\n", ctx->shell_rank);
 
         free (eventlog_copy);
         logerrno_printf_and_return(1, "shell.init event not found in eventlog after retries\n");
