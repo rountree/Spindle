@@ -397,28 +397,30 @@ static int sp_post_init (flux_plugin_t *p,
     if (flux_job_kvs_namespace (ns, sizeof (ns), ctx->id) < 0)
         logerrno_printf_and_return(1, "flux_job_kvs_namespace failed\n");
 
-    /*  Synchronously read the eventlog from KVS */
-    if (!(f = flux_kvs_lookup (h, ns, 0, "exec.eventlog")))
-        logerrno_printf_and_return(1, "flux_kvs_lookup failed\n");
-
-    if (flux_future_wait_for (f, -1.0) < 0) {
-        flux_future_destroy (f);
-        logerrno_printf_and_return(1, "flux_future_wait_for failed\n");
+    /*  Retry loop: Poll eventlog until shell.init appears.
+     *  Non-zero ranks may reach this point before rank 0 finishes writing
+     *  the shell.init event to the eventlog (no barrier between emit and
+     *  shell.post-init callbacks).
+     */
+    rc = -1;
+    for (int retry = 0; retry < 100; retry++) {
+        f = flux_kvs_lookup (h, ns, 0, "exec.eventlog");
+        if (f && flux_future_wait_for (f, -1.0) == 0
+            && flux_kvs_lookup_get (f, &eventlog_str) == 0) {
+            rc = parse_eventlog_for_shell_init (eventlog_str,
+                                                &ctx->params.port,
+                                                &ctx->params.num_ports);
+            flux_future_destroy (f);
+            if (rc == 0)
+                break;  /* Found shell.init, we're done */
+        } else if (f) {
+            flux_future_destroy (f);
+        }
+        usleep (10000);  /* 10ms sleep between retries */
     }
-
-    if (flux_kvs_lookup_get (f, &eventlog_str) < 0) {
-        flux_future_destroy (f);
-        logerrno_printf_and_return(1, "flux_kvs_lookup_get failed\n");
-    }
-
-    /*  Parse eventlog to find shell.init and extract port/num_ports */
-    rc = parse_eventlog_for_shell_init (eventlog_str,
-                                        &ctx->params.port,
-                                        &ctx->params.num_ports);
-    flux_future_destroy (f);
 
     if (rc < 0)
-        logerrno_printf_and_return(1, "shell.init event not found in eventlog\n");
+        logerrno_printf_and_return(1, "shell.init event not found in eventlog after retries\n");
 
     debug_printf(2, "Found shell.init: port=%d num_ports=%d\n",
                  ctx->params.port, ctx->params.num_ports);
