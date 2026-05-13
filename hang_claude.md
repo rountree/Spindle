@@ -456,6 +456,160 @@ Key commits on `dbg_local` branch:
 
 8. **Eventual consistency requires explicit sync** - Flux KVS is eventually consistent with on-demand reads. Use `flux_kvs_wait_version()` with rank 0's version to force synchronization.
 
+## Detailed Analysis of Original Buggy Code
+
+For reference, here is the original code from the `devel` branch that exhibited the hang:
+
+### Original Code (devel branch, sp_init function)
+
+```c
+640     if (shell_rank == 0) {
+641         /*  Rank 0: add spindle port and num_ports to the shell.init
+642          *   exec eventlog event. All other shell's will wait for this
+643          *   event and initialize their port/num_ports from these values.
+644          */
+645         flux_shell_add_event_context (shell, "shell.init", 0,
+646                                       "{s:i s:i}",
+647                                       "spindle_port",
+648                                       ctx->params.port,
+649                                       "spindle_num_ports",
+650                                       ctx->params.num_ports);
+651     }
+652
+653     /*  All ranks, watch guest.exec.eventlog for the shell.init event in
+654      *   order to distribute port and num_ports. This is unnecessary on
+655      *   rank 0, but code is simpler if we treat all ranks the same.
+656      */
+657     if (!(f = flux_job_event_watch (h, id, "guest.exec.eventlog", 0))
+658         || flux_future_then (f, -1., wait_for_shell_init, ctx) < 0)
+659         shell_die (1, "flux_job_event_watch");
+```
+
+### Line-by-Line Analysis
+
+#### Lines 645-650: Rank 0 Decorates shell.init Event
+
+```c
+flux_shell_add_event_context (shell, "shell.init", 0,
+                              "{s:i s:i}",
+                              "spindle_port",
+                              ctx->params.port,
+                              "spindle_num_ports",
+                              ctx->params.num_ports);
+```
+
+Rank 0 doesn't directly write to KVS. Instead, it tells the Flux shell framework: "When you emit the shell.init event (at step 3 of the shell lifecycle), include this extra JSON context with the spindle port information."
+
+The Flux shell framework will write this to `job-<id>-guest/exec.eventlog` in KVS as a JSON entry:
+```json
+{"timestamp": ..., "name": "shell.init", "context": {"spindle_port": 12345, "spindle_num_ports": 2}}
+```
+
+#### Lines 657-658: Setting up Async Event Watch
+
+```c
+if (!(f = flux_job_event_watch (h, id, "guest.exec.eventlog", 0))
+    || flux_future_then (f, -1., wait_for_shell_init, ctx) < 0)
+    shell_die (1, "flux_job_event_watch");
+```
+
+**`flux_job_event_watch(h, id, "guest.exec.eventlog", 0)`**
+- Creates a **streaming RPC** to the job-info module
+- Says: "Watch the eventlog at path `guest.exec.eventlog` for job `id`"
+- This is an **async operation** - it returns immediately with a future
+- The `0` flags means "start from beginning" (send all existing events, then stream new ones)
+- Returns a `flux_future_t *` representing this ongoing watch
+
+**Behind the scenes:**
+- The job-info module sets up a KVS watch with `FLUX_KVS_WATCH_APPEND`
+- As events are appended to the eventlog, they're streamed to the requester as messages
+- Each message contains one eventlog entry
+
+**`flux_future_then(f, -1., wait_for_shell_init, ctx)`**
+- Registers `wait_for_shell_init` as the **callback function**
+- Says: "When this future becomes ready (receives data), call `wait_for_shell_init(f, ctx)`"
+- The `-1.` is the timeout (negative = no timeout, wait forever)
+- `ctx` is user data passed to the callback
+- Returns immediately - callback will fire later
+
+**The critical problem**: Callbacks registered with `flux_future_then()` **only fire when the reactor is running**.
+
+### The Race Condition Timeline
+
+**On all ranks during sp_init (step 1 of shell lifecycle):**
+
+```
+Step 1 (sp_init callback):
+  - Line 657: flux_job_event_watch() starts streaming RPC to job-info
+  - Line 658: flux_future_then() registers wait_for_shell_init callback
+  - Returns immediately, sp_init() completes
+  - Callback is queued, waiting for reactor to process events
+
+Step 2 (shell.init barrier):
+  - All ranks synchronize at shell_barrier("init")
+
+Step 3 (ONLY rank 0):
+  - Flux shell framework emits shell.init to exec.eventlog
+  - shell.init gets written to KVS: job-<id>-guest/exec.eventlog
+  - KVS commit bumps namespace version number
+
+Step 3b (RACE WINDOW):
+  - Job-info module's KVS watch fires (shell.init was appended)
+  - Job-info sends eventlog event messages to ALL watching ranks
+  - Messages arrive at non-zero ranks' message queues
+  - But reactor ISN'T RUNNING YET!
+  - Messages sit in the Flux message queue, unprocessed
+  - The future is "ready" but no reactor is polling to discover this
+
+Steps 4-8:
+  - shell.post-init callbacks run
+  - shell_start_tasks() executes
+  - shell.start callbacks run
+  - shell_barrier("start")
+  - Rank 0 emits shell.start event
+
+Step 9 (reactor finally starts):
+  - flux_reactor_run() called (shell.c line 2134)
+  - NOW the reactor begins processing the message queue
+  - But the shell.init notification was ALREADY delivered in step 3b
+  - The future/callback mechanism doesn't re-check for "ready" futures
+  - If the notification arrived before reactor startup, it's lost
+  - wait_for_shell_init callback NEVER FIRES
+  - Spindle backend never starts
+  - Job hangs waiting for Spindle to initialize
+```
+
+### Why Failure Rate Was Environment-Dependent
+
+**On Tuolumne (dedicated hardware, low contention):**
+- All ranks move through steps 1-9 quickly and roughly synchronized
+- Natural network latency between physical nodes means:
+  - Rank 0 completes step 3 and continues quickly
+  - Shell.init KVS write happens
+  - Job-info watch triggers
+  - Network propagation takes microseconds-milliseconds
+  - By the time messages arrive at non-zero ranks, they're at or past step 9
+  - Reactor is running when message arrives → callback fires → success
+
+**On GitHub Actions (32 containers, extreme oversubscription):**
+- 32 containers competing for limited CPU cores (4-8 cores typically)
+- High CPU contention causes scheduling delays
+- Sequence of events:
+  - Rank 0 emits shell.init (step 3)
+  - Rank 0 process gets preempted by scheduler
+  - Event propagates instantly (localhost, shared kernel, no real network)
+  - Non-zero ranks receive notification while still between steps 3-9
+  - Non-zero ranks also getting preempted, moving slowly through steps
+  - Messages arrive in queue while reactor not running
+  - By step 9, the "ready" event is stale/consumed/lost
+  - Callback never fires → hang (1-9% of runs)
+
+### The Fundamental Issue
+
+The async callback approach (`flux_future_then()`) made an implicit assumption: **"The reactor will be running when events arrive."** This is violated in shell plugin callbacks that run before step 9 of the shell lifecycle.
+
+Synchronous operations (`flux_future_wait_for()`, `flux_kvs_wait_version()`, `flux_rpc_get_unpack()`) don't have this problem - they block and internally process messages until completion, with no reactor required.
+
 ---
 *Document created 2026-05-12*
-*Last updated: 2026-05-12 - Added KVS propagation deep dive and version-based sync solution*
+*Last updated: 2026-05-13 - Added detailed analysis of original buggy async callback code*
