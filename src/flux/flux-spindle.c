@@ -313,8 +313,9 @@ static void run_spindle_frontend (struct spindle_ctx *ctx)
    debug_printf(2, "started spindle frontend\n");
 }
 
-/*  Parse eventlog string to find shell.init event with spindle context.
- *   Eventlog format is newline-separated JSON entries.
+/*  Parse newline-delimited eventlog JSON to find shell.init event
+ *  and extract spindle_port and spindle_num_ports from context.
+ *  Returns 0 on success, -1 if shell.init not found or parse error.
  */
 static int parse_eventlog_for_shell_init (const char *eventlog_str,
                                           int *port,
@@ -322,20 +323,20 @@ static int parse_eventlog_for_shell_init (const char *eventlog_str,
 {
     const char *line = eventlog_str;
     const char *newline;
+    json_error_t error;
 
     while (line && *line) {
         json_t *entry;
-        json_error_t error;
         const char *name = NULL;
         int rc;
 
-        /* Find end of this JSON entry (newline-delimited) */
+        /* Find end of current line */
         newline = strchr (line, '\n');
         size_t len = newline ? (size_t)(newline - line) : strlen (line);
 
         /* Parse this eventlog entry */
         if (!(entry = json_loadb (line, len, 0, &error))) {
-            debug_printf(1, "Failed to parse eventlog entry: %s\n", error.text);
+            /* Skip malformed lines */
             line = newline ? newline + 1 : NULL;
             continue;
         }
@@ -343,7 +344,7 @@ static int parse_eventlog_for_shell_init (const char *eventlog_str,
         /* Check if this is shell.init */
         if (json_unpack (entry, "{s:s}", "name", &name) == 0
             && strcmp (name, "shell.init") == 0) {
-            /* Extract spindle_port and spindle_num_ports from context */
+            /* Extract spindle context */
             rc = json_unpack (entry,
                     "{s:{s:i s:i}}",
                     "context",
@@ -356,196 +357,7 @@ static int parse_eventlog_for_shell_init (const char *eventlog_str,
         json_decref (entry);
         line = newline ? newline + 1 : NULL;
     }
-
     return -1;  /* shell.init not found */
-}
-
-/*  Spindle plugin shell.post-init callback
- *  Synchronously read guest.exec.eventlog to get port and num_ports from
- *   the shell.init event, then start backend and frontend.
- *
- *  This runs after shell.init is emitted but before the reactor starts,
- *   avoiding the race condition where event notifications arrive before
- *   the reactor is running to process callbacks.
- */
-static int sp_post_init (flux_plugin_t *p,
-                         const char *topic,
-                         flux_plugin_arg_t *arg,
-                         void *data)
-{
-    (void)topic;
-    (void)arg;
-    (void)data;
-    struct spindle_ctx *ctx = flux_plugin_aux_get (p, "spindle");
-    flux_shell_t *shell = flux_plugin_get_shell (p);
-    flux_t *h = flux_shell_get_flux (shell);
-    flux_future_t *f = NULL;
-    char path[128];
-    char ns[128];
-    const char *eventlog_str = NULL;
-    char *eventlog_copy = NULL;  /* Owned copy for error reporting */
-    int rc;
-
-    if (!ctx || !spindle_is_enabled(ctx))
-        return 0;
-
-    if (ctx->params.opts & OPT_OFF)
-        return 0;
-
-    debug_printf(2, "sp_post_init: synchronously reading eventlog for shell.init\n");
-
-    /*  Build path to guest.exec.eventlog in job's KVS namespace */
-    if (flux_job_kvs_namespace (ns, sizeof (ns), ctx->id) < 0)
-        logerrno_printf_and_return(1, "flux_job_kvs_namespace failed\n");
-
-    debug_printf(1, "[SPINDLE rank=%d] Looking up exec.eventlog in namespace: %s\n",
-                 ctx->shell_rank, ns);
-
-    /*  Synchronize KVS: Query rank 0 for authoritative namespace version.
-     *  At this point (shell.post-init), rank 0 has already written shell.init
-     *  to the eventlog. However, flux_kvs_get_version() with FLUX_NODEID_ANY
-     *  returns the LOCAL view's version, which may be stale. We need to query
-     *  rank 0 directly to get the version after the write, then wait for our
-     *  local KVS to catch up to that version.
-     */
-    flux_future_t *version_f = NULL;
-    int rank0_version = 0;
-
-    /* Get version from rank 0 (authoritative) */
-    version_f = flux_rpc_pack (h, "kvs.getroot", 0, 0,
-                               "{ s:s }", "namespace", ns);
-    if (!version_f) {
-        debug_printf(1, "[SPINDLE rank=%d] flux_rpc_pack(kvs.getroot) to rank 0 failed: %s\n",
-                    ctx->shell_rank, strerror(errno));
-        logerrno_printf_and_return(1, "failed to query rank 0 KVS version\n");
-    }
-
-    if (flux_rpc_get_unpack (version_f, "{ s:i }", "rootseq", &rank0_version) < 0) {
-        debug_printf(1, "[SPINDLE rank=%d] flux_rpc_get_unpack failed: %s\n",
-                    ctx->shell_rank, strerror(errno));
-        flux_future_destroy (version_f);
-        logerrno_printf_and_return(1, "failed to get rank 0 KVS version\n");
-    }
-    flux_future_destroy (version_f);
-
-    debug_printf(1, "[SPINDLE rank=%d] Rank 0 KVS version: %d\n",
-                ctx->shell_rank, rank0_version);
-
-    /* Wait for local KVS to reach rank 0's version */
-    if (flux_kvs_wait_version (h, ns, rank0_version) < 0) {
-        debug_printf(1, "[SPINDLE rank=%d] flux_kvs_wait_version(%d) failed: %s\n",
-                    ctx->shell_rank, rank0_version, strerror(errno));
-        logerrno_printf_and_return(1, "flux_kvs_wait_version failed\n");
-    }
-    debug_printf(1, "[SPINDLE rank=%d] KVS synchronized to rank 0 version %d\n",
-                ctx->shell_rank, rank0_version);
-
-    /*  Retry loop: Poll eventlog until shell.init appears.
-     *  After KVS synchronization above, this should succeed quickly.
-     *  Keep the retry loop as a safety net for any remaining edge cases.
-     */
-    rc = -1;
-    int lookup_errors = 0;
-    int wait_errors = 0;
-    int get_errors = 0;
-    for (int retry = 0; retry < 1000; retry++) {
-        int saved_errno;
-        f = flux_kvs_lookup (h, ns, 0, "exec.eventlog");
-        if (!f) {
-            saved_errno = errno;
-            debug_printf(1, "[SPINDLE rank=%d] flux_kvs_lookup returned NULL on retry %d, errno=%d (%s)\n",
-                        ctx->shell_rank, retry, saved_errno, strerror(saved_errno));
-            lookup_errors++;
-            usleep (10000);
-            continue;
-        }
-
-        if (flux_future_wait_for (f, -1.0) < 0) {
-            saved_errno = errno;
-            debug_printf(1, "[SPINDLE rank=%d] flux_future_wait_for failed on retry %d, errno=%d (%s)\n",
-                        ctx->shell_rank, retry, saved_errno, strerror(saved_errno));
-            flux_future_destroy (f);
-            wait_errors++;
-            usleep (10000);
-            continue;
-        }
-
-        if (flux_kvs_lookup_get (f, &eventlog_str) < 0) {
-            saved_errno = errno;
-            debug_printf(1, "[SPINDLE rank=%d] flux_kvs_lookup_get failed on retry %d, errno=%d (%s)\n",
-                        ctx->shell_rank, retry, saved_errno, strerror(saved_errno));
-            flux_future_destroy (f);
-            get_errors++;
-            usleep (10000);
-            continue;
-        }
-
-        /*  Make a copy of eventlog before destroying future, since
-         *  eventlog_str points to data owned by the future.
-         */
-        free (eventlog_copy);
-        eventlog_copy = eventlog_str ? strdup (eventlog_str) : NULL;
-
-        rc = parse_eventlog_for_shell_init (eventlog_str,
-                                            &ctx->params.port,
-                                            &ctx->params.num_ports);
-        flux_future_destroy (f);
-        if (rc == 0) {
-            debug_printf(1, "[SPINDLE rank=%d] Found shell.init after %d retries\n",
-                    ctx->shell_rank, retry);
-            free (eventlog_copy);
-            break;  /* Found shell.init, we're done */
-        }
-
-        usleep (10000);  /* 10ms sleep between retries */
-    }
-
-    if (rc < 0) {
-        debug_printf(1, "[SPINDLE rank=%d] FAILED after 1000 retries\n", ctx->shell_rank);
-        debug_printf(1, "[SPINDLE rank=%d] Error counts: lookup=%d wait=%d get=%d\n",
-                    ctx->shell_rank, lookup_errors, wait_errors, get_errors);
-        debug_printf(1, "[SPINDLE rank=%d] Namespace: %s\n",
-                    ctx->shell_rank, ns);
-
-        /*  Dump eventlog line-by-line with [EVENTLOG] tag for easy grepping.
-         *  This goes directly to the Spindle log which is already captured in artifacts.
-         */
-        debug_printf(1, "[SPINDLE rank=%d] === BEGIN EVENTLOG DUMP ===\n", ctx->shell_rank);
-        if (eventlog_copy) {
-            const char *line = eventlog_copy;
-            const char *newline;
-            while (line && *line) {
-                newline = strchr(line, '\n');
-                if (newline) {
-                    debug_printf(1, "[EVENTLOG rank=%d] %.*s\n",
-                               ctx->shell_rank, (int)(newline - line), line);
-                    line = newline + 1;
-                } else {
-                    debug_printf(1, "[EVENTLOG rank=%d] %s\n", ctx->shell_rank, line);
-                    break;
-                }
-            }
-        } else {
-            debug_printf(1, "[EVENTLOG rank=%d] (null)\n", ctx->shell_rank);
-        }
-        debug_printf(1, "[SPINDLE rank=%d] === END EVENTLOG DUMP ===\n", ctx->shell_rank);
-
-        free (eventlog_copy);
-        logerrno_printf_and_return(1, "shell.init event not found in eventlog after retries\n");
-    }
-
-    debug_printf(2, "Found shell.init: port=%d num_ports=%d\n",
-                 ctx->params.port, ctx->params.num_ports);
-
-    /*  Now that port and num_ports are obtained from rank 0, start
-     *   the backends and frontend on rank 0
-     */
-    run_spindle_backend (ctx);
-
-    if (ctx->shell_rank == 0)
-        run_spindle_frontend (ctx);
-
-    return 0;
 }
 
 static int parse_yesno(opt_t *opt, opt_t flag, const char *yesno)
@@ -716,6 +528,7 @@ static int sp_init (flux_plugin_t *p,
     flux_t *h = flux_shell_get_flux (shell);
     flux_jobid_t id;
     int shell_rank, rc;
+    flux_future_t *f;
     json_t *R;
     const char *debug;
     const char *tmpdir;
@@ -829,8 +642,8 @@ static int sp_init (flux_plugin_t *p,
 
     if (shell_rank == 0) {
         /*  Rank 0: add spindle port and num_ports to the shell.init
-         *   exec eventlog event. All other shells will read this from the
-         *   eventlog in the shell.post-init callback.
+         *   exec eventlog event. All other shell's will wait for this
+         *   event and initialize their port/num_ports from these values.
          */
         flux_shell_add_event_context (shell, "shell.init", 0,
                                       "{s:i s:i}",
@@ -840,13 +653,100 @@ static int sp_init (flux_plugin_t *p,
                                       ctx->params.num_ports);
     }
 
-    /*  Port and num_ports will be read synchronously in shell.post-init
-     *   callback after shell.init is emitted but before the reactor starts.
-     *   This avoids the race condition where async event watch notifications
-     *   arrive before the reactor is running to process them.
+    /*  Synchronize with rank 0's KVS version and read shell.init from eventlog.
+     *  This ensures all ranks see rank 0's write to the eventlog, avoiding
+     *  eventual consistency issues where non-zero ranks might read stale cached
+     *  data that doesn't yet include shell.init.
      */
+    char ns[128];
+    flux_future_t *version_f = NULL;
+    int rank0_version = 0;
+    const char *eventlog_str = NULL;
+    char *eventlog_copy = NULL;
+    int rc = -1;
 
-    /*  Return control to job shell */
+    /* Get the job's KVS namespace */
+    if (flux_job_kvs_namespace (ns, sizeof (ns), id) < 0)
+        shell_die_errno (1, "flux_job_kvs_namespace failed");
+
+    /* Query rank 0 for the authoritative namespace version */
+    version_f = flux_rpc_pack (h, "kvs.getroot", 0, 0,
+                               "{ s:s }", "namespace", ns);
+    if (!version_f)
+        shell_die_errno (1, "flux_rpc_pack(kvs.getroot) to rank 0 failed");
+
+    if (flux_rpc_get_unpack (version_f, "{ s:i }", "rootseq", &rank0_version) < 0) {
+        flux_future_destroy (version_f);
+        shell_die_errno (1, "failed to get rank 0 KVS version");
+    }
+    flux_future_destroy (version_f);
+
+    debug_printf(1, "[SPINDLE rank=%d] Rank 0 KVS version: %d\n",
+                shell_rank, rank0_version);
+
+    /* Wait for local KVS to reach rank 0's version */
+    if (flux_kvs_wait_version (h, ns, rank0_version) < 0)
+        shell_die_errno (1, "flux_kvs_wait_version failed");
+
+    debug_printf(1, "[SPINDLE rank=%d] KVS synchronized to rank 0 version %d\n",
+                shell_rank, rank0_version);
+
+    /* Read eventlog synchronously. After KVS version synchronization,
+     * shell.init should be present. Small retry loop as safety net. */
+    for (int retry = 0; retry < 100; retry++) {
+        f = flux_kvs_lookup (h, ns, 0, "exec.eventlog");
+        if (!f) {
+            usleep (10000);
+            continue;
+        }
+
+        if (flux_future_wait_for (f, -1.0) < 0) {
+            flux_future_destroy (f);
+            usleep (10000);
+            continue;
+        }
+
+        if (flux_kvs_lookup_get (f, &eventlog_str) < 0) {
+            flux_future_destroy (f);
+            usleep (10000);
+            continue;
+        }
+
+        /* Copy eventlog before destroying future (data is future-owned) */
+        free (eventlog_copy);
+        eventlog_copy = eventlog_str ? strdup (eventlog_str) : NULL;
+
+        rc = parse_eventlog_for_shell_init (eventlog_str,
+                                            &ctx->params.port,
+                                            &ctx->params.num_ports);
+        flux_future_destroy (f);
+
+        if (rc == 0) {
+            debug_printf(1, "[SPINDLE rank=%d] Found shell.init after %d retries\n",
+                    shell_rank, retry);
+            free (eventlog_copy);
+            break;
+        }
+
+        usleep (10000);  /* 10ms between retries */
+    }
+
+    if (rc < 0) {
+        free (eventlog_copy);
+        shell_die (1, "shell.init event not found in eventlog after KVS sync");
+    }
+
+    debug_printf(2, "Found shell.init: port=%d num_ports=%d\n",
+                 ctx->params.port, ctx->params.num_ports);
+
+    /*  Now that port and num_ports are obtained from rank 0, start
+     *   the backends and frontend on rank 0
+     */
+    run_spindle_backend (ctx);
+
+    if (shell_rank == 0)
+        run_spindle_frontend (ctx);
+
     return 0;
 }
 
@@ -942,7 +842,6 @@ int flux_plugin_init (flux_plugin_t *p)
 {
     if (flux_plugin_set_name (p, "spindle") < 0
         || flux_plugin_add_handler (p, "shell.init", sp_init, NULL) < 0
-        || flux_plugin_add_handler (p, "shell.post-init", sp_post_init, NULL) < 0
         || flux_plugin_add_handler (p, "task.init",  sp_task, NULL) < 0
         || flux_plugin_add_handler (p, "shell.exit", sp_exit, NULL) < 0)
         return -1;
