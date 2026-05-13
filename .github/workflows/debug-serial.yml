@@ -62,7 +62,7 @@ jobs:
       - name: Run spindle-debug-serial testsuite
         id: debug-serial-testsuite
         run: |
-          docker exec spindlenode bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=serial --run-all-tests --spindle-debug=3 --preserve-logs-on-success --verbose'
+          docker exec spindlenode bash -c 'cd Spindle-build/testsuite && python3 /home/spindleuser/Spindle/testsuite/debug/runTests.py --build-dir . --resource-manager=serial --run-all-tests --spindle-debug=3 --preserve-logs-on-success --verbose'
 
       - name: Copy debug logs from container
         id: debug-serial-copy-logs
@@ -70,8 +70,8 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p debug-logs-temp
-          # Copy entire debug directory from container
-          docker cp spindlenode:/home/spindleuser/Spindle-build/testsuite/debug/. debug-logs-temp/ || true
+          # Copy log directories from testsuite directory (where runTests.py creates them by default)
+          docker cp spindlenode:/home/spindleuser/Spindle-build/testsuite/. debug-logs-temp/ || true
           # Move only the log directories (matching returncode_iteration_testname_timestamp pattern) to final location
           mkdir -p debug-logs
           find debug-logs-temp -maxdepth 1 -type d -name '[0-9]*_[0-9]*_*_[0-9]*' -exec mv {} debug-logs/ \;
