@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.5.2"
+__version__ = "1.6.0"
 
 import argparse
 import fnmatch
@@ -279,7 +279,7 @@ def run_serial_test(args, env, testsuite_dir, test_type='dependency', test_mode=
         (returncode, log_directory)
     """
     # Determine TEST_EXEC based on test type
-    test_exec = './test_driver_libs'
+    test_exec = os.path.join(args.build_dir, 'test_driver_libs')
 
     # Determine which modes are Spindle options vs test_driver options
     # Spindle options: push, pull, numa, preload
@@ -454,7 +454,8 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
                 print(f"Could not query resources: {e}")
 
         # Determine TEST_EXEC based on test type
-        test_exec = './test_driver_libs' if test_type in ['dependency', 'dlreopen'] else './test_driver'
+        test_exec_name = 'test_driver_libs' if test_type in ['dependency', 'dlreopen'] else 'test_driver'
+        test_exec = os.path.join(args.build_dir, test_exec_name)
         test_args = [f'--{test_type}', '--session']
 
         # For ldpreload tests, set LD_PRELOAD via Flux
@@ -616,7 +617,8 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
             print(f"Could not query resources: {e}")
 
     # Determine TEST_EXEC based on test type
-    test_exec = './test_driver_libs' if test_type in ['dependency', 'dlreopen'] else './test_driver'
+    test_exec_name = 'test_driver_libs' if test_type in ['dependency', 'dlreopen'] else 'test_driver'
+    test_exec = os.path.join(args.build_dir, test_exec_name)
     test_args = [f'--{test_type}', f'--{test_mode}']
 
     # Build command for jobspec
@@ -930,6 +932,12 @@ def main():
         '--verbose',
         action='store_true',
         help='Print command and environment variables. Also prints version at startup.'
+    )
+    parser.add_argument(
+        '--build-dir',
+        type=str,
+        default='.',
+        help='Path to build directory containing test executables (default: current directory)'
     )
 
     args = parser.parse_args()
