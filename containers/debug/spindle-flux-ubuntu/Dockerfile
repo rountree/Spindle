@@ -1,0 +1,54 @@
+# This is based on the Flux Container Tutorial
+# See https://flux-framework.readthedocs.io/en/latest/tutorials/containers
+FROM ghcr.io/rountree/spindle-flux-base:latest AS builder
+ARG replicas=4
+ENV workers=${replicas}
+USER root
+
+ARG USER=fluxuser
+ARG CONFIG_ROOT=containers/debug/spindle-flux-ubuntu
+
+# Allow fluxuser to run as other users so it can start munged
+RUN sh -c "printf \"${USER} ALL=(ALL) NOPASSWD: ALL\\n\" >> /etc/sudoers"
+
+# Configure flux
+ENV STATE_DIR=/var/lib/flux
+RUN mkdir -p ${STATE_DIR} /etc/flux/system /etc/flux/system/cron.d /etc/flux/config /run/flux /etc/flux/imp/conf.d
+COPY ${CONFIG_ROOT}/flux/imp.toml /etc/flux/imp/conf.d/
+COPY ${CONFIG_ROOT}/flux/generate-broker-toml.sh /tmp/generate-broker-toml.sh
+RUN /tmp/generate-broker-toml.sh ${workers} > /etc/flux/config/broker.toml && \
+    mkdir -p /etc/flux/system/cron.d && \
+    mkdir -p /mnt/curve && \
+    flux keygen /mnt/curve/curve.cert && \
+    flux R encode --hosts="node-[1-${workers}]" > /etc/flux/system/R && \
+    chown -R ${USER}:${USER} /run/flux ${STATE_DIR} /mnt/curve/curve.cert 
+
+# Build Spindle
+WORKDIR /home/${USER}
+# Copy the whole git repo into the container.
+COPY . /home/${USER}/Spindle
+COPY ${CONFIG_ROOT}/scripts/build_spindle.sh /home/${USER}/build_spindle.sh
+
+RUN mkdir -p /shared-logs && \
+    chown -R ${USER}:${USER} /home/fluxuser && \
+    chown -R ${USER}:${USER} /run/flux && \
+    chown -R ${USER}:${USER} /shared-logs
+
+USER ${USER}
+RUN ./build_spindle.sh
+COPY ${CONFIG_ROOT}/scripts/flux_healthcheck.sh ./
+COPY ${CONFIG_ROOT}/scripts/entrypoint.sh ./
+ENV PATH /home/${USER}/Spindle-inst/bin:${PATH}
+# Set PYTHONPATH to include Flux Python modules
+# Base image (fluxrm/flux-sched:noble = Ubuntu 24.04) uses Python 3.12
+# Flux installs Python modules in /usr/lib64/flux/python3.12/
+# If base image changes, update this path to match the Python version
+ENV PYTHONPATH /usr/lib64/flux/python3.12:${PYTHONPATH}
+# Make libfabric work with fork.
+ENV RDMAV_FORK_SAFE 1
+# Silence warning from hwloc about unsupported PCI device
+# on GitHub-hosted runners.
+ENV HWLOC_HIDE_ERRORS 2
+
+ENTRYPOINT /bin/bash ./entrypoint.sh
+

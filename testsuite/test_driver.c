@@ -360,7 +360,7 @@ static char *create_local_file(int libnum)
    int result, i, found = 0;
    size_t in_size;
    struct stat statbuf;
-   int timeout = 50;
+   int timeout = 500;
    const char *key = "SPINDLE_PLACEHOLDER";
 
    memset(hostname, 0, sizeof(hostname));

@@ -1,0 +1,99 @@
+name: debug-serial
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: debug-serial-${{github.ref}}-${{github.event.pull_request.number || github.run_number}}
+  cancel-in-progress: true
+
+jobs:
+  spindle-debug-serial:
+    name: Debug Testsuite (Serial, Ubuntu)
+    environment: Spindle CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Docker Compose
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        with:
+          version: latest
+
+      - name: Build spindle-debug-serial image
+        id: debug-serial-build
+        run: |
+          cd containers/debug/spindle-serial-ubuntu
+          docker compose --progress=plain build
+
+      - name: Bring spindle-debug-serial up
+        id: debug-serial-up
+        run: |
+          cd containers/debug/spindle-serial-ubuntu
+          docker compose up -d
+          # Give munged time to start
+          sleep 2
+
+      - name: Check container status and logs
+        id: debug-serial-status
+        if: always()
+        run: |
+          echo "=== Container status ==="
+          docker ps -a | grep spindlenode || true
+          echo "=== Container logs ==="
+          docker logs spindlenode || true
+
+      - name: Verify munged is running
+        id: debug-serial-munge
+        run: |
+          echo "=== Checking munged process ==="
+          docker exec spindlenode ps aux | grep munge || true
+          echo "=== Checking munge socket ==="
+          docker exec spindlenode ls -la /run/munge/ || true
+          echo "=== Testing munge ==="
+          docker exec spindlenode bash -c 'munge -n | unmunge' || echo "Munge test failed"
+
+      - name: Run spindle-debug-serial testsuite
+        id: debug-serial-testsuite
+        run: |
+          docker exec spindlenode bash -c 'cd Spindle-build/testsuite/debug && ./runTests.py --resource-manager=serial --run-all-tests --spindle-debug=3 --preserve-logs-on-success --verbose'
+
+      - name: Copy debug logs from container
+        id: debug-serial-copy-logs
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          mkdir -p debug-logs-temp
+          # Copy entire debug directory from container
+          docker cp spindlenode:/home/spindleuser/Spindle-build/testsuite/debug/. debug-logs-temp/ || true
+          # Move only the log directories (matching returncode_iteration_testname_timestamp pattern) to final location
+          mkdir -p debug-logs
+          find debug-logs-temp -maxdepth 1 -type d -name '[0-9]*_[0-9]*_*_[0-9]*' -exec mv {} debug-logs/ \;
+
+      - name: Set short SHA
+        id: short-sha
+        run: echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Upload debug artifacts
+        id: debug-serial-upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-serial-logs-${{ github.run_number }}-${{ steps.short-sha.outputs.sha_short }}
+          path: debug-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Bring spindle-debug-serial down
+        id: debug-serial-down
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          cd containers/debug/spindle-serial-ubuntu
+          docker compose down

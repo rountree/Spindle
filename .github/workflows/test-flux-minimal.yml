@@ -1,0 +1,65 @@
+name: test-flux-minimal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-flux-broker:
+    name: Test Flux Broker Minimal
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Test with vanilla fluxrm/flux-sched
+        run: |
+          docker run --rm --user=root --hostname=test-node fluxrm/flux-sched:noble bash -c '
+            flux --version
+            echo "Testing broker.toml with placeholders"
+            mkdir -p /etc/flux/config /mnt/curve /etc/flux/system
+            flux keygen /mnt/curve/curve.cert
+            flux R encode --hosts=test-node > /etc/flux/system/R
+            cat > /etc/flux/config/broker.toml <<EOF
+          [resource]
+          path = "/etc/flux/system/R"
+
+          [bootstrap]
+          curve_cert = "/mnt/curve/curve.cert"
+          default_port = 8050
+          default_bind = "tcp://0.0.0.0:%p"
+          default_connect = "tcp://%h:%p"
+          hosts = [ { host="test-node" } ]
+          EOF
+            echo "Generated broker.toml:"
+            cat /etc/flux/config/broker.toml
+            echo "Starting broker with flux broker..."
+            flux broker --config-path=/etc/flux/config echo "SUCCESS: flux broker" || echo "FAILED: flux broker"
+            echo ""
+            echo "Starting broker with flux start..."
+            flux start -o --config /etc/flux/config echo "SUCCESS: flux start" || echo "FAILED: flux start"
+          '
+
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Build spindle-flux-ubuntu for testing
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          # Generate compose with 1 node for quick test
+          ./generate-compose.py 1 > docker-compose.yml
+          docker compose build
+
+      - name: Test spindle-flux-ubuntu entrypoint directly
+        run: |
+          timeout 30s docker run --rm --hostname=node-1 spindle-flux-ubuntu:latest bash -c '
+            echo "=== Checking broker.toml ==="
+            cat /etc/flux/config/broker.toml
+            echo ""
+            echo "=== Testing broker startup ==="
+            # Run just the broker start without munged or hostname resolution complexity
+            export STATE_DIRECTORY=/var/lib/flux
+            brokerOptions="-Scron.directory=/etc/flux/system/cron.d -Stbon.fanout=256 -Srundir=/run/flux -Sstatedir=/var/lib/flux -Slocal-uri=local:///run/flux/local -Slog-stderr-level=6 -Slog-stderr-mode=local"
+            flux start -o --config /etc/flux/config ${brokerOptions} /bin/bash -c "echo SUCCESS && exit 0"
+            echo "Exit code: $?"
+          ' || echo "FAILED or TIMEOUT"

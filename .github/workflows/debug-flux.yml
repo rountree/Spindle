@@ -1,0 +1,343 @@
+name: debug-flux
+
+on:
+  workflow_dispatch:
+    inputs:
+      num_nodes:
+        description: 'Number of nodes (1-32)'
+        required: true
+        default: 32
+        type: number
+      tasks_per_node:
+        description: 'Tasks per node (1-8)'
+        required: true
+        default: 3
+        type: number
+      reps:
+        description: 'Number of repetitions'
+        required: true
+        default: 50
+        type: number
+      timeout_minutes:
+        description: 'Workflow timeout in minutes (max 360)'
+        required: true
+        default: 120
+        type: number
+      flux_interface:
+        description: 'Flux interface to use'
+        required: true
+        default: 'API'
+        type: choice
+        options:
+          - API
+          - CLI
+      single_test:
+        description: 'Test to run (e.g., dependency_push, or * for all)'
+        required: false
+        default: 'dependency_push'
+        type: string
+      time_limit:
+        description: 'Time limit per test (e.g., 1m, 90s, 2m)'
+        required: true
+        default: '2m'
+        type: string
+      spindle_debug:
+        description: 'SPINDLE_DEBUG level (0-3)'
+        required: true
+        default: 3
+        type: choice
+        options:
+          - '0'
+          - '1'
+          - '2'
+          - '3'
+      preserve_logs:
+        description: 'Preserve logs on success'
+        required: false
+        default: false
+        type: boolean
+      continue_on_failure:
+        description: 'Continue testing after a test failure'
+        required: false
+        default: false
+        type: boolean
+      enable_dmesg_collection:
+        description: 'Collect dmesg logs from nodes'
+        required: false
+        default: false
+        type: boolean
+      restart_flux_each_iteration:
+        description: 'Restart Flux between iterations (tests infrastructure, slower)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: debug-flux-${{github.ref}}-${{github.event.pull_request.number || github.run_number}}
+  cancel-in-progress: true
+
+jobs:
+  spindle-debug-flux:
+    name: Debug Flux - ${{ inputs.num_nodes || 32 }}n × ${{ inputs.tasks_per_node || 3 }}t × ${{ inputs.reps || 50 }}r
+    environment: Spindle CI
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(inputs.timeout_minutes || '120') }}
+    env:
+      NUM_NODES: ${{ inputs.num_nodes || 32 }}
+      TASKS_PER_NODE: ${{ inputs.tasks_per_node || 3 }}
+    steps:
+      - name: Check out Spindle
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Record workflow configuration
+        run: |
+          cat > workflow-config.txt << EOF
+          Workflow: ${{ github.workflow }}
+          Run ID: ${{ github.run_id }}
+          Run Number: ${{ github.run_number }}
+          Triggered by: ${{ github.actor }}
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref_name }}
+          Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          Input Parameters:
+            num_nodes: ${{ inputs.num_nodes }}
+            tasks_per_node: ${{ inputs.tasks_per_node }}
+            reps: ${{ inputs.reps }}
+            timeout_minutes: ${{ inputs.timeout_minutes }}
+            flux_interface: ${{ inputs.flux_interface }}
+            single_test: ${{ inputs.single_test }}
+            spindle_debug: ${{ inputs.spindle_debug }}
+            preserve_logs: ${{ inputs.preserve_logs }}
+          EOF
+
+          echo "=== Workflow Configuration ==="
+          cat workflow-config.txt
+
+      - name: Setup Docker Compose
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6
+        with:
+          version: latest
+
+      - name: Generate docker-compose.yml
+        id: debug-flux-generate
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          ./generate-compose.py ${{ env.NUM_NODES }} > docker-compose.yml
+
+      - name: Build spindle-debug-flux image
+        id: debug-flux-build
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          docker compose --progress=plain build
+
+      - name: Bring spindle-debug-flux up
+        id: debug-flux-up
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          docker compose up -d --wait --wait-timeout 60
+
+      - name: Dump container logs on startup failure
+        if: failure() && steps.debug-flux-up.outcome == 'failure'
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          echo "=== Container status ==="
+          docker compose ps -a
+          echo "=== Node-1 broker.toml ==="
+          docker run --rm spindle-flux-ubuntu:latest cat /etc/flux/config/broker.toml || true
+          echo "=== Dumping logs for all ${{ env.NUM_NODES }} nodes ==="
+          for i in $(seq 1 ${{ env.NUM_NODES }}); do
+            echo "=== Node-${i} logs ==="
+            docker logs node-${i} || true
+          done
+
+      - name: Verify munge works in spindle-debug-flux
+        id: debug-flux-munge
+        if: ${{ !inputs.restart_flux_each_iteration }}
+        run: |
+          docker exec node-1 bash -c 'munge -n | unmunge'
+
+      # Single run mode: Start Flux once, run all reps
+      - name: Run spindle-debug-flux testsuite (single Flux instance)
+        id: debug-flux-testsuite-single
+        if: ${{ !inputs.restart_flux_each_iteration }}
+        run: |
+          # Clear dmesg buffer if requested
+          if [ "${{ inputs.enable_dmesg_collection }}" == "true" ]; then
+            sudo dmesg -C
+          fi
+
+          # Create metadata file in container
+          docker exec node-1 bash -c "cat > /shared-logs/test-metadata.txt << 'EOF'
+          Test Configuration:
+            Resource Manager: flux
+            Interface: ${{ inputs.flux_interface }}
+            Nodes: ${{ inputs.num_nodes }}
+            Tasks per node: ${{ inputs.tasks_per_node }}
+            Repetitions: ${{ inputs.reps }}
+            Restart Flux: false
+            Test: ${{ inputs.single_test }}
+            Spindle Debug Level: ${{ inputs.spindle_debug }}
+            Preserve Logs: ${{ inputs.preserve_logs }}
+            Workflow Run: ${{ github.run_id }}
+            Commit: ${{ github.sha }}
+          EOF
+          "
+
+          # Run tests
+          docker exec node-1 bash -c 'cd Spindle-build/testsuite/debug && \
+          ./runTests.py \
+          --resource-manager=flux \
+          --flux-interface=${{ inputs.flux_interface }} \
+          --num-nodes=${{ inputs.num_nodes }} \
+          --tasks-per-node=${{ inputs.tasks_per_node }} \
+          --reps=${{ inputs.reps }} \
+          --time-limit=${{ inputs.time_limit }} \
+          --spindle-debug=${{ inputs.spindle_debug }} \
+          ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
+          ${{ inputs.continue_on_failure && '--continue-on-failure' || '' }} \
+          ${{ inputs.enable_dmesg_collection && '--enable-dmesg-collection' || '' }} \
+          --log-dir=/shared-logs \
+          ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
+          --verbose'
+
+      # Restart mode: Tear down and restart Flux between each iteration
+      - name: Run spindle-debug-flux testsuite (restart Flux each iteration)
+        id: debug-flux-testsuite-restart
+        if: ${{ inputs.restart_flux_each_iteration }}
+        continue-on-error: true
+        run: |
+          # Create metadata file
+          mkdir -p debug-logs
+          cp workflow-config.txt debug-logs/ || true
+          cat > debug-logs/test-metadata.txt << EOF
+          Test Configuration:
+            Resource Manager: flux
+            Interface: ${{ inputs.flux_interface }}
+            Nodes: ${{ inputs.num_nodes }}
+            Tasks per node: ${{ inputs.tasks_per_node }}
+            Repetitions: ${{ inputs.reps }}
+            Restart Flux: true (each iteration)
+            Test: ${{ inputs.single_test }}
+            Spindle Debug Level: ${{ inputs.spindle_debug }}
+            Preserve Logs: ${{ inputs.preserve_logs }}
+            Workflow Run: ${{ github.run_id }}
+            Commit: ${{ github.sha }}
+          EOF
+
+          # Loop iterations with Flux restart
+          cd containers/debug/spindle-flux-ubuntu
+          FAILURE_ITERATION=""
+          for i in $(seq 1 ${{ inputs.reps }}); do
+            echo "=== Iteration $i/${{ inputs.reps }} ==="
+
+            # Clear dmesg buffer before this iteration
+            if [ "${{ inputs.enable_dmesg_collection }}" == "true" ]; then
+              sudo dmesg -C
+            fi
+
+            echo "Starting Flux cluster..."
+
+            # Start containers and Flux
+            docker compose up -d --wait --wait-timeout 60
+
+            # Verify munge
+            docker exec node-1 bash -c 'munge -n | unmunge' || echo "Munge check failed"
+
+            # Run single test iteration
+            echo "Running test iteration $i..."
+            if docker exec node-1 bash -c "cd Spindle-build/testsuite/debug && \
+              ./runTests.py \
+              --resource-manager=flux \
+              --flux-interface=${{ inputs.flux_interface }} \
+              --num-nodes=${{ inputs.num_nodes }} \
+              --tasks-per-node=${{ inputs.tasks_per_node }} \
+              --time-limit=${{ inputs.time_limit }} \
+              --spindle-debug=${{ inputs.spindle_debug }} \
+              ${{ inputs.preserve_logs && '--preserve-logs-on-success' || '' }} \
+              ${{ inputs.continue_on_failure && '--continue-on-failure' || '' }} \
+              ${{ inputs.enable_dmesg_collection && '--enable-dmesg-collection' || '' }} \
+              --log-dir=/shared-logs/iteration_${i} \
+              ${{ inputs.single_test && format('--single-test={0}', inputs.single_test) || '--run-all-tests' }} \
+              --verbose"; then
+              echo "Test iteration $i passed"
+            else
+              echo "Test iteration $i failed (exit code: $?)"
+              FAILURE_ITERATION=$i
+              # Stop if continue_on_failure is false
+              if [ "${{ inputs.continue_on_failure }}" != "true" ]; then
+                echo "Stopping due to test failure (continue_on_failure=false)"
+                break
+              fi
+            fi
+
+            # Copy logs for this iteration
+            mkdir -p ../../../debug-logs/iteration_${i}
+            docker cp node-1:/shared-logs/iteration_${i}/. ../../../debug-logs/iteration_${i}/ || true
+
+            # Tear down containers and Flux only if continuing
+            if [ -z "$FAILURE_ITERATION" ] || [ "${{ inputs.continue_on_failure }}" == "true" ]; then
+              echo "Stopping Flux cluster..."
+              docker compose down
+              sleep 2
+            fi
+          done
+
+          # Handle failure case - containers still up for debugging
+          if [ -n "$FAILURE_ITERATION" ]; then
+            echo "=== Failure detected in iteration $FAILURE_ITERATION ==="
+            echo "Containers still running for log extraction and debugging"
+
+            # Copy logs from failed iteration
+            mkdir -p ../../../debug-logs/iteration_${FAILURE_ITERATION}
+            docker cp node-1:/shared-logs/iteration_${FAILURE_ITERATION}/. ../../../debug-logs/iteration_${FAILURE_ITERATION}/
+
+            # TODO: Additional debugging here (backtraces, proc info, etc.)
+
+            # Now tear down containers
+            echo "Tearing down containers..."
+            docker compose down
+
+            # Exit with failure if continue_on_failure was false
+            if [ "${{ inputs.continue_on_failure }}" != "true" ]; then
+              exit 1
+            fi
+          fi
+
+      - name: Copy debug logs from shared filesystem
+        id: debug-flux-copy-logs
+        if: ${{ always() && !inputs.restart_flux_each_iteration }}
+        continue-on-error: true
+        run: |
+          mkdir -p debug-logs
+          # Copy workflow configuration
+          cp workflow-config.txt debug-logs/ || true
+          # Copy logs from shared volume
+          docker cp node-1:/shared-logs/. debug-logs/ || true
+
+      - name: Set short SHA
+        id: short-sha
+        if: ${{ always() }}
+        run: echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Upload debug artifacts
+        id: debug-flux-upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-flux-n${{ inputs.num_nodes }}-t${{ inputs.tasks_per_node }}-r${{ inputs.reps }}-${{ github.run_number }}-${{ steps.short-sha.outputs.sha_short }}
+          path: debug-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Bring spindle-debug-flux down
+        id: debug-flux-down
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          cd containers/debug/spindle-flux-ubuntu
+          docker compose down

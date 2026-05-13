@@ -1,0 +1,76 @@
+# 4-node Flux cluster
+# For information on running Flux in containers, see
+# https://flux-framework.readthedocs.io/en/latest/tutorials/containers
+
+# `replicas` must match the number of nodes defined in the services section
+x-shared-workers:
+  &workers
+  replicas: 4
+
+# Base flux image version to use
+# ${ubuntu_version}-${flux_version}-${arch}
+x-shared-build-args: &shared-build-args
+  flux_sched_version: noble-v0.48.0-amd64
+  <<: *workers
+
+# Docker prohibits copying files from outside of the build context.
+# In order to be able to copy the whole repo into the container,
+# we have to set the context to be the root of the repo.
+# We then have to specify the path from there to the Dockerfile.
+x-shared-build-context: &shared-build-context
+  context: ../../..
+  dockerfile: containers/debug/spindle-flux-ubuntu/Dockerfile
+  args: *shared-build-args
+
+# Name of the node that runs the Flux broker
+x-shared-environment: &shared-environment
+  mainHost: node-1
+  FLUX_DEBUG_FLAGS: "255"
+  <<: *workers
+
+networks:
+  flux:
+    driver: bridge
+
+volumes:
+  shared-logs:
+
+# Common parameters for all nodes.
+x-shared-node-parameters: &shared-node-parameters
+  build: *shared-build-context
+  networks:
+    - flux
+  environment: *shared-environment
+  volumes:
+    - shared-logs:/shared-logs
+  cap_add:
+    - SYS_NICE # Required for libnuma
+
+services:
+  node-1:
+    <<: *shared-node-parameters
+    hostname: node-1
+    container_name: node-1
+    # Check whether all the workers have registered
+    # with the broker on the head node.
+    healthcheck:
+      test: ["CMD", "./flux_healthcheck.sh"]
+      start_period: 15s
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  node-2:
+    <<: *shared-node-parameters
+    hostname: node-2
+    container_name: node-2
+
+  node-3:
+    <<: *shared-node-parameters
+    hostname: node-3
+    container_name: node-3
+
+  node-4:
+    <<: *shared-node-parameters
+    hostname: node-4
+    container_name: node-4
