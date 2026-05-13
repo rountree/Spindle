@@ -610,6 +610,93 @@ The async callback approach (`flux_future_then()`) made an implicit assumption: 
 
 Synchronous operations (`flux_future_wait_for()`, `flux_kvs_wait_version()`, `flux_rpc_get_unpack()`) don't have this problem - they block and internally process messages until completion, with no reactor required.
 
+## Testing the Hypothesis: Was Reactor Timing the Only Issue?
+
+After implementing the KVS version synchronization fix in `sp_post_init()`, a question remained: Was the reactor race the real problem, or was it just that we needed to wait until shell.init was written? Could the fix work in `sp_init()` if we used synchronous operations with KVS version sync?
+
+We created an alternate implementation (branch `dbg_local-alternate-hang-fix`) that attempted to read shell.init synchronously in `sp_init()` (step 1 of the shell lifecycle) using KVS version synchronization:
+
+```c
+// In sp_init() - step 1, before shell.init is written
+/* Query rank 0 for authoritative version */
+flux_rpc_pack (h, "kvs.getroot", 0, 0, "{ s:s }", "namespace", ns);
+flux_rpc_get_unpack (version_f, "{ s:i }", "rootseq", &rank0_version);
+
+/* Wait for local KVS to sync */
+flux_kvs_wait_version (h, ns, rank0_version);
+
+/* Read eventlog */
+flux_kvs_lookup (h, ns, 0, "exec.eventlog");
+parse_eventlog_for_shell_init (eventlog_str, &port, &num_ports);
+```
+
+### Test Result
+
+First test run on GitHub Actions (32 nodes, 3 tasks per node):
+
+```
+Command: ./test_driver_libs --dependency --push
+Nodes: 32, Tasks per node: 3, Total tasks: 96, Time limit: 2m
+Using Flux interface: API
+Submitting job via Flux Python API...
+Job submitted: ƒA84ihrF
+Waiting for job to complete...
+Job completed: JobWaitResult(jobid=347254816768, success=False, errstr=b'Fatal exception type=exec shell.init event not found in eventlog after KVS sync')
+Collecting logs from all nodes to shared filesystem...
+Log collection completed successfully
+Test dependency_push FAILED (1.6s)
+Error: Process completed with exit code 1.
+```
+
+### Analysis
+
+The error message **"shell.init event not found in eventlog after KVS sync"** tells us:
+
+1. ✅ `flux_kvs_wait_version()` succeeded - KVS version sync worked correctly
+2. ✅ `flux_kvs_lookup()` succeeded - eventlog was retrieved from KVS
+3. ❌ `parse_eventlog_for_shell_init()` returned -1 - shell.init was not in the eventlog
+
+**The problem: Fundamental timing issue**
+
+The fix cannot work in `sp_init()` because of when shell.init is written to the eventlog:
+
+```
+Step 1: sp_init() runs on ALL ranks
+  - Rank 0: flux_shell_add_event_context() decorates shell.init (queues context)
+  - All ranks: Query rank 0 KVS version → get current version (e.g., version 3)
+  - All ranks: Wait for local KVS to sync to version 3
+  - All ranks: Read eventlog from KVS
+  - Eventlog contains only: {"name":"init"}, {"name":"starting"}
+  - shell.init HASN'T BEEN WRITTEN YET!
+  - Parse fails → job dies
+
+Step 2: shell_barrier("init") - all ranks synchronize
+
+Step 3: Flux framework emits shell.init to eventlog
+  - NOW it gets written to KVS (as version 4)
+  - Too late - we already failed in step 1
+```
+
+The `flux_shell_add_event_context()` call in step 1 only **decorates** the shell.init event with extra context. The Flux shell framework doesn't actually **write** shell.init to the eventlog until step 3, after the init barrier.
+
+### Conclusion: Hypothesis Disproven
+
+**The reactor race was NOT the only issue.** Two factors were required for the fix to work:
+
+1. **Timing**: Must read shell.init from a callback that runs **after** step 3 (when shell.init is written)
+   - `sp_init()` runs at step 1 - **too early**
+   - `sp_post_init()` runs at step 4 - **after shell.init exists**
+
+2. **Consistency**: Must use KVS version synchronization to avoid stale cached data
+   - `flux_kvs_wait_version()` with rank 0's version ensures we read fresh data
+   - Prevents reading stale cache that doesn't yet include shell.init
+
+**The successful fix required BOTH**:
+- Moving to `sp_post_init()` (step 4) where shell.init exists
+- Using synchronous KVS version sync to ensure consistency
+
+The reactor race was a red herring. The real issue was attempting to read data (shell.init) before it was written (step 3), combined with KVS eventual consistency allowing stale cached reads.
+
 ---
 *Document created 2026-05-12*
-*Last updated: 2026-05-13 - Added detailed analysis of original buggy async callback code*
+*Last updated: 2026-05-13 - Added hypothesis test results proving timing fix was essential*
