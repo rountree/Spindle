@@ -401,13 +401,33 @@ static int sp_post_init (flux_plugin_t *p,
     debug_printf(1, "[SPINDLE rank=%d] Looking up exec.eventlog in namespace: %s\n",
                  ctx->shell_rank, ns);
 
+    /*  Synchronize KVS: Ensure local KVS view is up-to-date before reading.
+     *  At this point (shell.post-init), rank 0 has already written shell.init
+     *  to the eventlog in step 3 of the shell lifecycle. However, on heavily
+     *  oversubscribed systems, KVS propagation to other ranks can be delayed.
+     *  Get the current namespace version and wait for local KVS to reach it,
+     *  ensuring we don't read stale cached data.
+     */
+    int kvs_version = 0;
+    if (flux_kvs_get_version (h, ns, &kvs_version) < 0) {
+        debug_printf(1, "[SPINDLE rank=%d] flux_kvs_get_version failed: %s\n",
+                    ctx->shell_rank, strerror(errno));
+        logerrno_printf_and_return(1, "flux_kvs_get_version failed\n");
+    }
+    debug_printf(1, "[SPINDLE rank=%d] Current KVS version: %d\n",
+                ctx->shell_rank, kvs_version);
+
+    if (flux_kvs_wait_version (h, ns, kvs_version) < 0) {
+        debug_printf(1, "[SPINDLE rank=%d] flux_kvs_wait_version(%d) failed: %s\n",
+                    ctx->shell_rank, kvs_version, strerror(errno));
+        logerrno_printf_and_return(1, "flux_kvs_wait_version failed\n");
+    }
+    debug_printf(1, "[SPINDLE rank=%d] KVS synchronized to version %d\n",
+                ctx->shell_rank, kvs_version);
+
     /*  Retry loop: Poll eventlog until shell.init appears.
-     *  Non-zero ranks may reach this point before rank 0 finishes writing
-     *  the shell.init event to the eventlog (no barrier between emit and
-     *  shell.post-init callbacks).
-     *  On heavily oversubscribed systems (e.g., GitHub Actions with 32
-     *  containers), rank 0 may be delayed significantly, so allow up to
-     *  10 seconds (1000 retries × 10ms).
+     *  After KVS synchronization above, this should succeed quickly.
+     *  Keep the retry loop as a safety net for any remaining edge cases.
      */
     rc = -1;
     int lookup_errors = 0;
