@@ -658,11 +658,10 @@ static int sp_init (flux_plugin_t *p,
      *  eventual consistency issues where non-zero ranks might read stale cached
      *  data that doesn't yet include shell.init.
      */
-    char ns[128];
+    char ns[128];   // holds string "job-<id>", where <id> is uint64_t.
     flux_future_t *version_f = NULL;
     int rank0_version = 0;
     const char *eventlog_str = NULL;
-    char *eventlog_copy = NULL;
     int rc = -1;
 
     /* Get the job's KVS namespace */
@@ -707,20 +706,13 @@ static int sp_init (flux_plugin_t *p,
         shell_die_errno (1, "flux_kvs_lookup_get failed");
     }
 
-    /* Copy eventlog before destroying future (data is future-owned) */
-    eventlog_copy = eventlog_str ? strdup (eventlog_str) : NULL;
-
     rc = parse_eventlog_for_shell_init (eventlog_str,
                                         &ctx->params.port,
                                         &ctx->params.num_ports);
     flux_future_destroy (f);
 
-    if (rc < 0) {
-        free (eventlog_copy);
+    if (rc < 0)
         shell_die (1, "shell.init event not found in eventlog after KVS sync");
-    }
-
-    free (eventlog_copy);
 
     debug_printf(2, "Found shell.init: port=%d num_ports=%d\n",
                  ctx->params.port, ctx->params.num_ports);
