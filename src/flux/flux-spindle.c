@@ -662,7 +662,6 @@ static int sp_init (flux_plugin_t *p,
     flux_future_t *version_f = NULL;
     int rank0_version = 0;
     const char *eventlog_str = NULL;
-    int rc = -1;
 
     /* Get the job's KVS namespace */
     if (flux_job_kvs_namespace (ns, sizeof (ns), id) < 0)
