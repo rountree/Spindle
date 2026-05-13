@@ -401,29 +401,44 @@ static int sp_post_init (flux_plugin_t *p,
     debug_printf(1, "[SPINDLE rank=%d] Looking up exec.eventlog in namespace: %s\n",
                  ctx->shell_rank, ns);
 
-    /*  Synchronize KVS: Ensure local KVS view is up-to-date before reading.
+    /*  Synchronize KVS: Query rank 0 for authoritative namespace version.
      *  At this point (shell.post-init), rank 0 has already written shell.init
-     *  to the eventlog in step 3 of the shell lifecycle. However, on heavily
-     *  oversubscribed systems, KVS propagation to other ranks can be delayed.
-     *  Get the current namespace version and wait for local KVS to reach it,
-     *  ensuring we don't read stale cached data.
+     *  to the eventlog. However, flux_kvs_get_version() with FLUX_NODEID_ANY
+     *  returns the LOCAL view's version, which may be stale. We need to query
+     *  rank 0 directly to get the version after the write, then wait for our
+     *  local KVS to catch up to that version.
      */
-    int kvs_version = 0;
-    if (flux_kvs_get_version (h, ns, &kvs_version) < 0) {
-        debug_printf(1, "[SPINDLE rank=%d] flux_kvs_get_version failed: %s\n",
-                    ctx->shell_rank, strerror(errno));
-        logerrno_printf_and_return(1, "flux_kvs_get_version failed\n");
-    }
-    debug_printf(1, "[SPINDLE rank=%d] Current KVS version: %d\n",
-                ctx->shell_rank, kvs_version);
+    flux_future_t *version_f = NULL;
+    int rank0_version = 0;
 
-    if (flux_kvs_wait_version (h, ns, kvs_version) < 0) {
+    /* Get version from rank 0 (authoritative) */
+    version_f = flux_rpc_pack (h, "kvs.getroot", 0, 0,
+                               "{ s:s }", "namespace", ns);
+    if (!version_f) {
+        debug_printf(1, "[SPINDLE rank=%d] flux_rpc_pack(kvs.getroot) to rank 0 failed: %s\n",
+                    ctx->shell_rank, strerror(errno));
+        logerrno_printf_and_return(1, "failed to query rank 0 KVS version\n");
+    }
+
+    if (flux_rpc_get_unpack (version_f, "{ s:i }", "rootseq", &rank0_version) < 0) {
+        debug_printf(1, "[SPINDLE rank=%d] flux_rpc_get_unpack failed: %s\n",
+                    ctx->shell_rank, strerror(errno));
+        flux_future_destroy (version_f);
+        logerrno_printf_and_return(1, "failed to get rank 0 KVS version\n");
+    }
+    flux_future_destroy (version_f);
+
+    debug_printf(1, "[SPINDLE rank=%d] Rank 0 KVS version: %d\n",
+                ctx->shell_rank, rank0_version);
+
+    /* Wait for local KVS to reach rank 0's version */
+    if (flux_kvs_wait_version (h, ns, rank0_version) < 0) {
         debug_printf(1, "[SPINDLE rank=%d] flux_kvs_wait_version(%d) failed: %s\n",
-                    ctx->shell_rank, kvs_version, strerror(errno));
+                    ctx->shell_rank, rank0_version, strerror(errno));
         logerrno_printf_and_return(1, "flux_kvs_wait_version failed\n");
     }
-    debug_printf(1, "[SPINDLE rank=%d] KVS synchronized to version %d\n",
-                ctx->shell_rank, kvs_version);
+    debug_printf(1, "[SPINDLE rank=%d] KVS synchronized to rank 0 version %d\n",
+                ctx->shell_rank, rank0_version);
 
     /*  Retry loop: Poll eventlog until shell.init appears.
      *  After KVS synchronization above, this should succeed quickly.
