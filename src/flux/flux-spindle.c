@@ -692,49 +692,35 @@ static int sp_init (flux_plugin_t *p,
                 shell_rank, rank0_version);
 
     /* Read eventlog synchronously. After KVS version synchronization,
-     * shell.init should be present. Small retry loop as safety net. */
-    for (int retry = 0; retry < 100; retry++) {
-        f = flux_kvs_lookup (h, ns, 0, "exec.eventlog");
-        if (!f) {
-            usleep (10000);
-            continue;
-        }
+     * shell.init is guaranteed to be present. */
+    f = flux_kvs_lookup (h, ns, 0, "exec.eventlog");
+    if (!f)
+        shell_die_errno (1, "flux_kvs_lookup failed");
 
-        if (flux_future_wait_for (f, -1.0) < 0) {
-            flux_future_destroy (f);
-            usleep (10000);
-            continue;
-        }
-
-        if (flux_kvs_lookup_get (f, &eventlog_str) < 0) {
-            flux_future_destroy (f);
-            usleep (10000);
-            continue;
-        }
-
-        /* Copy eventlog before destroying future (data is future-owned) */
-        free (eventlog_copy);
-        eventlog_copy = eventlog_str ? strdup (eventlog_str) : NULL;
-
-        rc = parse_eventlog_for_shell_init (eventlog_str,
-                                            &ctx->params.port,
-                                            &ctx->params.num_ports);
+    if (flux_future_wait_for (f, -1.0) < 0) {
         flux_future_destroy (f);
-
-        if (rc == 0) {
-            debug_printf(1, "[SPINDLE rank=%d] Found shell.init after %d retries\n",
-                    shell_rank, retry);
-            free (eventlog_copy);
-            break;
-        }
-
-        usleep (10000);  /* 10ms between retries */
+        shell_die_errno (1, "flux_future_wait_for failed");
     }
+
+    if (flux_kvs_lookup_get (f, &eventlog_str) < 0) {
+        flux_future_destroy (f);
+        shell_die_errno (1, "flux_kvs_lookup_get failed");
+    }
+
+    /* Copy eventlog before destroying future (data is future-owned) */
+    eventlog_copy = eventlog_str ? strdup (eventlog_str) : NULL;
+
+    rc = parse_eventlog_for_shell_init (eventlog_str,
+                                        &ctx->params.port,
+                                        &ctx->params.num_ports);
+    flux_future_destroy (f);
 
     if (rc < 0) {
         free (eventlog_copy);
         shell_die (1, "shell.init event not found in eventlog after KVS sync");
     }
+
+    free (eventlog_copy);
 
     debug_printf(2, "Found shell.init: port=%d num_ports=%d\n",
                  ctx->params.port, ctx->params.num_ports);
