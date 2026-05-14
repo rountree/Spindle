@@ -190,7 +190,7 @@ jobs:
 
           # Run tests
           docker exec node-1 bash -c 'cd Spindle-build/testsuite && \
-          python3 /home/spindleuser/Spindle/testsuite/debug/runTests.py \
+          python3 /home/fluxuser/Spindle/testsuite/debug/runTests.py \
           --build-dir . \
           --resource-manager=flux \
           --flux-interface=${{ inputs.flux_interface }} \
@@ -252,7 +252,7 @@ jobs:
             # Run single test iteration
             echo "Running test iteration $i..."
             if docker exec node-1 bash -c "cd Spindle-build/testsuite && \
-              python3 /home/spindleuser/Spindle/testsuite/debug/runTests.py \
+              python3 /home/fluxuser/Spindle/testsuite/debug/runTests.py \
               --build-dir . \
               --resource-manager=flux \
               --flux-interface=${{ inputs.flux_interface }} \
