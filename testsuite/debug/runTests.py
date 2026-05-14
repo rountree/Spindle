@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.6.1"
+__version__ = "1.6.2"
 
 import argparse
 import fnmatch
@@ -151,14 +151,14 @@ def create_test_dir(args, testsuite_dir, iteration, test_name):
 
     Returns: (temp_dir, timestamp)
     """
-    debug_dir = os.path.join(testsuite_dir, 'debug')
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-    # Determine base directory based on resource manager and log-dir setting
-    if args.resource_manager == 'flux' and args.log_dir:
+    # Determine base directory based on log-dir setting
+    if args.log_dir:
         base_dir = args.log_dir
     else:
-        base_dir = debug_dir
+        # Default to testsuite_dir (build directory) where test executables run
+        base_dir = testsuite_dir
 
     temp_dir = os.path.join(base_dir, f'temp_{iteration}_{test_name}_{timestamp}')
     os.makedirs(temp_dir, exist_ok=True)
@@ -508,8 +508,8 @@ def run_flux_session_test(args, env, testsuite_dir, test_type, session_num, log_
             if args.log_dir:
                 target_base = os.path.join(args.log_dir, f'{returncode}_{timestamp}')
             else:
-                # Fall back to testsuite/debug
-                target_base = os.path.join(testsuite_dir, 'debug', f'{returncode}_{timestamp}')
+                # Fall back to testsuite_dir (build directory)
+                target_base = os.path.join(testsuite_dir, f'{returncode}_{timestamp}')
         else:
             target_base = log_dir
 
@@ -759,8 +759,8 @@ def run_flux_test(args, env, testsuite_dir, test_type='dependency', test_mode='p
         if args.log_dir:
             target_base = os.path.join(args.log_dir, f'{returncode}_{timestamp}')
         else:
-            # Fall back to testsuite/debug
-            target_base = os.path.join(testsuite_dir, 'debug', f'{returncode}_{timestamp}')
+            # Fall back to testsuite_dir (build directory)
+            target_base = os.path.join(testsuite_dir, f'{returncode}_{timestamp}')
     else:
         target_base = log_dir
 
