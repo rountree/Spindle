@@ -4,7 +4,7 @@ Spindle test runner with integrated debugging support.
 """
 
 # Version number - IMPORTANT: Bump this with every change!
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 
 import argparse
 import fnmatch
@@ -202,13 +202,17 @@ def handle_test_completion(test_name, returncode, test_duration, final_dir,
             sys.exit(returncode)
 
 
-def setup_environment():
-    """Set up the environment variables needed for Spindle tests."""
+def setup_environment(build_dir='.'):
+    """Set up the environment variables needed for Spindle tests.
+
+    Args:
+        build_dir: Path to build directory containing test executables and libraries.
+                   Defaults to current directory.
+    """
     env = os.environ.copy()
 
-    # Change to parent directory (testsuite)
-    testsuite_dir = os.path.dirname(os.path.abspath(__file__))
-    testsuite_dir = os.path.dirname(testsuite_dir)  # Go up from debug/ to testsuite/
+    # testsuite_dir is the build directory containing test executables and libraries
+    testsuite_dir = os.path.abspath(build_dir)
 
     # Set up LD_LIBRARY_PATH
     if 'LD_LIBRARY_PATH' in env:
@@ -1013,7 +1017,7 @@ def main():
         args.run_typemode_tests = True
 
     # Set up environment
-    env, testsuite_dir = setup_environment()
+    env, testsuite_dir = setup_environment(args.build_dir)
 
     # Add SPINDLE_DEBUG if specified
     if args.spindle_debug is not None:
