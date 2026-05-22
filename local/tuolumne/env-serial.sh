@@ -1,8 +1,8 @@
 # For now, these are common across versions.
 
 # Only used for path construction (bottom of this file)
-ROOT=/p/vast1/rountree/machines/${LCSCHEDCLUSTER}
-export SPINDLE_REPO=/p/vast1/rountree/repos/Spindle
+ROOT=/p/vast1/rountree/sandbox/Spindle
+export SPINDLE_REPO=/p/vast1/rountree/sandbox/Spindle
 export SPINDLE_SCRIPTS=${SPINDLE_REPO}/local/${LCSCHEDCLUSTER}
 export TEST_RESOURCE_MANAGER=serial
 
@@ -19,9 +19,8 @@ fi
 cd - > /dev/null
 
 # Sets build, patch, and install directories
-export SPINDLE_BUILD=${ROOT}/build/Spindle-${SPINDLE_TAG}-${TEST_RESOURCE_MANAGER}
-export SPINDLE_INSTALL=${ROOT}/install/Spindle-${SPINDLE_TAG}
-export SPINDLE_PATCHES=${ROOT}/patches/Spindle-${SPINDLE_TAG}
+export SPINDLE_BUILD=${ROOT}/build/Spindle-${LCSCHEDCLUSTER}_${SPINDLE_TAG}_${TEST_RESOURCE_MANAGER}
+export SPINDLE_INSTALL=${ROOT}/install/Spindle-${LCSCHEDCLUSTER}_${SPINDLE_TAG}_${TEST_RESOURCE_MANAGER}
 
 # Prevents flux from using the system spindle.
 export SPINDLE_FLUXOPT=disable
