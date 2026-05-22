@@ -51,11 +51,17 @@ static bool longest_str_first(const string &a, const string &b)
    return a.size() > b.size();
 }
 
-static void rmDirSet(const set<string> &dirs, const char *prefix_dir)
+static void rmDirSet(const set<string> &dirs, const char *cachepath, const char *commpath)
 {
-   string path_sep("/");   
-   size_t prefix_size = prefix_dir ? strlen(prefix_dir) : 0;
-   
+   string path_sep("/");
+   if( !cachepath || !commpath ){
+       // Should never happen.
+       err_printf( "cachepath (%s) and/or commpath (%s) is NULL.  Unable to cleanup files.\n" );
+       return;
+   }
+   size_t cachepath_len = strlen(cachepath);
+   size_t commpath_len  = strlen(commpath);
+
    for (set<string>::const_iterator i = dirs.begin(); i != dirs.end(); i++) {
       DIR *dir = opendir(i->c_str());
       if (!dir)
@@ -71,9 +77,10 @@ static void rmDirSet(const set<string> &dirs, const char *prefix_dir)
          if (dirs.find(componentpath) != dirs.end())
             continue;
 
-         if (strncmp(prefix_dir, componentpath.c_str(), prefix_size) != 0) {
-            // We have multiple directory roots.  Not a problem if the directory
-            // we're looking for isn't in this one.
+         if ( (strncmp(cachepath, componentpath.c_str(), cachepath_len) != 0) &&
+              (strncmp(commpath,  componentpath.c_str(), commpath_len ) != 0) ){
+            err_printf( "File for deletion (%s) is outside of cachepath (%s) and commpath (%s).\n",
+                    componentpath.c_str(), cachepath, commpath );
             continue;
          }
          unlink(componentpath.c_str());
@@ -83,25 +90,28 @@ static void rmDirSet(const set<string> &dirs, const char *prefix_dir)
    vector<string> ordered_dirs(dirs.begin(), dirs.end());
    sort(ordered_dirs.begin(), ordered_dirs.end(), longest_str_first);
    for (vector<string>::iterator i = ordered_dirs.begin(); i != ordered_dirs.end(); i++) {
-      if (strncmp(prefix_dir, i->c_str(), prefix_size) != 0) {
-         continue;
-      }      
+      if ( (strncmp(cachepath, i->c_str(), cachepath_len) != 0) &&
+           (strncmp(commpath,  i->c_str(), commpath_len)  != 0) ){
+          err_printf( "Directory for deletion (%s) is outside of cachepath (%s) and commpath (%s).\n",
+                  i->c_str(), cachepath, commpath );
+          continue;
+      }
       rmdir(i->c_str());
-   }   
+   }
 }
 
 class CleanupProc
 {
-   friend void init_cleanup_proc(const char *);
+   friend void init_cleanup_proc(const char *, const char *);
 private:
    set<string> dirs;
    int write_dir_fd;
    int read_dir_fd;
    bool has_error;
    pid_t child_pid;
-   const char *prefix_dir;
+   const char *cachepath, *commpath;
 
-   CleanupProc(const char *pd);
+   CleanupProc(const char *cachepath, const char *commpath);
    void rmDirs();
    void cleanupMain();
 public:
@@ -110,11 +120,12 @@ public:
    bool hadError();
 };
 
-CleanupProc::CleanupProc(const char *pd) :
+CleanupProc::CleanupProc(const char *cachepath, const char *commpath) :
    write_dir_fd(-1),
    read_dir_fd(-1),
    has_error(false),
-   prefix_dir(pd)
+   cachepath(cachepath),
+   commpath(commpath)
 {
    int fds[2];
    int result;
@@ -185,7 +196,7 @@ bool CleanupProc::hadError()
 
 void CleanupProc::rmDirs()
 {
-   rmDirSet(dirs, prefix_dir);
+   rmDirSet(dirs, cachepath, commpath);
 }
 
 void CleanupProc::cleanupMain()
@@ -240,10 +251,10 @@ void CleanupProc::addDir(const char *dir)
 static CleanupProc *proc = NULL;
 static set<string> local_dircache;
 
-void init_cleanup_proc(const char *location_dir)
+void init_cleanup_proc(const char *cachepath, const char *commpath)
 {
    assert(!proc);
-   proc = new CleanupProc(location_dir);
+   proc = new CleanupProc(cachepath, commpath);
    if (proc->hadError()) {
       delete proc;
       proc = NULL;
@@ -269,13 +280,13 @@ int lookup_prev_mkdir(const char *dir)
    return (i != local_dircache.end()) ? 1 : 0;
 }
 
-void cleanup_created_dirs(const char *prefix_dir)
+void cleanup_created_dirs(const char *cachepath, const char *commpath)
 {
    if (proc) {
       proc->triggerCleanup();
    }
    else {
       debug_printf("Cleaning files with local unlink/rmdirs.\n");
-      rmDirSet(local_dircache, prefix_dir);
-   }      
+      rmDirSet(local_dircache, cachepath, commpath);
+   }
 }

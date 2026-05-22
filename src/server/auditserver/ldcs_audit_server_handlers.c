@@ -2298,7 +2298,7 @@ static int handle_client_fileexist_msg(ldcs_process_data_t *procdata, int nc, ld
    return handle_client_progress(procdata, nc);
 }
 
-extern char *_ldcs_audit_server_tmpdir;
+extern char *_ldcs_audit_server_cachepath;
 static int handle_client_origpath_msg(ldcs_process_data_t *procdata, int nc, ldcs_message_t *msg)
 {
    ldcs_client_t *client;
@@ -2313,7 +2313,7 @@ static int handle_client_origpath_msg(ldcs_process_data_t *procdata, int nc, ldc
 
    lookuppath[MAX_PATH_LEN] = '\0';
    if (*origpath != '/' && *origpath != '.')
-      snprintf(lookuppath, MAX_PATH_LEN, "%s/%s", _ldcs_audit_server_tmpdir, origpath);
+      snprintf(lookuppath, MAX_PATH_LEN, "%s/%s", _ldcs_audit_server_cachepath, origpath);
    else
       strncpy(lookuppath, origpath, MAX_PATH_LEN);
 
@@ -2967,7 +2967,6 @@ static int handle_client_pickone_msg(ldcs_process_data_t *procdata, int nc, ldcs
 static int cachepath_consensus_reached;
 static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_message_t *msg){
 
-    /* QQQ struct timespec seconds = { .tv_sec = 4, .tv_nsec = 0 }; */
     int num_children = ldcs_audit_server_md_get_num_children(procdata);
 
     debug_printf( "Processing REQUEST_CACHEPATH_CONSENSUS.\n" );
@@ -2991,7 +2990,6 @@ static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_messag
        err_printf("No valid cachepath path available.  Falling back to \"commpath\" path (%s).\n", procdata->commpath);
        procdata->cachepath = procdata->commpath;
     }else{
-        // ldcs_audit_server_filemngt_init() does it's own realize() pass.
         getValidCachePathByIndex( procdata->cachepath_bitidx,
                 &procdata->cachepath,
                 &procdata->parsed_cachepath,
@@ -2999,14 +2997,14 @@ static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_messag
         debug_printf( "The consensus cachepath is:           %s\n", procdata->cachepath );
         debug_printf( "The consensus parsed_cachepath is:    %s\n", procdata->parsed_cachepath );
         debug_printf( "The consensus symbolic_cachepath is:  %s\n", procdata->symbolic_cachepath );
+        debug_printf( "The commpath is:                      %s\n", procdata->commpath );
     }
 
     debug_printf( "Arrived at cachepath consensus:  %s.  Now delaying to flush race condition.\n", procdata->cachepath );
-    /* QQQ nanosleep( &seconds, NULL ); */
     debug_printf( "Delay completed.\n");
 
     debug_printf3("Initializing file cache cachepath %s\n", procdata->cachepath);
-    ldcs_audit_server_filemngt_init(procdata->cachepath);
+    ldcs_audit_server_filemngt_init(procdata->cachepath, procdata->commpath);
 
     test_printf("<internal> cachepath=%s\n", procdata->cachepath);
     cachepath_consensus_reached = 1;
