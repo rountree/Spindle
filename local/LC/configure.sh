@@ -1,17 +1,15 @@
 #!/bin/bash
 
-if [[ -v SPINDLE_SCRIPTS ]]; then
-    echo "Using scripts in " $SPINDLE_SCRIPTS
+if [[ -v SPINDLE_BUILD ]]; then
+    echo $(date) "Configuring to build in " $SPINDLE_BUILD
+    echo $(date) "Configuring to install in " $SPINDLE_INSTALL
 else
-    echo "SPINDLE_SCRIPTS not set, please source env.h.  Exiting."
+    echo "SPINDLE_BUILD not set, please source env.sh.  Exiting."
+    exit
 fi
-
-echo SPINDLE_BUILD = $SPINDLE_BUILD
-echo SPINDLE_REPO  = $SPINDLE_REPO
 
 mkdir -p ${SPINDLE_BUILD}
 mkdir -p ${SPINDLE_INSTALL}
-
 
 cd ${SPINDLE_BUILD}
 
