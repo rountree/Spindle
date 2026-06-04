@@ -513,7 +513,7 @@ static int cobo_connect_hostname(char* hostname, int rank)
                       break;
                    case HSHAKE_INTERNAL_ERROR:
                       err_printf("Internal error doing handshake: %s", spindle_handshake_last_error_str());
-                      return -1;
+                      exit(-1);
                       break;
                    case HSHAKE_DROP_CONNECTION:
                       debug_printf3("Handshake said to drop connection\n");
