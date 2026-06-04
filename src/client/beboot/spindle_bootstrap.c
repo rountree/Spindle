@@ -104,7 +104,7 @@ static int establish_connection()
    return 0;
 }
 
-static void setup_environment()
+static int setup_environment()
 {
    char rankinfo_str[256];
    snprintf(rankinfo_str, 256, "%d %d %d %d %d", ldcsid, rankinfo[0], rankinfo[1], rankinfo[2], rankinfo[3]);
@@ -114,8 +114,10 @@ static void setup_environment()
       connection_str = client_get_connection_string(ldcsid);
 
    char *chosen_parsed_cachepath = NULL;
-   send_cachepath_query( ldcsid , NULL, &chosen_parsed_cachepath);
-   assert( chosen_parsed_cachepath );
+   int rc = send_cachepath_query( ldcsid , NULL, &chosen_parsed_cachepath);
+   if( 0 != rc ){
+       return rc;
+   }
 
    setenv("LD_AUDIT", client_lib, 1);
    setenv("LDCS_COMMPATH", commpath, 1);

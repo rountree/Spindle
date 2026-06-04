@@ -263,9 +263,10 @@ static int init_server_connection()
          send_cpu(ldcsid, get_cur_cpu());
 #endif
    }
-   send_cachepath_query( ldcsid, &chosen_realized_cachepath, &chosen_parsed_cachepath );
-   assert( chosen_realized_cachepath );
-   assert( chosen_parsed_cachepath );
+   int rc = send_cachepath_query( ldcsid, &chosen_realized_cachepath, &chosen_parsed_cachepath );
+   if( 0 != rc ){
+       return rc;
+   }
    snprintf(debugging_name, 32, "Client.%d", rankinfo[0]);
    LOGGING_INIT(debugging_name);
 
@@ -473,7 +474,6 @@ char *client_library_load(const char *name)
 
    char *orig_file_name = (char *) name;
    if (is_in_spindle_cache(name)) {
-      assert( chosen_realized_cachepath );
       debug_printf2("Library %s is in spindle cache (%s). Translating request\n", name, chosen_realized_cachepath);
       memset(fixed_name, 0, MAX_PATH_LEN+1);
       send_orig_path_request(ldcsid, orig_file_name, fixed_name);

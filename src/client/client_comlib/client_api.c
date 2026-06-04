@@ -40,8 +40,8 @@ static struct lock_t comm_lock;
 
 
 int send_cachepath_query( int fd, char **chosen_realized_cachepath, char **chosen_parsed_cachepath){
-   int retries = 0, max_retries = 10;
-   struct timespec one_second = { .tv_sec = 1, .tv_nsec = 0 };
+   int retries = 0, max_retries = 1000, rc = 0;
+   struct timespec delay_between_retries = { .tv_sec = 0, .tv_nsec = 1000000 };
    ldcs_message_t message;
    char buffer[MAX_PATH_LEN+1];
    buffer[MAX_PATH_LEN] = '\0';
@@ -55,8 +55,14 @@ int send_cachepath_query( int fd, char **chosen_realized_cachepath, char **chose
        COMM_LOCK;
 
        debug_printf3("sending message of type: CHOSEN_CACHEPATH_REQUEST.\n" );
-       client_send_msg(fd, &message);
-       client_recv_msg_static(fd, &message, LDCS_READ_BLOCK);
+       rc = client_send_msg(fd, &message);
+       if( rc != 0 ){
+           return rc;
+       }
+       rc = client_recv_msg_static(fd, &message, LDCS_READ_BLOCK);
+       if( rc != 0 ){
+           return rc;
+       }
 
        COMM_UNLOCK;
 
@@ -64,7 +70,7 @@ int send_cachepath_query( int fd, char **chosen_realized_cachepath, char **chose
            if( retries++ >= max_retries ){
                break;
            }
-           nanosleep( &one_second, NULL );
+           nanosleep( &delay_between_retries, NULL );
            continue;
        }
        break;
@@ -75,8 +81,8 @@ int send_cachepath_query( int fd, char **chosen_realized_cachepath, char **chose
       err_printf("Got unexpected message of type %d\n", (int) message.header.type);
       return -1;
    }
-   char *local_crc = strdup( buffer );
-   char *local_cpc = strdup( &buffer[ strlen(local_crc) + 1 ] );
+   char *local_crc = spindle_strdup( buffer );
+   char *local_cpc = spindle_strdup( &buffer[ strlen(local_crc) + 1 ] );
    if( chosen_realized_cachepath ){
        *chosen_realized_cachepath = local_crc;
    }

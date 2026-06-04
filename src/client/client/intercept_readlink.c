@@ -39,7 +39,6 @@ static int fix_local_readlink(char *buf, size_t bufsiz)
    char tmp[MAX_PATH_LEN+1];
    extern char *chosen_realized_cachepath;
 
-   assert( chosen_realized_cachepath );
    cachepath_len = strlen(chosen_realized_cachepath);   
    snprintf(spindle_id, sizeof(spindle_id), "spindle.%lx", number);
    if (strstr(buf, spindle_id) && strncmp(chosen_realized_cachepath, buf, cachepath_len) == 0) {

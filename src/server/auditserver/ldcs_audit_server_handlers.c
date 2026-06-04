@@ -2970,21 +2970,21 @@ static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_messag
     int num_children = ldcs_audit_server_md_get_num_children(procdata);
 
     debug_printf( "Processing REQUEST_CACHEPATH_CONSENSUS.\n" );
-    debug_printf( "  procdata->cachepath_bitidx = %#"PRIx64"\n", procdata->cachepath_bitidx );
-    debug_printf( "  procdata->cachepaths       = %s\n", procdata->cachepaths );
-    debug_printf( "  procdata->cachepath        = %s [should be null]\n", procdata->cachepath  );
-    debug_printf( "  procdata->commpath         = %s\n", procdata->commpath );
-    debug_printf( "  num_children               = %d\n", num_children );
+    debug_printf3( "  procdata->cachepath_bitidx = %#"PRIx64"\n", procdata->cachepath_bitidx );
+    debug_printf3( "  procdata->cachepaths       = %s\n", procdata->cachepaths );
+    debug_printf3( "  procdata->cachepath        = %s [should be null]\n", procdata->cachepath  );
+    debug_printf3( "  procdata->commpath         = %s\n", procdata->commpath );
+    debug_printf3( "  num_children               = %d\n", num_children );
 
     if (num_children) {
         spindle_broadcast(procdata, msg);
-        debug_printf( "Successfully broadcast REQUEST_CACHEPATH_CONSENSUS\n" );
+        debug_printf3( "Successfully broadcast REQUEST_CACHEPATH_CONSENSUS\n" );
         msgbundle_force_flush(procdata);
-        debug_printf( "Successfully flushed the broadcast of REQUEST_CACHEPATH_CONSENSUS\n" );
+        debug_printf3( "Successfully flushed the broadcast of REQUEST_CACHEPATH_CONSENSUS\n" );
     }
 
     ldcs_audit_server_md_allreduce_AND( &procdata->cachepath_bitidx );
-    debug_printf( "The consensus value for procdata->cachepath_bitidx is:  %#"PRIx64"\n", procdata->cachepath_bitidx );
+    debug_printf3( "The consensus value for procdata->cachepath_bitidx is:  %#"PRIx64"\n", procdata->cachepath_bitidx );
 
     if( procdata->cachepath_bitidx == 0 ){
        err_printf("No valid cachepath path available.  Falling back to \"commpath\" path (%s).\n", procdata->commpath);
@@ -2994,16 +2994,12 @@ static int handle_cachepath_consensus(ldcs_process_data_t *procdata, ldcs_messag
                 &procdata->cachepath,
                 &procdata->parsed_cachepath,
                 &procdata->symbolic_cachepath);
-        debug_printf( "The consensus cachepath is:           %s\n", procdata->cachepath );
-        debug_printf( "The consensus parsed_cachepath is:    %s\n", procdata->parsed_cachepath );
-        debug_printf( "The consensus symbolic_cachepath is:  %s\n", procdata->symbolic_cachepath );
-        debug_printf( "The commpath is:                      %s\n", procdata->commpath );
+        debug_printf2( "The consensus cachepath is:           %s\n", procdata->cachepath );
+        debug_printf2( "The consensus parsed_cachepath is:    %s\n", procdata->parsed_cachepath );
+        debug_printf2( "The consensus symbolic_cachepath is:  %s\n", procdata->symbolic_cachepath );
+        debug_printf2( "The commpath is:                      %s\n", procdata->commpath );
     }
 
-    debug_printf( "Arrived at cachepath consensus:  %s.  Now delaying to flush race condition.\n", procdata->cachepath );
-    debug_printf( "Delay completed.\n");
-
-    debug_printf3("Initializing file cache cachepath %s\n", procdata->cachepath);
     ldcs_audit_server_filemngt_init(procdata->cachepath, procdata->commpath);
 
     test_printf("<internal> cachepath=%s\n", procdata->cachepath);

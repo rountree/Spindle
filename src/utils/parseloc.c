@@ -175,7 +175,7 @@ char *realize(char *path)
    errno=0;
    while( stat( origpath, buf ) == -1 ){
       local_errno = errno;
-      debug_printf("Failed to stat '%s' (%s).\n", origpath, strerror(local_errno));
+      debug_printf3("Failed to stat '%s' (%s).\n", origpath, strerror(local_errno));
       prev_slash = cur_slash;
       cur_slash = strrchr(origpath, '/');
       if( prev_slash )
@@ -183,7 +183,7 @@ char *realize(char *path)
       if( cur_slash )
           *cur_slash = '\0';
       else{
-          debug_printf("Nothing in the original path can be stat'ed.  (%s)\n", path);
+          debug_printf3("Nothing in the original path can be stat'ed.  (%s)\n", path);
           return NULL;
       }
    }
