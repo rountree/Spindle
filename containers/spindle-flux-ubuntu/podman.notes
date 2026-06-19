@@ -1,0 +1,36 @@
+# Flux recipe
+
+# cd to the root of the spindle directory.
+
+# Enable the appropriate filesystem.
+enable-podman
+
+# Unset XDG_RUNTIME_DIRS (per Alec Scott)
+unset XDG_RUNTIME_DIRS
+
+# Create the image
+podman build \
+	--progress=plain \
+	-f ./containers/spindle-flux-ubuntu/Podmanfile \
+	--build-arg=replicas=4 \
+	--build-arg=flux_sched_version=noble-v0.48.0-amd64 \
+	--userns-uid-map=0:0:1 \
+	--userns-uid-map=1:1:1999 \
+	--userns-uid-map=65534:2000:2 . \
+	| ts '[%Y-%m-%d %H:%M:%S]'
+
+# Launch the containers
+podman compose \
+	-f ./containers/spindle-flux-ubuntu/podman-compose.yml \
+	up --detach
+
+# Log in
+podman exec -ti node-1 /bin/bash
+
+# Set up the flux allocation
+flux alloc -N4
+
+# Run the testsuite
+cd Spindle-build/testsuite
+./runTests
+
