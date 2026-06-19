@@ -1,10 +1,11 @@
+# Only used for path construction (bottom of this file)
+SPINDLE_WORKSPACE=/p/vast1/${USER}/${LCSCHEDCLUSTER}/sandbox/workspace-Spindle
+export SPINDLE_REPO=/p/vast1/${USER}/${LCSCHEDCLUSTER}/sandbox/workspace-Spindle/Spindle
+
 # If invoked without a parameter, default to flux.
-echo I have $# parameters
-echo My parameters are $@
 if [[ $# = 0 ]]; then
     set -- "flux"
 fi
-echo My first parameter is $1
 # Parameter checking.
 case "$1" in
     slurm)
@@ -28,11 +29,6 @@ esac
 # Set environment variables if we have a known cluster and resource manager.
 if [[ "$TEST_RESOURCE_MANAGER" != "unknown" && -v LCSCHEDCLUSTER ]]; then
     echo $(date) Building on ${LCSCHEDCLUSTER} with resource manager ${TEST_RESOURCE_MANAGER}.
-
-
-    # Only used for path construction (bottom of this file)
-    SPINDLE_WORKSPACE=/p/vast1/${USER}/machines/${LCSCHEDCLUSTER}
-    export SPINDLE_REPO=/p/vast1/${USER}/repos/Spindle
 
     # Get the current branch and commit
     cd $SPINDLE_REPO
