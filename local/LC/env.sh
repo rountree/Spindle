@@ -1,6 +1,7 @@
 # Only used for path construction (bottom of this file)
 SPINDLE_WORKSPACE=/p/vast1/${USER}/${LCSCHEDCLUSTER}/sandbox/workspace-Spindle
 export SPINDLE_REPO=/p/vast1/${USER}/${LCSCHEDCLUSTER}/sandbox/workspace-Spindle/Spindle
+export SPINDLE_SCRIPTS=${SPINDLE_REPO}/local/LC
 
 # If invoked without a parameter, default to flux.
 if [[ $# = 0 ]]; then
