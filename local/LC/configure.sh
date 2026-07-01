@@ -19,7 +19,7 @@ ${SPINDLE_REPO}/configure                       \
     --with-rm=${TEST_RESOURCE_MANAGER}          \
     --with-cachepaths=/tmp/commpath/cachepath   \
     --with-commpath=/tmp/commpath               \
-    CFLAGS="-O2 -g"                             \
-    CXXFLAGS="-O2 -g"
+    CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
+    CXXFLAGS="-Wall -Wextra -Werror -O2 -g"
 
 
