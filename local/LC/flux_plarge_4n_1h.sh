@@ -5,6 +5,6 @@ else
     echo "SPINDLE_BUILD not set, please source env.sh.  Exiting."
     exit
 fi
-flux alloc --queue=pdebug --time-limit=1h --nodes=1 --exclusive
+flux alloc --queue=plarge --time-limit=1h --nodes=4 --exclusive
 
 
