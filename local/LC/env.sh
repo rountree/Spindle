@@ -69,4 +69,6 @@ if [[ "$TEST_RESOURCE_MANAGER" != "unknown" && -v LCSCHEDCLUSTER ]]; then
     echo SPINDLE_DEBUG"        "=${SPINDLE_DEBUG}
 fi
 
+# enable core files
+ulimit -c unlimited
 
