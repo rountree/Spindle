@@ -17,9 +17,10 @@ ${SPINDLE_REPO}/configure                       \
     --prefix=${SPINDLE_INSTALL}                 \
     --enable-sec-munge                          \
     --with-rm=${TEST_RESOURCE_MANAGER}          \
-    --with-cachepaths=/tmp/commpath/cachepath   \
-    --with-commpath=/tmp/commpath               \
+    --with-cachepaths=/:/foo:/bar/:/tmp/commpath/cachepath:/baz   \
+    --with-commpaths=/:/foo:/bar/:/tmp/commpath:/baz  \
     CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
     CXXFLAGS="-Wall -Wextra -Werror -O2 -g"
 
 
+#    --with-cachepaths=/:/foo:/bar/:/tmp/commpath/cachepath:/baz   \
