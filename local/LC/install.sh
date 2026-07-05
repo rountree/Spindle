@@ -1,17 +1,14 @@
 #!/bin/bash
-if [[ -v SPINDLE_INSTALL ]]; then
-    echo $(date) "Installing into " $SPINDLE_INSTALL
-else
-    echo "SPINDLE_INSTALL not set, please source env.sh.  Exiting."
-    exit
+if ! declare -F require_spindle_env >/dev/null; then
+    printf 'Please source env.sh in this shell before running this script.\n' >&2
+    exit 1
 fi
-
+check_spindle_tag || exit 1
 
 export DEBUG=1
 export VERBOSE=1
 export V=1
 
-cd ${SPINDLE_BUILD}
+cd "$SPINDLE_BUILD" || exit 1
 make install -j 2>&1 | tee ./install.out
-cd - > /dev/null
-
+cd - >/dev/null || exit 1

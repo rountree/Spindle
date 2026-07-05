@@ -1,10 +1,8 @@
 #!/bin/bash
-if [[ -v SPINDLE_BUILD ]]; then
-    echo $(date) "Building in " $SPINDLE_BUILD
-else
-    echo "SPINDLE_BUILD not set, please source env.sh.  Exiting."
-    exit
+if ! declare -F require_spindle_env >/dev/null; then
+    printf 'Please source env.sh in this shell before running this script.\n' >&2
+    exit 1
 fi
+check_spindle_tag || exit 1
 flux alloc --queue=pdebug --time-limit=1h --nodes=1 --exclusive
-
 
