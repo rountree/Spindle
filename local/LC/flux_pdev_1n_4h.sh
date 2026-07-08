@@ -4,5 +4,5 @@ if ! declare -F require_spindle_env >/dev/null; then
     exit 1
 fi
 check_spindle_tag || exit 1
-flux alloc --queue=pdev --time-limit=1h --nodes=4 --exclusive
+flux alloc --queue=pdev --time-limit=4h --nodes=1 --exclusive
 
