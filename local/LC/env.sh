@@ -6,7 +6,7 @@
 # Supported resource managers are flux, serial, slurm, and slurm-plugin.
 
 # WHAT THIS DOES
-#   Sets up per-cluster, per-branch/commit build and install directories in
+#   Sets up per-resource-manager, per-branch/commit build and install directories in
 #     a common space.  In other words, your build won't step on each other
 #     just because you logged into a different machine or switched branches.
 
@@ -14,8 +14,6 @@
 #
 # The only two variables that should need to be changed on LC machines are
 #   SPINDLE_WORKSPACE and SPINDLE_REPO.
-#
-# Elsewhere, have a look at LD_LIBRARY_PATH and LCSCHEDCLUSTER as well.
 #
 # This script create the following variables for use by the
 #   configure, build, install, and other scripts.
@@ -25,8 +23,6 @@
 #   SPINDLE_REPO                Spindle repo directory, usually under
 #                                 SPINDLE_WORKSPACE. (must be set by user)
 #   SPINDLE_SCRIPTS             This directory.  (deprecated)
-#   TEST_RESOURCE_MANAGER       The rm specified on the command line.  (default
-#                                 flux)
 #   SPINDLE_TAG                 The current branch or, if a specific commit
 #                                 is checked out, the short commit name.
 #                                 Used in creating SPINDLE_BUILD and
@@ -41,7 +37,6 @@
 #   LD_LIBRARY_PATH             Modified to include Cray libraries and this
 #                                 installation of Spindle.
 #
-# The script expects LCSHEDCLUSTER to be initialized.
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
     printf 'This file must be sourced, not executed.\n' >&2
@@ -75,9 +70,9 @@ then
 fi
 
 # Only used for path construction (bottom of this file)
-readonly SPINDLE_WORKSPACE="/p/vast1/${USER}/${LCSCHEDCLUSTER}/sandbox/workspace-Spindle"
-readonly SPINDLE_REPO="${SPINDLE_WORKSPACE}/Spindle"
-readonly SPINDLE_SCRIPTS="${SPINDLE_REPO}/local/LC"
+export SPINDLE_WORKSPACE="/p/vast1/${USER}/${LCSCHEDCLUSTER}/sandbox/workspace-Spindle"
+export SPINDLE_REPO="${SPINDLE_WORKSPACE}/Spindle"
+export SPINDLE_SCRIPTS="${SPINDLE_REPO}/local/LC"
 export SPINDLE_REPO SPINDLE_SCRIPTS
 
 # This is not readonly, as it will be rewritten if the script is re-sourced
@@ -87,18 +82,6 @@ export SPINDLE_TAG=""
 # If the number of positional parameters $# evaluated as a number (($#)) is
 #   zero, then set the positional arguments to what follows --, i.e., flux.
 (($#)) || set -- flux
-
-# Set TEST_RESOURCE_MANAGER to be the rm passed in on the command line.
-case $1 in
-    slurm|slurm-plugin|flux|serial)
-        export TEST_RESOURCE_MANAGER="$1"
-        ;;
-    *)
-        # -1 in combination with %(%F %T) prints the current date and time.
-        printf '%(%F %T)T Unknown resource manager requested: %s\n' -1 "$1" >&2
-        export TEST_RESOURCE_MANAGER=unknown
-        ;;
-esac
 
 _get_current_spindle_tag() {
     local current_branch current_commit
@@ -135,44 +118,39 @@ check_spindle_tag() {
 export -f check_spindle_tag
 export -f _get_current_spindle_tag
 # Set environment variables if we have a known cluster and resource manager.
-if [[ $TEST_RESOURCE_MANAGER != unknown && -n ${LCSCHEDCLUSTER:-} ]]; then
-    printf '%(%F %T)T Setting up on %s with resource manager %s.\n' \
-        -1 "$LCSCHEDCLUSTER" "$TEST_RESOURCE_MANAGER"
 
-    # Note that "exit" would exit out of the shell being used to source this.
-    #   That would be suboptimal. Use return.
-    _set_spindle_tag || return 1
+# Note that "exit" would exit out of the shell being used to source this.
+#   That would be suboptimal. Use return.
+_set_spindle_tag || return 1
 
-    # Sets build, patch, and install directories
-    export SPINDLE_BUILD="${SPINDLE_WORKSPACE}/build/Spindle-${SPINDLE_TAG}-${TEST_RESOURCE_MANAGER}"
-    export SPINDLE_INSTALL="${SPINDLE_WORKSPACE}/install/Spindle-${SPINDLE_TAG}"
+# Sets build, patch, and install directories
+export SPINDLE_FLUX_BUILD="${SPINDLE_WORKSPACE}/build/Spindle-${SPINDLE_TAG}-flux"
+export SPINDLE_FLUX_INSTALL="${SPINDLE_WORKSPACE}/install/Spindle-${SPINDLE_TAG}-flux"
 
-    # Set Spindle log level (max=3)
-    export SPINDLE_DEBUG=3
+export SPINDLE_SERIAL_BUILD="${SPINDLE_WORKSPACE}/build/Spindle-${SPINDLE_TAG}-serial"
+export SPINDLE_SERIAL_INSTALL="${SPINDLE_WORKSPACE}/install/Spindle-${SPINDLE_TAG}-serial"
 
-    # Tell flux what we're doing.
-    export FLUXRC="${SPINDLE_BUILD}/testsuite/spindle.rc"
+export SPINDLE_SLURM_BUILD="${SPINDLE_WORKSPACE}/build/Spindle-${SPINDLE_TAG}-slurm"
+export SPINDLE_SLURM_INSTALL="${SPINDLE_WORKSPACE}/install/Spindle-${SPINDLE_TAG}-slurm"
 
-    # Prevents flux from using the system spindle.
-    export SPINDLE_FLUXOPT=disable
+export SPINDLE_PLUGIN_BUILD="${SPINDLE_WORKSPACE}/build/Spindle-${SPINDLE_TAG}-plugin"
+export SPINDLE_PLUGIN_INSTALL="${SPINDLE_WORKSPACE}/install/Spindle-${SPINDLE_TAG}-plugin"
 
-    # Allows test scripts to be able to find libmodules.so.1
-    #   (Extra magic for nice colon placement in corner cases.)
-    export LD_LIBRARY_PATH="/opt/cray/pe/cce/18.0.1/cce/x86_64/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Set Spindle log level (max=3)
+export SPINDLE_DEBUG=3
 
-    # Points to our version of Spindle
-    export LD_LIBRARY_PATH="${SPINDLE_INSTALL}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Tell flux what we're doing.
+export FLUXRC="${SPINDLE_BUILD}/testsuite/spindle.rc"
 
-    printf '%-22s %s\n' \
-        TEST_RESOURCE_MANAGER "$TEST_RESOURCE_MANAGER" \
-        LCSCHEDCLUSTER       "$LCSCHEDCLUSTER" \
-        SPINDLE_BUILD        "$SPINDLE_BUILD" \
-        SPINDLE_INSTALL      "$SPINDLE_INSTALL" \
-        SPINDLE_DEBUG        "$SPINDLE_DEBUG"
-else
-    printf 'Unknown TEST_RESOURCE_MANAGER and/or unspecified LCSCHEDCLUSTER. Exiting...\n' >&2
-    return 1
-fi
+# Prevents flux from using the system spindle.
+export SPINDLE_FLUXOPT=disable
+
+# Allows test scripts to be able to find libmodules.so.1
+#   (Extra magic for nice colon placement in corner cases.)
+export LD_LIBRARY_PATH="/opt/cray/pe/cce/18.0.1/cce/x86_64/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# Points to our version of Spindle
+export LD_LIBRARY_PATH="${SPINDLE_INSTALL}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 require_spindle_env() {
     if [[ -z ${SPINDLE_BUILD:-} ]]; then
@@ -186,13 +164,7 @@ require_spindle_env() {
     fi
 }
 
-#require_spindle_ready() {
-#    require_spindle_env || return 1
-#    check_spindle_tag || return 1
-#}
-
 export -f require_spindle_env
-#export -f require_spindle_ready
 
 #!/bin/bash
 
