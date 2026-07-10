@@ -14,6 +14,9 @@ else
     exit
 fi
 
+MY_CACHEPATHS=/tmp2:/tmp/spindle/cachepath
+MY_COMMPATHS=/:/tmp/spindle/commpath
+
 mkdir -p ${SPINDLE_FLUX_BUILD}
 mkdir -p ${SPINDLE_FLUX_INSTALL}
 mkdir -p ${SPINDLE_SERIAL_BUILD}
@@ -29,8 +32,8 @@ ${SPINDLE_REPO}/configure                       \
     --prefix=${SPINDLE_FLUX_INSTALL}            \
     --enable-sec-munge                          \
     --with-rm=flux                              \
-    --with-cachepaths=/:/foo:/bar/:/tmp/commpath/cachepath:/baz   \
-    --with-commpaths=/:/foo:/bar/:/tmp/commpath/commpath:/baz   \
+    --with-cachepaths=${MY_CACHEPATHS}          \
+    --with-commpaths=${MY_COMMPATHS}            \
     CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
     CXXFLAGS="-Wall -Wextra -Werror -O2 -g"     \
     | ts 'flux   %Y-%m-%d %H:%M:%S'
@@ -42,8 +45,8 @@ ${SPINDLE_REPO}/configure                       \
     --prefix=${SPINDLE_SERIAL_INSTALL}          \
     --enable-sec-munge                          \
     --with-rm=serial                            \
-    --with-cachepaths=/:/foo:/bar/:/tmp/commpath/cachepath:/baz   \
-    --with-commpaths=/:/foo:/bar/:/tmp/commpath/commpath:/baz   \
+    --with-cachepaths=${MY_CACHEPATHS}          \
+    --with-commpaths=${MY_COMMPATHS}            \
     CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
     CXXFLAGS="-Wall -Wextra -Werror -O2 -g"     \
     | ts 'serial %Y-%m-%d %H:%M:%S'
@@ -57,8 +60,8 @@ ${SPINDLE_REPO}/configure                       \
     --with-rm=slurm                             \
     --with-rsh-launch                           \
     --with-rsh-command=/usr/bin/ssh             \
-    --with-cachepaths=/:/foo:/bar/:/tmp/commpath/cachepath:/baz   \
-    --with-commpaths=/:/foo:/bar/:/tmp/commpath/commpath:/baz   \
+    --with-cachepaths=${MY_CACHEPATHS}          \
+    --with-commpaths=${MY_COMMPATHS}            \
     CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
     CXXFLAGS="-Wall -Wextra -Werror -O2 -g"     \
     | ts 'slurm  %Y-%m-%d %H:%M:%S'
@@ -70,8 +73,8 @@ ${SPINDLE_REPO}/configure                       \
     --prefix=${SPINDLE_PLUGIN_INSTALL}          \
     --enable-sec-munge                          \
     --with-rm=slurm-plugin                      \
-    --with-cachepaths=/:/foo:/bar/:/tmp/commpath/cachepath:/baz   \
-    --with-commpaths=/:/foo:/bar/:/tmp/commpath/commpath:/baz   \
+    --with-cachepaths=${MY_CACHEPATHS}          \
+    --with-commpaths=${MY_COMMPATHS}            \
     CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
     CXXFLAGS="-Wall -Wextra -Werror -O2 -g"     \
     | ts 'plugin %Y-%m-%d %H:%M:%S'
