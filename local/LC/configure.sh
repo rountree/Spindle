@@ -59,7 +59,7 @@ ${SPINDLE_REPO}/configure                       \
     --enable-sec-munge                          \
     --with-rm=slurm                             \
     --with-rsh-launch                           \
-    --with-rsh-command=/usr/bin/ssh             \
+    --with-rsh-cmd=/usr/bin/ssh             \
     --with-cachepaths=${MY_CACHEPATHS}          \
     --with-commpaths=${MY_COMMPATHS}            \
     CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
@@ -73,6 +73,7 @@ ${SPINDLE_REPO}/configure                       \
     --prefix=${SPINDLE_PLUGIN_INSTALL}          \
     --enable-sec-munge                          \
     --with-rm=slurm-plugin                      \
+    --enable-slurm-plugin                       \
     --with-cachepaths=${MY_CACHEPATHS}          \
     --with-commpaths=${MY_COMMPATHS}            \
     CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
