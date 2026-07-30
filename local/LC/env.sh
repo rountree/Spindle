@@ -62,6 +62,7 @@ _get_current_spindle_tag() {
         printf '%s\n' "$current_commit"
     fi
 }
+export -f _get_current_spindle_tag
 
 _set_spindle_tag() {
     SPINDLE_TAG=$(_get_current_spindle_tag) || return 1
