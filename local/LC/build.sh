@@ -6,23 +6,21 @@ if ! declare -F require_spindle_env >/dev/null; then
 fi
 check_spindle_tag || exit 1
 
+if [[ ! -d "${SPINDLE_BUILD}" ]]; then
+    printf 'Build directory does not exist: %s\n' "${SPINDLE_BUILD}" >&2
+    printf 'Please run configure.sh first.\n' >&2
+    exit 1
+fi
+
 export DEBUG=1
 export VERBOSE=1
 export V=1
 
-cd "$SPINDLE_FLUX_BUILD" 
-make -j 2>&1 | ts 'flux   %Y-%m-%d %H:%M:%S'| tee ./build.out
-cd - >/dev/null 
+printf '%(%F %T)T Building %s in %s\n' -1 "$SPINDLE_RESOURCE_MANAGER" "$SPINDLE_BUILD"
 
-cd "$SPINDLE_SERIAL_BUILD" 
-make -j 2>&1 | ts 'serial %Y-%m-%d %H:%M:%S'| tee ./build.out
-cd - >/dev/null 
+cd "$SPINDLE_BUILD"
+make -j 2>&1 | ts "${SPINDLE_RESOURCE_MANAGER} %Y-%m-%d %H:%M:%S" | tee ./build.out
+cd - >/dev/null
 
-cd "$SPINDLE_SLURM_BUILD" 
-make -j 2>&1 | ts 'slurm  %Y-%m-%d %H:%M:%S'| tee ./build.out
-cd - >/dev/null 
-
-cd "$SPINDLE_PLUGIN_BUILD" 
-make -j 2>&1 | ts 'plugin %Y-%m-%d %H:%M:%S'| tee ./build.out
-cd - >/dev/null 
+printf '%(%F %T)T Build complete\n' -1
 

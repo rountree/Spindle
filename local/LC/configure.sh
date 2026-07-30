@@ -6,78 +6,56 @@ if ! declare -F require_spindle_env >/dev/null; then
 fi
 check_spindle_tag || exit 1
 
-if [[ -v SPINDLE_BUILD ]]; then
-    echo $(date) "Configuring to build in " $SPINDLE_BUILD
-    echo $(date) "Configuring to install in " $SPINDLE_INSTALL
-else
-    echo "SPINDLE_BUILD not set, please source env.sh.  Exiting."
-    exit
+if [[ ! -v SPINDLE_BUILD ]]; then
+    printf 'SPINDLE_BUILD not set, please source env.sh. Exiting.\n' >&2
+    exit 1
 fi
+
+printf '%(%F %T)T Configuring %s build in %s\n' -1 "$SPINDLE_RESOURCE_MANAGER" "$SPINDLE_BUILD"
+printf '%(%F %T)T Will install to %s\n' -1 "$SPINDLE_INSTALL"
 
 MY_CACHEPATHS=/tmp2:/tmp/spindle/cachepath
 MY_COMMPATHS=/:/tmp/spindle/commpath
 
-mkdir -p ${SPINDLE_FLUX_BUILD}
-mkdir -p ${SPINDLE_FLUX_INSTALL}
-mkdir -p ${SPINDLE_SERIAL_BUILD}
-mkdir -p ${SPINDLE_SERIAL_INSTALL}
-mkdir -p ${SPINDLE_SLURM_BUILD}
-mkdir -p ${SPINDLE_SLURM_INSTALL}
-mkdir -p ${SPINDLE_PLUGIN_BUILD}
-mkdir -p ${SPINDLE_PLUGIN_INSTALL}
+# Create build and install directories
+mkdir -p "${SPINDLE_BUILD}"
+mkdir -p "${SPINDLE_INSTALL}"
 
-printf "%(%F %T)T Starting flux configuration." -1
-cd ${SPINDLE_FLUX_BUILD}
-${SPINDLE_REPO}/configure                       \
-    --prefix=${SPINDLE_FLUX_INSTALL}            \
-    --enable-sec-munge                          \
-    --with-rm=flux                              \
-    --with-cachepaths=${MY_CACHEPATHS}          \
-    --with-commpaths=${MY_COMMPATHS}            \
-    CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
-    CXXFLAGS="-Wall -Wextra -Werror -O2 -g"     \
-    | ts 'flux   %Y-%m-%d %H:%M:%S'
+# Base configure options (common to all resource managers)
+configure_opts=(
+    "--prefix=${SPINDLE_INSTALL}"
+    "--enable-sec-munge"
+    "--with-rm=${SPINDLE_RESOURCE_MANAGER}"
+    "--with-cachepaths=${MY_CACHEPATHS}"
+    "--with-commpaths=${MY_COMMPATHS}"
+    "CFLAGS=-Wall -Wextra -Werror -O2 -g"
+    "CXXFLAGS=-Wall -Wextra -Werror -O2 -g"
+)
+
+# Add resource-manager-specific options
+case "${SPINDLE_RESOURCE_MANAGER}" in
+    slurm)
+        configure_opts+=(
+            "--with-rsh-launch"
+            "--with-rsh-cmd=/usr/bin/ssh"
+        )
+        ;;
+    slurm-plugin)
+        configure_opts+=(
+            "--enable-slurm-plugin"
+        )
+        ;;
+    flux|serial)
+        # No additional options needed
+        ;;
+esac
+
+# Run configure
+cd "${SPINDLE_BUILD}"
+printf '%(%F %T)T Starting %s configuration\n' -1 "$SPINDLE_RESOURCE_MANAGER"
+"${SPINDLE_REPO}/configure" "${configure_opts[@]}" 2>&1 | \
+    ts "${SPINDLE_RESOURCE_MANAGER} %Y-%m-%d %H:%M:%S"
 cd - > /dev/null 2>&1
 
-printf "%(%F %T)T Starting serial configuration." -1
-cd ${SPINDLE_SERIAL_BUILD}
-${SPINDLE_REPO}/configure                       \
-    --prefix=${SPINDLE_SERIAL_INSTALL}          \
-    --enable-sec-munge                          \
-    --with-rm=serial                            \
-    --with-cachepaths=${MY_CACHEPATHS}          \
-    --with-commpaths=${MY_COMMPATHS}            \
-    CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
-    CXXFLAGS="-Wall -Wextra -Werror -O2 -g"     \
-    | ts 'serial %Y-%m-%d %H:%M:%S'
-cd - > /dev/null 2>&1
-
-printf "%(%F %T)T Starting slurm configuration." -1
-cd ${SPINDLE_SLURM_BUILD}
-${SPINDLE_REPO}/configure                       \
-    --prefix=${SPINDLE_SLURM_INSTALL}           \
-    --enable-sec-munge                          \
-    --with-rm=slurm                             \
-    --with-rsh-launch                           \
-    --with-rsh-cmd=/usr/bin/ssh             \
-    --with-cachepaths=${MY_CACHEPATHS}          \
-    --with-commpaths=${MY_COMMPATHS}            \
-    CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
-    CXXFLAGS="-Wall -Wextra -Werror -O2 -g"     \
-    | ts 'slurm  %Y-%m-%d %H:%M:%S'
-cd - > /dev/null 2>&1
-
-printf "%(%F %T)T Starting plugin configuration." -1
-cd ${SPINDLE_PLUGIN_BUILD}
-${SPINDLE_REPO}/configure                       \
-    --prefix=${SPINDLE_PLUGIN_INSTALL}          \
-    --enable-sec-munge                          \
-    --with-rm=slurm-plugin                      \
-    --enable-slurm-plugin                       \
-    --with-cachepaths=${MY_CACHEPATHS}          \
-    --with-commpaths=${MY_COMMPATHS}            \
-    CFLAGS="-Wall -Wextra -Werror -O2 -g"       \
-    CXXFLAGS="-Wall -Wextra -Werror -O2 -g"     \
-    | ts 'plugin %Y-%m-%d %H:%M:%S'
-cd - > /dev/null 2>&1
+printf '%(%F %T)T Configuration complete\n' -1
 

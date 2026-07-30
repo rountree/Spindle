@@ -1,17 +1,29 @@
 #!/bin/bash
-set -euxo pipefail
+set -euo pipefail
 if ! declare -F require_spindle_env >/dev/null; then
     printf 'Please source env.sh in this shell before running this script.\n' >&2
     exit 1
 fi
 check_spindle_tag || exit 1
 
-rm -rf $SPINDLE_FLUX_BUILD \
-       $SPINDLE_FLUX_INSTALL \
-       $SPINDLE_SERIAL_BUILD \
-       $SPINDLE_SERIAL_INSTALL \
-       $SPINDLE_SLURM_BUILD \
-       $SPINDLE_SLURM_INSTALL \
-       $SPINDLE_PLUGIN_BUILD \
-       $SPINDLE_PLUGIN_INSTALL
+printf 'Removing build and install directories for %s/%s:\n' "$SPINDLE_TAG" "$SPINDLE_RESOURCE_MANAGER"
+printf '  Build:   %s\n' "$SPINDLE_BUILD"
+printf '  Install: %s\n' "$SPINDLE_INSTALL"
+
+# Only remove if they exist
+if [[ -d "$SPINDLE_BUILD" ]]; then
+    rm -rf "$SPINDLE_BUILD"
+    printf 'Removed: %s\n' "$SPINDLE_BUILD"
+else
+    printf 'Not found (skipping): %s\n' "$SPINDLE_BUILD"
+fi
+
+if [[ -d "$SPINDLE_INSTALL" ]]; then
+    rm -rf "$SPINDLE_INSTALL"
+    printf 'Removed: %s\n' "$SPINDLE_INSTALL"
+else
+    printf 'Not found (skipping): %s\n' "$SPINDLE_INSTALL"
+fi
+
+printf 'Nuke complete.\n'
 
