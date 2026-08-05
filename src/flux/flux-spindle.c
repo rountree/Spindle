@@ -524,6 +524,7 @@ static int sp_init (flux_plugin_t *p,
     (void)topic;
     (void)arg;
     (void)data;
+    fprintf( stderr, "QQQ %s:%d:%s Entry.\n", __FILE__, __LINE__, __func__ );
     struct spindle_ctx *ctx;
     flux_shell_t *shell = flux_plugin_get_shell (p);
     flux_t *h = flux_shell_get_flux (shell);
@@ -540,8 +541,10 @@ static int sp_init (flux_plugin_t *p,
         || !(h = flux_shell_get_flux (shell)))
        logerrno_printf_and_return(1, "failed to get shell or flux handle\n");
 
-    if (flux_shell_getopt (shell, "spindle", NULL) != 1)
+    if (flux_shell_getopt (shell, "spindle", NULL) != 1){
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
         return 0;
+    }
 
     /*  If SPINDLE_DEBUG is set in the environment of the job, propagate
      *  it into the shell so we get spindle debugging for this session.
@@ -562,8 +565,10 @@ static int sp_init (flux_plugin_t *p,
     tmpdir = flux_shell_getenv (shell, "TMPDIR");
     if (!tmpdir) {
         tmpdir = "/tmp";
-        if (flux_shell_setenvf (shell, 1, "TMPDIR", "%s", tmpdir) < 0)
+        if (flux_shell_setenvf (shell, 1, "TMPDIR", "%s", tmpdir) < 0){
+           fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
             logerrno_printf_and_return(1, "failed to set TMPDIR=/tmp in job environment");
+        }
 
     }
     setenv ("TMPDIR", tmpdir, 1);
@@ -578,8 +583,10 @@ static int sp_init (flux_plugin_t *p,
                                 "{s:I s:o s:i}",
                                 "jobid", &id,
                                 "R", &R,
-                                "rank", &shell_rank) < 0)
+                                "rank", &shell_rank) < 0){
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
        logerrno_printf_and_return(1, "Failed to unpack shell info\n");
+    }
 
     /*  Create an object for spindle related context.
      *
@@ -592,11 +599,13 @@ static int sp_init (flux_plugin_t *p,
                                 ctx,
                                 (flux_free_f) spindle_ctx_destroy) < 0) {
         spindle_ctx_destroy (ctx);
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
         logerrno_printf_and_return(1, "failed to create spindle ctx\n");
     }
 
     rc = spindle_in_session_mode(h, NULL, NULL);
     if (rc == -1) {
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
        logerrno_printf_and_return(1, "failed to read session info from flux\n");
        spindle_ctx_destroy(ctx);
        return -1;
@@ -615,14 +624,18 @@ static int sp_init (flux_plugin_t *p,
                                     ctx->flags,
                                     0,
                                     NULL,
-                                    NULL) < 0)
+                                    NULL) < 0){
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
        logerrno_printf_and_return (1, "fillInSpindleArgsCmdlineFE failed\n");
+    }
 
 
     /*  Read other spindle options from spindle option in jobspec:
      */
-    if (sp_getopts (shell, ctx) < 0)
+    if (sp_getopts (shell, ctx) < 0){
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
         return -1;
+    }
     if (ctx->params.opts & OPT_OFF) {
        return 0;
     }
@@ -638,8 +651,10 @@ static int sp_init (flux_plugin_t *p,
 
     /*  Get args to prepend to job cmdline
      */
-    if (getApplicationArgsFE(&ctx->params, &ctx->argc, &ctx->argv) < 0)
+    if (getApplicationArgsFE(&ctx->params, &ctx->argc, &ctx->argv) < 0){
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
         shell_die (1, "getApplicationArgsFE");
+    }
 
     if (shell_rank == 0) {
         /*  Rank 0: add spindle port and num_ports to the shell.init
@@ -659,10 +674,13 @@ static int sp_init (flux_plugin_t *p,
      *   rank 0, but code is simpler if we treat all ranks the same.
      */
     if (!(f = flux_job_event_watch (h, id, "guest.exec.eventlog", 0))
-        || flux_future_then (f, -1., wait_for_shell_init, ctx) < 0)
+        || flux_future_then (f, -1., wait_for_shell_init, ctx) < 0){
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
         shell_die (1, "flux_job_event_watch");
+    }
 
     /*  Return control to job shell */
+    fprintf( stderr, "QQQ %s:%d:%s Successful exit.\n", __FILE__, __LINE__, __func__ );
     return 0;
 }
 
@@ -679,6 +697,7 @@ static int sp_task (flux_plugin_t *p,
     (void)topic;
     (void)arg;
     (void)data;
+    fprintf( stderr, "QQQ %s:%d:%s Entry.\n", __FILE__, __LINE__, __func__ );
     int session_mode;
     int bootstrap_argc;
     char **bootstrap_argv;
@@ -689,12 +708,14 @@ static int sp_task (flux_plugin_t *p,
     debug_printf(1, "In flux plugin sp_task\n");
     struct spindle_ctx *ctx = flux_plugin_aux_get (p, "spindle");
     if (!ctx || !spindle_is_enabled(ctx)) {
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
        return 0;
     }
 
 
     if (!(shell = flux_plugin_get_shell (p)) || !(h = flux_shell_get_flux (shell))) {
        logerrno_printf_and_return (1, "failed to get shell or flux handle\n");
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
        return -1;
     }
     flux_shell_task_t *task = flux_shell_current_task (shell);
@@ -703,6 +724,7 @@ static int sp_task (flux_plugin_t *p,
     session_mode = spindle_in_session_mode(h, &bootstrap_argc, &bootstrap_argv);
     if (session_mode == -1) {
        logerrno_printf_and_return(1, "Failed to lookup whether we're in session mode\n");
+       fprintf( stderr, "QQQ %s:%d:%s FAILURE.\n", __FILE__, __LINE__, __func__ );
        return -1;
     }
     if (session_mode) {
@@ -724,6 +746,7 @@ static int sp_task (flux_plugin_t *p,
     if (session_mode)
        free_bootstrap_args(bootstrap_argc, bootstrap_argv);
 
+    fprintf( stderr, "QQQ %s:%d:%s Successful exit.\n", __FILE__, __LINE__, __func__ );
     return 0;
 }
 
@@ -756,10 +779,12 @@ static int sp_exit (flux_plugin_t *p,
 
 int flux_plugin_init (flux_plugin_t *p)
 {
+    fprintf( stderr, "QQQ %s:%d:%s Entry.\n", __FILE__, __LINE__, __func__ );
     if (flux_plugin_set_name (p, "spindle") < 0
         || flux_plugin_add_handler (p, "shell.init", sp_init, NULL) < 0
         || flux_plugin_add_handler (p, "task.init",  sp_task, NULL) < 0
         || flux_plugin_add_handler (p, "shell.exit", sp_exit, NULL) < 0)
         return -1;
+    fprintf( stderr, "QQQ %s:%d:%s Successful exit.\n", __FILE__, __LINE__, __func__ );
     return 0;
 }
