@@ -87,9 +87,9 @@ test_08_kernel_fs() {
 
 # Test 9: Permission check for non-existent paths
 test_09_permissions() {
-    # /tmp should be writable
+    # /tmp should be writable - warns about non-existence but shows it can be created
     output=$($HELPER --commpaths=/tmp/spindle_test_nonexistent_dir 2>&1)
-    echo "$output" | grep -q "OK: /tmp/spindle_test_nonexistent_dir" && \
+    echo "$output" | grep -q "/tmp/spindle_test_nonexistent_dir" && \
     echo "$output" | grep -q "will be created by Spindle"
 }
 
@@ -99,6 +99,29 @@ test_10_relative_path() {
     output=$($HELPER --commpaths=./relative_test 2>&1)
     echo "$output" | grep -q "/tmp/relative_test"
     cd "$SCRIPT_DIR"
+}
+
+# Test 11: pythonprefix with valid installation
+test_11_pythonprefix_valid() {
+    # Use /usr/tce if it exists, otherwise skip
+    if [[ ! -x /usr/tce/bin/python3 ]]; then
+        return 0  # Skip on systems without /usr/tce
+    fi
+    output=$($HELPER --python-prefix=/usr/tce 2>&1)
+    echo "$output" | grep -q "OK: /usr/tce"
+}
+
+# Test 12: pythonprefix without Python binaries
+test_12_pythonprefix_invalid() {
+    output=$($HELPER --python-prefix=/tmp 2>&1)
+    echo "$output" | grep -q "No bin/python or bin/python3 found"
+}
+
+# Test 13: pythonprefix with undefined variable
+test_13_pythonprefix_undefined_var() {
+    unset PYTHON_HOME
+    output=$($HELPER --python-prefix='$PYTHON_HOME' 2>&1)
+    echo "$output" | grep -q "Variable is not set"
 }
 
 # Run all tests
@@ -118,6 +141,9 @@ run_test "07_multiple_paths" test_07_multiple_paths
 run_test "08_kernel_filesystems" test_08_kernel_fs
 run_test "09_permission_check" test_09_permissions
 run_test "10_relative_path_resolution" test_10_relative_path
+run_test "11_pythonprefix_valid" test_11_pythonprefix_valid
+run_test "12_pythonprefix_invalid" test_12_pythonprefix_invalid
+run_test "13_pythonprefix_undefined_var" test_13_pythonprefix_undefined_var
 
 echo ""
 echo "========================================="

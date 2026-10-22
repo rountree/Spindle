@@ -289,7 +289,8 @@ static std::string find_writable_parent(const std::string& path)
    return "/";
 }
 
-static PathAnalysis analyze_path(const std::string& path, const std::vector<MountPoint>& mounts)
+static PathAnalysis analyze_path(const std::string& path, const std::vector<MountPoint>& mounts,
+                                   bool check_for_python = false)
 {
    PathAnalysis analysis(path);
 
@@ -328,33 +329,62 @@ static PathAnalysis analyze_path(const std::string& path, const std::vector<Moun
    }
 
    // Check if path exists
+   bool path_exists = false;
    struct stat st;
-   if (stat(analysis.resolved.c_str(), &st) != 0) {
-      analysis.warnings.push_back("Path does not exist (will be created by Spindle)");
+   if (stat(analysis.resolved.c_str(), &st) == 0) {
+      path_exists = true;
+   } else {
+      analysis.warnings.push_back("Path does not exist");
 
-      // Check if parent is writable
-      std::string parent = find_writable_parent(analysis.resolved);
-      if (access(parent.c_str(), W_OK) != 0) {
-         analysis.warnings.push_back("Parent directory (" + parent + ") is not writable");
+      // For non-python paths, check if it will be created
+      if (!check_for_python) {
+         analysis.warnings[analysis.warnings.size()-1] += " (will be created by Spindle)";
+         // Check if parent is writable
+         std::string parent = find_writable_parent(analysis.resolved);
+         if (access(parent.c_str(), W_OK) != 0) {
+            analysis.warnings.push_back("Parent directory (" + parent + ") is not writable");
+            return analysis;
+         }
+      } else {
+         // Python prefix must exist
          return analysis;
       }
    }
 
-   // Find mount point
-   analysis.mount = find_mount_for_path(analysis.resolved, mounts);
+   // Special validation for Python prefix
+   if (check_for_python && path_exists) {
+      // Check for bin/python or bin/python3
+      std::string python_path = analysis.resolved + "/bin/python";
+      std::string python3_path = analysis.resolved + "/bin/python3";
 
-   if (!analysis.mount) {
-      analysis.warnings.push_back("Cannot determine filesystem type");
-      return analysis;
+      bool has_python = (access(python_path.c_str(), X_OK) == 0);
+      bool has_python3 = (access(python3_path.c_str(), X_OK) == 0);
+
+      if (!has_python && !has_python3) {
+         analysis.warnings.push_back("No bin/python or bin/python3 found (not a Python installation?)");
+      }
    }
 
-   if (analysis.mount->is_remote) {
-      analysis.warnings.push_back("Path is on REMOTE filesystem (" + analysis.mount->fstype + ")");
-      return analysis;
+   // Find mount point (only for cache/comm paths, not python prefix)
+   if (!check_for_python) {
+      analysis.mount = find_mount_for_path(analysis.resolved, mounts);
+
+      if (!analysis.mount) {
+         analysis.warnings.push_back("Cannot determine filesystem type");
+         return analysis;
+      }
+
+      if (analysis.mount->is_remote) {
+         analysis.warnings.push_back("Path is on REMOTE filesystem (" + analysis.mount->fstype + ")");
+         return analysis;
+      }
    }
 
-   // All checks passed
-   analysis.is_ok = true;
+   // All checks passed (or acceptable warnings)
+   if (analysis.warnings.empty()) {
+      analysis.is_ok = true;
+   }
+
    return analysis;
 }
 
@@ -388,7 +418,7 @@ static void print_filesystem_recommendations(const std::vector<MountPoint>& moun
    std::cout << "#" << std::endl;
 
    // Analyze each configured option
-   auto analyze_option = [&](SpindleConfigID config_id, const char* name) {
+   auto analyze_option = [&](SpindleConfigID config_id, const char* name, bool check_python = false) {
       if (!confmap.isSet(config_id)) {
          return;
       }
@@ -411,7 +441,7 @@ static void print_filesystem_recommendations(const std::vector<MountPoint>& moun
 
          std::string path = paths.substr(pos, end - pos);
          if (!path.empty()) {
-            analyses.push_back(analyze_path(path, mounts));
+            analyses.push_back(analyze_path(path, mounts, check_python));
          }
 
          pos = end + 1;
@@ -453,6 +483,7 @@ static void print_filesystem_recommendations(const std::vector<MountPoint>& moun
 
    analyze_option(confCommPaths, "commpaths");
    analyze_option(confCachePaths, "cachepaths");
+   analyze_option(confPythonPrefix, "pythonprefix", true);
    analyze_option(confLocalPrefix, "localprefix");
 }
 

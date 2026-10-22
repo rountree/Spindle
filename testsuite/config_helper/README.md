@@ -25,6 +25,9 @@ cd testsuite/config_helper
 8. **test_08_kernel_fs** - Recognizes kernel filesystems (/proc, /sys, /dev)
 9. **test_09_permissions** - Checks parent directory permissions
 10. **test_10_relative_path** - Resolves relative paths correctly
+11. **test_11_pythonprefix_valid** - Validates Python installation (skips if /usr/tce missing)
+12. **test_12_pythonprefix_invalid** - Warns when path lacks bin/python
+13. **test_13_pythonprefix_undefined_var** - Detects undefined variables in pythonprefix
 
 ## Sample Mount Files
 
