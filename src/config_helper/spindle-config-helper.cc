@@ -17,9 +17,444 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "config.h"
 #include "config_mgr.h"
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <set>
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <limits.h>
+#include <sys/statvfs.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <wordexp.h>
+
+struct MountPoint {
+   std::string path;
+   std::string fstype;
+   bool is_remote;
+   uint64_t avail_gb;
+
+   MountPoint(const std::string& p, const std::string& fs)
+      : path(p), fstype(fs), is_remote(false), avail_gb(0) {}
+};
+
+static bool is_remote_filesystem(const std::string& fstype)
+{
+   static const char* remote_types[] = {
+      "nfs", "nfs4", "lustre", "gpfs", "panfs",
+      "ceph", "glusterfs", "afs", "smbfs", "cifs",
+      nullptr
+   };
+
+   for (int i = 0; remote_types[i]; i++) {
+      if (fstype == remote_types[i] ||
+          fstype.find(std::string("fuse.") + remote_types[i]) == 0) {
+         return true;
+      }
+   }
+   return false;
+}
+
+static bool is_kernel_filesystem(const std::string& path)
+{
+   // Hardcode known kernel filesystem paths
+   // Note: /dev/shm is NOT a kernel filesystem, it's tmpfs
+   return path == "/proc" || path == "/sys" ||
+          (path.find("/proc/") == 0) ||
+          (path.find("/sys/") == 0) ||
+          (path == "/dev" || (path.find("/dev/") == 0 && path != "/dev/shm"));
+}
+
+static bool should_ignore_mount(const std::string& path, const std::string& fstype)
+{
+   // Ignore virtual/system filesystems
+   if (fstype == "proc" || fstype == "sysfs" || fstype == "devtmpfs" ||
+       fstype == "devpts" || fstype == "securityfs" || fstype == "pstore" ||
+       fstype == "autofs" || fstype == "mqueue" || fstype == "hugetlbfs" ||
+       fstype.find("cgroup") == 0 || fstype.find("bpf") == 0) {
+      return true;
+   }
+
+   // Ignore system tmpfs mounts (but NOT /dev/shm which is useful)
+   if (fstype == "tmpfs" && (path == "/run" || path == "/sys/fs/cgroup" ||
+                              path.find("/run/") == 0 || path.find("/sys/") == 0 ||
+                              (path.find("/dev/") == 0 && path != "/dev/shm"))) {
+      return true;
+   }
+
+   return false;
+}
+
+static uint64_t get_available_gb(const std::string& path)
+{
+   struct statvfs stat;
+   if (statvfs(path.c_str(), &stat) != 0) {
+      return 0;
+   }
+
+   uint64_t avail_bytes = (uint64_t)stat.f_bavail * stat.f_frsize;
+   return avail_bytes / (1024ULL * 1024 * 1024);
+}
+
+static std::vector<MountPoint> parse_mounts()
+{
+   std::vector<MountPoint> mounts;
+   std::ifstream mounts_file("/proc/mounts");
+   std::string line;
+   std::set<std::string> seen_paths;
+
+   while (std::getline(mounts_file, line)) {
+      std::istringstream iss(line);
+      std::string device, path, fstype, options;
+
+      if (!(iss >> device >> path >> fstype >> options)) {
+         continue;
+      }
+
+      if (should_ignore_mount(path, fstype)) {
+         continue;
+      }
+
+      // Skip duplicate paths
+      if (seen_paths.count(path)) {
+         continue;
+      }
+      seen_paths.insert(path);
+
+      MountPoint mp(path, fstype);
+
+      // Overlay filesystems are typically local (container backing storage)
+      if (fstype == "overlay") {
+         mp.is_remote = false;
+      } else {
+         mp.is_remote = is_remote_filesystem(fstype);
+      }
+
+      if (!mp.is_remote) {
+         mp.avail_gb = get_available_gb(path);
+
+         // Skip local mounts with < 1GB available
+         if (mp.avail_gb < 1) {
+            continue;
+         }
+
+         // Check if writable
+         if (access(path.c_str(), W_OK) != 0) {
+            continue;
+         }
+      }
+
+      mounts.push_back(mp);
+   }
+
+   // Sort by path length (longest first) for prefix matching
+   std::sort(mounts.begin(), mounts.end(),
+             [](const MountPoint& a, const MountPoint& b) {
+                return a.path.length() > b.path.length();
+             });
+
+   return mounts;
+}
+
+enum ExpandResult {
+   EXPAND_OK,
+   EXPAND_UNDEFINED_VAR,
+   EXPAND_EMPTY,
+   EXPAND_ERROR
+};
+
+struct ExpandedPath {
+   std::string expanded;
+   ExpandResult result;
+};
+
+static ExpandedPath expand_path(const std::string& path)
+{
+   ExpandedPath ep;
+
+   if (path.empty()) {
+      ep.expanded = path;
+      ep.result = EXPAND_EMPTY;
+      return ep;
+   }
+
+   // Use wordexp for shell expansion (handles $VAR, ~, etc.)
+   wordexp_t exp_result;
+   int ret = wordexp(path.c_str(), &exp_result, WRDE_NOCMD | WRDE_UNDEF);
+
+   if (ret == WRDE_BADVAL) {
+      // Undefined variable
+      ep.expanded = "";
+      ep.result = EXPAND_UNDEFINED_VAR;
+      return ep;
+   } else if (ret != 0) {
+      // Other expansion error
+      ep.expanded = "";
+      ep.result = EXPAND_ERROR;
+      return ep;
+   }
+
+   if (exp_result.we_wordc > 0 && exp_result.we_wordv[0] && exp_result.we_wordv[0][0] != '\0') {
+      ep.expanded = exp_result.we_wordv[0];
+      ep.result = EXPAND_OK;
+   } else {
+      // Empty expansion
+      ep.expanded = "";
+      ep.result = EXPAND_EMPTY;
+   }
+
+   wordfree(&exp_result);
+   return ep;
+}
+
+static std::string resolve_real_path(const std::string& path)
+{
+   if (path.empty()) {
+      return path;
+   }
+
+   char resolved[PATH_MAX];
+   if (realpath(path.c_str(), resolved) != nullptr) {
+      return std::string(resolved);
+   }
+
+   // If realpath fails, try to handle relative paths manually
+   if (path[0] != '/') {
+      char cwd[PATH_MAX];
+      if (getcwd(cwd, sizeof(cwd))) {
+         std::string abs = std::string(cwd) + "/" + path;
+         if (realpath(abs.c_str(), resolved) != nullptr) {
+            return std::string(resolved);
+         }
+         return abs;  // Return constructed absolute path even if realpath fails
+      }
+   }
+
+   return path;  // Return original if we can't resolve
+}
+
+static const MountPoint* find_mount_for_path(const std::string& resolved_path,
+                                               const std::vector<MountPoint>& mounts)
+{
+   if (resolved_path.empty()) {
+      return nullptr;
+   }
+
+   // Find longest matching mount point
+   for (const auto& mp : mounts) {
+      if (resolved_path == mp.path ||
+          (resolved_path.find(mp.path + "/") == 0)) {
+         return &mp;
+      }
+   }
+
+   return nullptr;
+}
+
+struct PathAnalysis {
+   std::string original;
+   std::string expanded;
+   std::string resolved;
+   bool is_ok;
+   std::vector<std::string> warnings;
+   const MountPoint* mount;
+
+   PathAnalysis(const std::string& orig) : original(orig), is_ok(false), mount(nullptr) {}
+};
+
+static std::string find_writable_parent(const std::string& path)
+{
+   // Find the first existing parent directory
+   std::string test_path = path;
+
+   while (!test_path.empty() && test_path != "/") {
+      if (access(test_path.c_str(), F_OK) == 0) {
+         // Path exists, check if writable
+         return test_path;
+      }
+
+      // Move to parent
+      size_t last_slash = test_path.rfind('/');
+      if (last_slash == std::string::npos) {
+         break;
+      }
+      test_path = test_path.substr(0, last_slash);
+      if (test_path.empty()) {
+         test_path = "/";
+      }
+   }
+
+   return "/";
+}
+
+static PathAnalysis analyze_path(const std::string& path, const std::vector<MountPoint>& mounts)
+{
+   PathAnalysis analysis(path);
+
+   if (path.empty()) {
+      analysis.warnings.push_back("Path is empty");
+      return analysis;
+   }
+
+   // Expand variables
+   ExpandedPath ep = expand_path(path);
+   analysis.expanded = ep.expanded;
+
+   if (ep.result == EXPAND_UNDEFINED_VAR) {
+      analysis.warnings.push_back("Variable is not set");
+      return analysis;
+   } else if (ep.result == EXPAND_EMPTY) {
+      analysis.warnings.push_back("Variable expands to empty string");
+      return analysis;
+   } else if (ep.result == EXPAND_ERROR) {
+      analysis.warnings.push_back("Cannot expand path");
+      return analysis;
+   }
+
+   // Check for empty segments (e.g., /var// from /var/$EMPTY/)
+   if (analysis.expanded.find("//") != std::string::npos) {
+      analysis.warnings.push_back("Path contains empty segment (variable may be empty)");
+   }
+
+   // Resolve to real path
+   analysis.resolved = resolve_real_path(ep.expanded);
+
+   // Check for kernel filesystems first (these are always OK)
+   if (is_kernel_filesystem(analysis.resolved)) {
+      analysis.is_ok = true;
+      return analysis;
+   }
+
+   // Check if path exists
+   struct stat st;
+   if (stat(analysis.resolved.c_str(), &st) != 0) {
+      analysis.warnings.push_back("Path does not exist (will be created by Spindle)");
+
+      // Check if parent is writable
+      std::string parent = find_writable_parent(analysis.resolved);
+      if (access(parent.c_str(), W_OK) != 0) {
+         analysis.warnings.push_back("Parent directory (" + parent + ") is not writable");
+         return analysis;
+      }
+   }
+
+   // Find mount point
+   analysis.mount = find_mount_for_path(analysis.resolved, mounts);
+
+   if (!analysis.mount) {
+      analysis.warnings.push_back("Cannot determine filesystem type");
+      return analysis;
+   }
+
+   if (analysis.mount->is_remote) {
+      analysis.warnings.push_back("Path is on REMOTE filesystem (" + analysis.mount->fstype + ")");
+      return analysis;
+   }
+
+   // All checks passed
+   analysis.is_ok = true;
+   return analysis;
+}
+
+static void print_filesystem_recommendations(const std::vector<MountPoint>& mounts,
+                                              const ConfigMap& confmap)
+{
+   std::cout << "# Spindle filesystem recommendations:" << std::endl;
+
+   // Show local writable mounts
+   std::vector<const MountPoint*> local_mounts;
+   for (const auto& mp : mounts) {
+      if (!mp.is_remote) {
+         local_mounts.push_back(&mp);
+      }
+   }
+
+   if (!local_mounts.empty()) {
+      std::cout << "#   Local: ";
+      bool first = true;
+      for (const auto* mp : local_mounts) {
+         if (!first) std::cout << ", ";
+         std::cout << mp->path << " (" << mp->fstype << ", "
+                   << mp->avail_gb << "GB)";
+         first = false;
+      }
+      std::cout << std::endl;
+   } else {
+      std::cout << "#   WARNING: No suitable local filesystems found!" << std::endl;
+   }
+
+   std::cout << "#" << std::endl;
+
+   // Analyze each configured option
+   auto analyze_option = [&](SpindleConfigID config_id, const char* name) {
+      if (!confmap.isSet(config_id)) {
+         return;
+      }
+
+      auto result = confmap.getValueString(config_id);
+      if (!result.first || result.second.empty()) {
+         return;
+      }
+
+      std::string paths = result.second;
+      std::vector<PathAnalysis> analyses;
+
+      // Split on colons for multi-path options
+      size_t pos = 0;
+      while (pos < paths.length()) {
+         size_t end = paths.find(':', pos);
+         if (end == std::string::npos) {
+            end = paths.length();
+         }
+
+         std::string path = paths.substr(pos, end - pos);
+         if (!path.empty()) {
+            analyses.push_back(analyze_path(path, mounts));
+         }
+
+         pos = end + 1;
+      }
+
+      if (analyses.empty()) {
+         return;
+      }
+
+      std::cout << "#   " << name << " analysis:" << std::endl;
+
+      for (const auto& analysis : analyses) {
+         const char* status = analysis.is_ok ? "OK" : "WARNING";
+         std::cout << "#     " << status << ": " << analysis.original;
+
+         if (!analysis.resolved.empty()) {
+            std::cout << " -> " << analysis.resolved;
+            if (analysis.mount && !analysis.mount->is_remote) {
+               std::cout << " (" << analysis.mount->fstype << ", "
+                        << analysis.mount->avail_gb << "GB)";
+            } else if (analysis.mount && analysis.mount->is_remote) {
+               std::cout << " (" << analysis.mount->fstype << ")";
+            }
+         } else if (!analysis.expanded.empty()) {
+            std::cout << " -> " << analysis.expanded;
+         } else {
+            std::cout << " -> (empty)";
+         }
+
+         std::cout << std::endl;
+
+         for (const auto& warning : analysis.warnings) {
+            std::cout << "#       " << warning << std::endl;
+         }
+      }
+
+      std::cout << "#" << std::endl;
+   };
+
+   analyze_option(confCommPaths, "commpaths");
+   analyze_option(confCachePaths, "cachepaths");
+   analyze_option(confLocalPrefix, "localprefix");
+}
 
 static void print_version()
 {
@@ -157,6 +592,12 @@ int main(int argc, char *argv[])
       free(modified_argv[argc]);
       delete[] modified_argv;
    }
+
+   // Parse and analyze mount points
+   std::vector<MountPoint> mounts = parse_mounts();
+
+   // Print filesystem recommendations and warnings
+   print_filesystem_recommendations(mounts, confmap);
 
    // Output configuration in spindle.conf format
    const std::map<SpindleConfigID, const SpindleOption&> &options = getOptionsByID();
