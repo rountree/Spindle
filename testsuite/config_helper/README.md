@@ -28,6 +28,10 @@ cd testsuite/config_helper
 11. **test_11_pythonprefix_valid** - Validates Python installation (skips if /usr/tce missing)
 12. **test_12_pythonprefix_invalid** - Warns when path lacks bin/python
 13. **test_13_pythonprefix_undefined_var** - Detects undefined variables in pythonprefix
+14. **test_14_security_mode_detection** - Detects and reports security configuration
+15. **test_15_security_none_warning** - Warns when security=none (insecure)
+16. **test_16_munge_detection** - Reports munge availability
+17. **test_17_launchmon_warning** - Warns when security=launchmon (deprecated)
 
 ## Sample Mount Files
 

@@ -124,6 +124,32 @@ test_13_pythonprefix_undefined_var() {
     echo "$output" | grep -q "Variable is not set"
 }
 
+# Test 14: Security mode detection
+test_14_security_mode_detection() {
+    output=$($HELPER --commpaths=/tmp 2>&1)
+    echo "$output" | grep -q "# Security configuration:" && \
+    echo "$output" | grep -q "Current mode:"
+}
+
+# Test 15: Security none warning
+test_15_security_none_warning() {
+    output=$($HELPER --commpaths=/tmp --security=none 2>&1)
+    echo "$output" | grep -q "WARNING: No authentication enabled"
+}
+
+# Test 16: Munge detection
+test_16_munge_detection() {
+    output=$($HELPER --commpaths=/tmp 2>&1)
+    # Check that munge availability is reported
+    echo "$output" | grep -q "Munge availability:"
+}
+
+# Test 17: LaunchMON warning
+test_17_launchmon_warning() {
+    output=$($HELPER --commpaths=/tmp --security=launchmon 2>&1)
+    echo "$output" | grep -q "WARNING: LaunchMON security mode"
+}
+
 # Run all tests
 echo "========================================="
 echo "spindle-config-helper Test Suite"
@@ -144,6 +170,10 @@ run_test "10_relative_path_resolution" test_10_relative_path
 run_test "11_pythonprefix_valid" test_11_pythonprefix_valid
 run_test "12_pythonprefix_invalid" test_12_pythonprefix_invalid
 run_test "13_pythonprefix_undefined_var" test_13_pythonprefix_undefined_var
+run_test "14_security_mode_detection" test_14_security_mode_detection
+run_test "15_security_none_warning" test_15_security_none_warning
+run_test "16_munge_detection" test_16_munge_detection
+run_test "17_launchmon_warning" test_17_launchmon_warning
 
 echo ""
 echo "========================================="
