@@ -29,6 +29,12 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <sys/stat.h>
 #include <unistd.h>
 #include <wordexp.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+
+extern "C" {
+#include "keyfile.h"
+}
 
 struct MountPoint {
    std::string path;
@@ -492,6 +498,115 @@ static void print_version()
    std::cout << "spindle-config-helper version " << PACKAGE_VERSION << std::endl;
 }
 
+static bool check_munge_available(bool in_sandbox)
+{
+   // Check if munge binary exists
+   if (access("/usr/bin/munge", X_OK) != 0) {
+      return false;
+   }
+
+   // If in sandbox, we can't test the daemon
+   if (in_sandbox) {
+      return true;  // Binary exists, can't test further
+   }
+
+   // Try to actually use munge to verify daemon is running
+   pid_t pid = fork();
+   if (pid == 0) {
+      // Child: run munge -n with stdout/stderr redirected to /dev/null
+      int devnull = open("/dev/null", O_WRONLY);
+      dup2(devnull, STDOUT_FILENO);
+      dup2(devnull, STDERR_FILENO);
+      close(devnull);
+      execl("/usr/bin/munge", "munge", "-n", (char*)NULL);
+      _exit(127);
+   } else if (pid > 0) {
+      // Parent: wait for child
+      int status;
+      waitpid(pid, &status, 0);
+      return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+   }
+
+   return false;  // fork failed
+}
+
+static void print_security_analysis(const ConfigMap& confmap, const std::vector<MountPoint>& mounts)
+{
+   std::cout << "# Security configuration:" << std::endl;
+
+   // Detect if we're in a sandbox
+   const char* sandbox_engine = getenv("SANDBOX_ENGINE");
+   bool in_sandbox = (sandbox_engine != NULL);
+
+   // Get the current security setting
+   auto sec_result = confmap.getValueString(confSecurity);
+   std::string current_mode = "unknown";
+   if (sec_result.first) {
+      current_mode = sec_result.second;
+   }
+
+   std::cout << "#   Current mode: " << current_mode << std::endl;
+
+   // Validate based on mode
+   if (current_mode == "none") {
+      std::cout << "#     WARNING: No authentication enabled (connections are insecure)" << std::endl;
+   } else if (current_mode == "keyfile") {
+      const char* keydir = get_sec_keydir_path();
+      if (keydir) {
+         std::cout << "#     Keyfile directory: " << keydir << std::endl;
+
+         // Check if keydir is on a shared (remote) filesystem
+         std::string keydir_resolved = resolve_real_path(keydir);
+         const MountPoint* mp = find_mount_for_path(keydir_resolved, mounts);
+
+         if (mp) {
+            if (mp->is_remote) {
+               std::cout << "#     OK: Keyfile directory is on shared filesystem ("
+                        << mp->fstype << ")" << std::endl;
+            } else {
+               std::cout << "#     WARNING: Keyfile directory is on LOCAL filesystem ("
+                        << mp->fstype << ")" << std::endl;
+               std::cout << "#       Keyfile must be on a filesystem shared across all nodes" << std::endl;
+            }
+         } else {
+            std::cout << "#     WARNING: Cannot determine filesystem type for keyfile directory" << std::endl;
+         }
+      } else {
+         std::cout << "#     Note: Keyfile mode not compiled in" << std::endl;
+      }
+   } else if (current_mode == "launchmon") {
+      std::cout << "#     WARNING: LaunchMON security mode (deprecated/untested)" << std::endl;
+   } else if (current_mode == "munge") {
+      std::cout << "#     Munge authentication enabled" << std::endl;
+   }
+
+   std::cout << "#" << std::endl;
+   std::cout << "#   Munge availability:" << std::endl;
+
+   // Always check for munge as a recommendation
+   bool munge_binary_exists = (access("/usr/bin/munge", X_OK) == 0);
+
+   if (munge_binary_exists) {
+      if (in_sandbox) {
+         std::cout << "#     Munge binary found at /usr/bin/munge" << std::endl;
+         std::cout << "#     Note: Cannot test munge daemon (running in sandbox)" << std::endl;
+      } else {
+         bool munge_works = check_munge_available(false);
+         if (munge_works) {
+            std::cout << "#     Munge is available and working (recommended security option)" << std::endl;
+         } else {
+            std::cout << "#     Munge binary found but daemon is not running" << std::endl;
+            std::cout << "#     Munge provides secure authentication (recommended if available)" << std::endl;
+         }
+      }
+   } else {
+      std::cout << "#     Munge not found" << std::endl;
+      std::cout << "#     Munge provides secure authentication (recommended if available)" << std::endl;
+   }
+
+   std::cout << "#" << std::endl;
+}
+
 static void print_usage(const char *progname)
 {
    std::cout << "Usage: " << progname << " [OPTIONS]\n\n"
@@ -626,6 +741,9 @@ int main(int argc, char *argv[])
 
    // Parse and analyze mount points
    std::vector<MountPoint> mounts = parse_mounts();
+
+   // Print security analysis
+   print_security_analysis(confmap, mounts);
 
    // Print filesystem recommendations and warnings
    print_filesystem_recommendations(mounts, confmap);
