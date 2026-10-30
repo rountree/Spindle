@@ -3,113 +3,295 @@
 spindle-config-helper \- generate and validate Spindle configuration files
 .SH SYNOPSIS
 .B spindle-config-helper
-[\fIOPTIONS\fR]
+[\fIOPTIONS\fR] [\fB\-\-\fR \fISPINDLE_OPTIONS\fR]
 .SH DESCRIPTION
 .B spindle-config-helper
-is a utility for generating and validating Spindle configuration files.
-It parses configuration from command-line options, environment variables, and
-existing configuration files, then outputs the resulting configuration in
+is a utility for generating and validating Spindle configuration files in HPC
+environments. It analyzes the local system to automatically detect optimal
+configuration settings and outputs a
 .I spindle.conf
-format.
+file suitable for the environment.
 .PP
-In future releases, this tool will also probe the runtime environment to
-automatically detect optimal configuration settings, including:
+The tool performs the following analysis:
 .IP \(bu 2
-Local mount points suitable for cache and communication paths
+Detects local vs. remote filesystem mounts (NFS, Lustre, GPFS, tmpfs)
 .IP \(bu 2
-Available resource managers (Slurm, Flux, LSF)
+Validates
+.B $TMPDIR
+availability and recommends appropriate paths
 .IP \(bu 2
-Security subsystems (Munge availability)
+Tests SSH connectivity to verify compute node access
 .IP \(bu 2
-MPI environment characteristics
+Discovers Python installations via system PATH
+.IP \(bu 2
+Generates
+.I localprefix
+from top-level directories without remote mounts
+.IP \(bu 2
+Validates path writability and accessibility
 .PP
-The tool is designed to be run on compute nodes in the same environment where
-Spindle will execute, as login/front-end nodes may have different characteristics
-than compute nodes.
+The tool should be run on compute nodes in the same environment where
+Spindle will execute, as login/front-end nodes may have different characteristics.
 .SH OPTIONS
 .TP
 .BR \-h ", " \-\-help
-Display usage information and exit.
+Display detailed usage information and exit.
 .TP
 .BR \-V ", " \-\-version
 Display version information and exit.
 .TP
+.BR \-o ", " \-\-output =\fIFILE\fR
+Write output to
+.I FILE
+instead of stdout. By default, fails if
+.I FILE
+already exists.
+.TP
+.BR \-\-overwrite
+Allow overwriting an existing output file when used with
+.BR \-o .
+.TP
+.BR \-c ", " \-\-check [=\fIFILE\fR]
+Validate an existing
+.I spindle.conf
+file. Checks option names against the current Spindle version, validates
+enum values, and reports unknown or deprecated options. If
+.I FILE
+is not specified, only validates options passed after
+.BR \-\- .
+.TP
+.BR \-a ", " \-\-all
+Generate a complete configuration file including all Spindle options.
+Options with default values are commented out (prefixed with '#').
+Options specified after
+.B \-\-
+are uncommented. Useful for discovering available options.
+.TP
 .BR \-\-usage
-Display a brief usage summary with all available options and exit.
+Display Spindle's usage summary with all available configuration options.
+.SH MODES
+.SS Default Mode
+Without any mode flags,
+.B spindle-config-helper
+generates a minimal configuration with four essential path variables:
+.TP
+.B commpaths
+Local directories for inter-process communication. Prefers
+.B $TMPDIR
+if set, otherwise recommends a suitable local filesystem like
+.I /tmp
+or
+.IR /dev/shm .
+.TP
+.B cachepaths
+Local directories for file caching. Uses similar logic to
+.BR commpaths .
+.TP
+.B pythonprefix
+Python installation directories discovered via
+.B which python
+and
+.BR "which python3" .
+Validates that
+.I bin/python
+or
+.I bin/python3
+exists under each directory.
+.TP
+.B localprefix
+Colon-separated list of top-level directories that should be excluded from
+caching. Generated from
+.I /proc
+.I /sys
+.I /dev
+and other top-level directories without remote mounts underneath.
 .PP
-All Spindle configuration options are accepted. Use
-.B --usage
-to see a complete list of available options, or see the Spindle documentation
-for detailed descriptions of each option.
+The output includes warnings and recommendations as comments.
+.SS Check Mode
+When invoked with
+.BR \-c ,
+the tool validates an existing configuration file:
+.IP \(bu 2
+Parses
+.I key = value
+pairs from the file
+.IP \(bu 2
+Verifies option names are valid in the current Spindle version
+.IP \(bu 2
+Validates enum values (e.g., level must be high/medium/low/off)
+.IP \(bu 2
+Reports malformed lines, unknown options, and invalid values
+.IP \(bu 2
+Command-line options passed after
+.B \-\-
+take precedence over config file values
+.SS All Mode
+When invoked with
+.BR \-a ,
+the tool enumerates all Spindle configuration options (~49 options).
+Options with default values are commented out, while options specified
+on the command line after
+.B \-\-
+are uncommented with their specified values.
+.SH ENVIRONMENT
+.TP
+.B TMPDIR
+Preferred directory for
+.B commpaths
+and
+.BR cachepaths .
+If not set, the tool recommends
+.I /tmp
+or another suitable local filesystem.
+.TP
+.B SANDBOX_ENGINE
+If set, indicates the tool is running in a sandbox environment.
+Affects capability testing (e.g., Munge daemon connectivity cannot be
+verified in a sandbox).
+.SH SPINDLE OPTIONS
+Any valid Spindle configuration option can be passed after
+.BR \-\- .
+Use
+.B spindle-config-helper \-\- \-\-usage
+to see all available options. Common options include:
+.TP
+.BI \-\-commpaths= PATHS
+Colon-separated list of directories for inter-process communication.
+Should be on local (not remote) filesystems.
+.TP
+.BI \-\-cachepaths= PATHS
+Colon-separated list of directories for file caching.
+Should be on local filesystems with sufficient space.
+.TP
+.BI \-\-level= LEVEL
+Aggressiveness of library redistribution:
+.BR high ", " medium ", " low ", " off ", or " default .
+.TP
+.BI \-\-security= MODE
+Security mode:
+.BR none ", " munge ", " keyfile ", or " launchmon .
+.TP
+.BI \-\-launcher= TYPE
+Resource manager:
+.BR serial ", " slurm ", " flux ", " lsf ", " alps ", " openmpi ", " wreckrun ", " jsrun ", " hostbin ", or " srun .
+.TP
+.BI \-\-python\-prefix= PATHS
+Colon-separated list of Python installation prefixes.
+.TP
+.BI \-\-local\-prefix= PATHS
+Colon-separated list of directory prefixes to exclude from caching.
 .SH EXAMPLES
 .TP
-Parse command-line options and output configuration:
+Generate a new configuration to stdout:
 .nf
 .RS
-spindle-config-helper --commpaths=/dev/shm --cachepaths=/tmp/cache
+spindle-config-helper
 .RE
 .fi
 .TP
-Parse an existing configuration file:
+Generate and save to file:
 .nf
 .RS
-spindle-config-helper --config=/etc/spindle.conf
+spindle-config-helper -o ~/.spindle/spindle.conf
 .RE
 .fi
 .TP
-Combine multiple configuration sources:
+Generate with custom paths:
 .nf
 .RS
-export SPINDLE_SECURITY=none
-spindle-config-helper --config=/etc/spindle.conf --launcher=slurm
+spindle-config-helper -- --commpaths=/dev/shm --cachepaths=/tmp
 .RE
 .fi
-.PP
-The tool merges configuration from multiple sources in the following order
-(later sources override earlier ones):
-.IP 1. 3
-Built-in defaults
-.IP 2. 3
-System configuration file
-.IP 3. 3
-User configuration file
-.IP 4. 3
-Environment variables
-.IP 5. 3
-Command-line options
-.SH FUTURE FUNCTIONALITY
-Future versions will support:
 .TP
-.B Environment Probing
-Automatically detect and recommend optimal settings for cache paths, communication
-paths, and other configuration based on the compute node environment.
+Check existing config for warnings:
+.nf
+.RS
+spindle-config-helper -c ~/.spindle/spindle.conf | grep WARNING
+.RE
+.fi
 .TP
-.B Configuration Validation
-Verify that specified paths exist, are writable, and are on appropriate filesystem
-types (e.g., local vs. network filesystems).
+Update existing config with new security setting:
+.nf
+.RS
+spindle-config-helper -c ~/.spindle/spindle.conf \\
+  -o ~/.spindle/spindle.conf --overwrite \\
+  -- --security=munge
+.RE
+.fi
 .TP
-.B Performance Tuning
-Analyze the environment and suggest performance-oriented configuration settings.
+Generate complete config with all options:
+.nf
+.RS
+spindle-config-helper -a -o spindle.conf.full
+.RE
+.fi
 .TP
-.B MPI Integration
-Run as an MPI application to gather environment information across all compute nodes
-in an allocation.
+Generate config with high aggressiveness:
+.nf
+.RS
+spindle-config-helper -a -- --level=high --launcher=slurm
+.RE
+.fi
+.TP
+View all available Spindle options:
+.nf
+.RS
+spindle-config-helper -- --usage
+.RE
+.fi
 .SH FILES
 .TP
 .I /etc/spindle.conf
 System-wide Spindle configuration file.
 .TP
 .I ~/.spindle/spindle.conf
-Per-user Spindle configuration file.
+Per-user Spindle configuration file (common location).
+.TP
+.I /proc/mounts
+Used to detect filesystem mount points and types.
 .SH EXIT STATUS
 .TP
 .B 0
-Success. Valid configuration was parsed and output.
+Success. Valid configuration was generated or validated.
 .TP
 .B 1
-Error. Invalid configuration or parse error occurred.
+Error. Invalid arguments, file I/O error, or configuration parse error occurred.
+.SH NOTES
+.SS Path Validation
+The tool validates paths by checking:
+.IP \(bu 2
+Parent directory is writable
+.IP \(bu 2
+Path is on a local (not remote) filesystem
+.IP \(bu 2
+Path can be created and deleted (test file creation)
+.PP
+Paths that fail validation are filtered out and reported in warnings.
+.SS SSH Testing
+The tool tests SSH connectivity to the local hostname to verify that
+compute node access is properly configured. This test uses
+.BR "ssh -o BatchMode=yes"
+to check for key-based authentication without password prompts.
+.SS Python Discovery
+Python installations are discovered by running
+.B which python
+and
+.BR "which python3" ,
+following symlinks to find the actual installation directories.
+The tool validates that
+.I bin/python
+or
+.I bin/python3
+exists under each discovered prefix.
+.SS Sandbox Environments
+When running in a sandbox environment (detected via
+.BR SANDBOX_ENGINE ),
+some tests are limited. For example, Munge daemon connectivity cannot
+be verified, though Munge binary availability is still checked.
 .SH SEE ALSO
 .BR spindle (1)
+.PP
+Spindle documentation: https://github.com/hpc/Spindle
 .SH AUTHOR
 The Spindle development team at Lawrence Livermore National Laboratory.
 .SH BUGS

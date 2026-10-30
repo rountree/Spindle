@@ -31,6 +31,9 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <wordexp.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <time.h>
+#include <dirent.h>
+#include <errno.h>
 
 extern "C" {
 #include "keyfile.h"
@@ -340,19 +343,21 @@ static PathAnalysis analyze_path(const std::string& path, const std::vector<Moun
    if (stat(analysis.resolved.c_str(), &st) == 0) {
       path_exists = true;
    } else {
-      analysis.warnings.push_back("Path does not exist");
-
-      // For non-python paths, check if it will be created
+      // For non-python paths, check if parent is writable
       if (!check_for_python) {
-         analysis.warnings[analysis.warnings.size()-1] += " (will be created by Spindle)";
-         // Check if parent is writable
          std::string parent = find_writable_parent(analysis.resolved);
-         if (access(parent.c_str(), W_OK) != 0) {
-            analysis.warnings.push_back("Parent directory (" + parent + ") is not writable");
+         bool parent_writable = (access(parent.c_str(), W_OK) == 0);
+
+         if (parent_writable) {
+            analysis.warnings.push_back("Path does not exist (will be created by Spindle)");
+         } else {
+            analysis.warnings.push_back("Path does not exist and parent directory is not writable");
+            analysis.is_ok = false;
             return analysis;
          }
       } else {
          // Python prefix must exist
+         analysis.warnings.push_back("Path does not exist");
          return analysis;
       }
    }
@@ -493,6 +498,774 @@ static void print_filesystem_recommendations(const std::vector<MountPoint>& moun
    analyze_option(confLocalPrefix, "localprefix");
 }
 
+static std::string get_timestamp()
+{
+   time_t now = time(nullptr);
+   char buf[80];
+   strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", localtime(&now));
+   return std::string(buf);
+}
+
+static bool test_directory_writable(const std::string& path)
+{
+   // Try to create a test file in the directory
+   std::string testfile = path + "/.spindle_config_test_" + std::to_string(getpid());
+
+   int fd = open(testfile.c_str(), O_CREAT | O_WRONLY | O_EXCL, 0600);
+   if (fd < 0) {
+      return false;
+   }
+
+   close(fd);
+   unlink(testfile.c_str());
+   return true;
+}
+
+static bool validate_tmpdir_path(const std::string& path,
+                                  const std::vector<MountPoint>& mounts,
+                                  std::string& error_msg)
+{
+   // Resolve the path (in case it's a symlink)
+   std::string resolved = resolve_real_path(path);
+
+   // Check if path exists
+   struct stat st;
+   if (stat(resolved.c_str(), &st) != 0) {
+      error_msg = "Path does not exist: " + path;
+      if (resolved != path) {
+         error_msg += " (resolves to " + resolved + ")";
+      }
+      return false;
+   }
+
+   // Check if it's a directory
+   if (!S_ISDIR(st.st_mode)) {
+      error_msg = "Not a directory: " + path;
+      return false;
+   }
+
+   // Check if writable
+   if (!test_directory_writable(resolved)) {
+      error_msg = "Directory is not writable: " + path;
+      return false;
+   }
+
+   // Check if on local filesystem
+   const MountPoint* mp = find_mount_for_path(resolved, mounts);
+   if (!mp) {
+      error_msg = "Cannot determine filesystem type for: " + path;
+      return false;
+   }
+
+   if (mp->is_remote) {
+      error_msg = "Path is on REMOTE filesystem (" + mp->fstype + "): " + path;
+      return false;
+   }
+
+   return true;
+}
+
+static std::string determine_best_path(const std::vector<MountPoint>& mounts,
+                                        std::vector<std::string>& warnings)
+{
+   // Check $TMPDIR first
+   const char* tmpdir_env = getenv("TMPDIR");
+
+   if (tmpdir_env && tmpdir_env[0] != '\0') {
+      std::string tmpdir = tmpdir_env;
+      std::string error_msg;
+
+      if (validate_tmpdir_path(tmpdir, mounts, error_msg)) {
+         return tmpdir;
+      } else {
+         warnings.push_back("$TMPDIR is set to '" + tmpdir + "' but not usable: " + error_msg);
+      }
+   } else {
+      warnings.push_back("$TMPDIR is not set");
+   }
+
+   // Fall back to /tmp
+   std::string error_msg;
+   if (validate_tmpdir_path("/tmp", mounts, error_msg)) {
+      return "/tmp";
+   } else {
+      warnings.push_back("/tmp is not usable: " + error_msg);
+   }
+
+   // No suitable path found
+   return "";
+}
+
+static std::string get_python_prefix_from_which(const char* python_cmd)
+{
+   // Run 'which python' or 'which python3'
+   std::string cmd = std::string("which ") + python_cmd + " 2>/dev/null";
+   FILE* fp = popen(cmd.c_str(), "r");
+   if (!fp) {
+      return "";
+   }
+
+   char path[PATH_MAX];
+   std::string result;
+   if (fgets(path, sizeof(path), fp) != nullptr) {
+      // Remove trailing newline
+      size_t len = strlen(path);
+      if (len > 0 && path[len-1] == '\n') {
+         path[len-1] = '\0';
+      }
+
+      // Resolve symlinks
+      char resolved[PATH_MAX];
+      if (realpath(path, resolved) != nullptr) {
+         // Get parent directory (strip /bin/python*)
+         std::string full_path = resolved;
+         size_t bin_pos = full_path.rfind("/bin/");
+         if (bin_pos != std::string::npos) {
+            result = full_path.substr(0, bin_pos);
+         }
+      }
+   }
+   pclose(fp);
+   return result;
+}
+
+static std::vector<std::string> discover_python_prefixes()
+{
+   std::set<std::string> prefixes;
+
+   // Try 'which python'
+   std::string py2 = get_python_prefix_from_which("python");
+   if (!py2.empty()) {
+      prefixes.insert(py2);
+   }
+
+   // Try 'which python3'
+   std::string py3 = get_python_prefix_from_which("python3");
+   if (!py3.empty()) {
+      prefixes.insert(py3);
+   }
+
+   return std::vector<std::string>(prefixes.begin(), prefixes.end());
+}
+
+static bool has_remote_mount_under(const std::string& prefix, const std::vector<MountPoint>& mounts)
+{
+   // Check if any remote mount exists under this prefix
+   std::string prefix_slash = prefix;
+   if (prefix != "/" && prefix_slash.back() != '/') {
+      prefix_slash += "/";
+   }
+
+   for (const auto& mp : mounts) {
+      if (!mp.is_remote) continue;
+
+      // Check if this remote mount is under prefix
+      if (mp.path == prefix || mp.path.find(prefix_slash) == 0) {
+         return true;
+      }
+   }
+   return false;
+}
+
+static std::vector<std::string> generate_localprefix(const std::vector<MountPoint>& mounts)
+{
+   std::vector<std::string> local_dirs;
+
+   // Always include kernel filesystems
+   local_dirs.push_back("/proc");
+   local_dirs.push_back("/sys");
+   local_dirs.push_back("/dev");
+
+   // Get top-level directories
+   DIR* dir = opendir("/");
+   if (!dir) {
+      return local_dirs;
+   }
+
+   struct dirent* entry;
+   while ((entry = readdir(dir)) != nullptr) {
+      if (entry->d_name[0] == '.') continue;
+
+      std::string top_level = std::string("/") + entry->d_name;
+
+      // Skip if already added (kernel filesystems)
+      if (top_level == "/proc" || top_level == "/sys" || top_level == "/dev") {
+         continue;
+      }
+
+      // Check if directory
+      struct stat st;
+      if (stat(top_level.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+         continue;
+      }
+
+      // Skip if has remote mounts underneath
+      if (has_remote_mount_under(top_level, mounts)) {
+         continue;
+      }
+
+      local_dirs.push_back(top_level);
+   }
+   closedir(dir);
+
+   // Sort for consistent output (kernel filesystems first)
+   std::sort(local_dirs.begin() + 3, local_dirs.end());
+
+   return local_dirs;
+}
+
+static std::string get_hostname_for_ssh()
+{
+   char hostname[256];
+   if (gethostname(hostname, sizeof(hostname)) != 0) {
+      return "";
+   }
+   return std::string(hostname);
+}
+
+static bool test_ssh_connectivity(const std::string& hostname, std::string& error_msg)
+{
+   if (hostname.empty()) {
+      error_msg = "Could not determine hostname";
+      return false;
+   }
+
+   // Build SSH command: ssh -o BatchMode=yes -o ConnectTimeout=10 <hostname> /bin/true
+   std::string cmd = "ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no " +
+                     hostname + " /bin/true 2>&1";
+
+   FILE* fp = popen(cmd.c_str(), "r");
+   if (!fp) {
+      error_msg = "Failed to execute ssh command";
+      return false;
+   }
+
+   // Read any error output
+   char buffer[256];
+   std::string output;
+   while (fgets(buffer, sizeof(buffer), fp) != nullptr) {
+      output += buffer;
+   }
+
+   int status = pclose(fp);
+   int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+
+   if (exit_code == 0) {
+      return true;
+   }
+
+   // SSH failed - extract useful error info
+   if (output.find("Permission denied") != std::string::npos) {
+      error_msg = "SSH authentication failed (check SSH keys)";
+   } else if (output.find("Connection refused") != std::string::npos) {
+      error_msg = "SSH connection refused";
+   } else if (output.find("Connection timed out") != std::string::npos) {
+      error_msg = "SSH connection timed out";
+   } else if (output.find("No route to host") != std::string::npos) {
+      error_msg = "No route to host";
+   } else if (!output.empty()) {
+      // Truncate long error messages
+      error_msg = output.substr(0, 100);
+      if (output.length() > 100) error_msg += "...";
+   } else {
+      error_msg = "SSH test failed (exit code " + std::to_string(exit_code) + ")";
+   }
+
+   return false;
+}
+
+// Parse a spindle.conf file and return key-value pairs
+// Returns: map of key -> value pairs
+// Ignores comments and blank lines
+static std::map<std::string, std::string> parse_config_file(const std::string& filepath,
+                                                              std::vector<std::string>& warnings)
+{
+   std::map<std::string, std::string> config;
+   std::ifstream file(filepath);
+
+   if (!file.is_open()) {
+      warnings.push_back("WARNING: Could not open config file: " + filepath);
+      return config;
+   }
+
+   std::string line;
+   int line_num = 0;
+   while (std::getline(file, line)) {
+      line_num++;
+
+      // Trim leading/trailing whitespace
+      size_t start = line.find_first_not_of(" \t\r\n");
+      if (start == std::string::npos) continue;  // Empty line
+
+      size_t end = line.find_last_not_of(" \t\r\n");
+      line = line.substr(start, end - start + 1);
+
+      // Skip comments and empty lines
+      if (line.empty() || line[0] == '#') continue;
+
+      // Find '=' separator
+      size_t eq_pos = line.find('=');
+      if (eq_pos == std::string::npos) {
+         warnings.push_back("WARNING: Malformed line " + std::to_string(line_num) +
+                           " in " + filepath + ": " + line);
+         continue;
+      }
+
+      // Extract key and value
+      std::string key = line.substr(0, eq_pos);
+      std::string value = line.substr(eq_pos + 1);
+
+      // Trim whitespace around key and value
+      start = key.find_first_not_of(" \t");
+      end = key.find_last_not_of(" \t");
+      if (start != std::string::npos) {
+         key = key.substr(start, end - start + 1);
+      }
+
+      start = value.find_first_not_of(" \t");
+      end = value.find_last_not_of(" \t");
+      if (start != std::string::npos) {
+         value = value.substr(start, end - start + 1);
+      }
+
+      if (!key.empty()) {
+         config[key] = value;
+      }
+   }
+
+   file.close();
+   return config;
+}
+
+static void print_config_header(std::vector<std::string>& warnings)
+{
+   std::cout << "# spindle.conf generated by spindle-config-helper version "
+             << PACKAGE_VERSION << std::endl;
+   std::cout << "# Generated: " << get_timestamp() << std::endl;
+   std::cout << "#" << std::endl;
+
+   if (!warnings.empty()) {
+      // Check if we have any actual warnings vs just informational notes
+      bool has_warnings = false;
+      for (const auto& msg : warnings) {
+         if (msg.find("WARNING") != std::string::npos ||
+             msg.find("CRITICAL") != std::string::npos ||
+             msg.find("failed") != std::string::npos ||
+             msg.find("not set") != std::string::npos ||
+             msg.find("not usable") != std::string::npos) {
+            has_warnings = true;
+            break;
+         }
+      }
+
+      std::cout << "# " << (has_warnings ? "WARNINGS:" : "NOTES:") << std::endl;
+      for (const auto& warning : warnings) {
+         std::cout << "#   " << warning << std::endl;
+      }
+      std::cout << "#" << std::endl;
+   }
+}
+
+static void print_path_variable(const std::string& name, const std::string& value,
+                                 const std::vector<std::string>& comments)
+{
+   // Print comments above the variable
+   for (const auto& comment : comments) {
+      std::cout << "# " << comment << std::endl;
+   }
+
+   std::cout << name << " = " << value << std::endl;
+
+   if (!comments.empty()) {
+      std::cout << std::endl;  // Blank line after commented variables
+   }
+}
+
+static void generate_default_config(const ConfigMap& confmap,
+                                     const std::vector<MountPoint>& mounts,
+                                     std::vector<std::string>& header_warnings)
+{
+   // Determine best path for commpaths/cachepaths if using defaults
+   std::string recommended_path;
+   bool need_path_recommendation = false;
+
+   // Check if commpaths or cachepaths are using the default $TMPDIR
+   auto commpaths_result = confmap.getValueString(confCommPaths);
+   auto cachepaths_result = confmap.getValueString(confCachePaths);
+
+   bool commpaths_is_default = (commpaths_result.first && commpaths_result.second == "$TMPDIR");
+   bool cachepaths_is_default = (cachepaths_result.first && cachepaths_result.second == "$TMPDIR");
+
+   if (commpaths_is_default || cachepaths_is_default) {
+      need_path_recommendation = true;
+      std::vector<std::string> path_warnings;
+      recommended_path = determine_best_path(mounts, path_warnings);
+
+      // Add path-related warnings to header
+      for (const auto& warning : path_warnings) {
+         header_warnings.push_back(warning);
+      }
+
+      if (recommended_path.empty()) {
+         header_warnings.push_back("CRITICAL: No suitable local filesystem found for commpaths/cachepaths");
+         header_warnings.push_back("          Cannot generate valid configuration");
+         // Print header with errors and exit
+         print_config_header(header_warnings);
+         return;
+      }
+   }
+
+   // Test SSH connectivity
+   std::string hostname = get_hostname_for_ssh();
+   std::string ssh_error;
+   if (!test_ssh_connectivity(hostname, ssh_error)) {
+      header_warnings.push_back("SSH test failed for " + hostname + ": " + ssh_error);
+      header_warnings.push_back("  (SSH keys may not be configured for compute node access)");
+   } else {
+      header_warnings.push_back("SSH test passed for " + hostname);
+   }
+
+   // Header
+   print_config_header(header_warnings);
+
+   // Generate the 4 path-based variables with analysis
+   auto output_path_option = [&](SpindleConfigID config_id, const char* name,
+                                  bool check_python = false) {
+      // Check if this option is set (either default or user-specified)
+      if (!confmap.isSet(config_id)) {
+         return;
+      }
+
+      auto result = confmap.getValueString(config_id);
+      if (!result.first || result.second.empty()) {
+         return;
+      }
+
+      std::string paths = result.second;
+      std::vector<std::string> comments;
+
+      // If this is commpaths or cachepaths with $TMPDIR default, use recommended path
+      if (need_path_recommendation &&
+          (config_id == confCommPaths || config_id == confCachePaths) &&
+          paths == "$TMPDIR" && !recommended_path.empty()) {
+         paths = recommended_path;
+      }
+
+      // For pythonprefix, discover additional Python installations
+      std::vector<std::string> discovered_pythons;
+      if (config_id == confPythonPrefix) {
+         discovered_pythons = discover_python_prefixes();
+      }
+
+      // Analyze each path in the colon-separated list
+      std::vector<std::string> path_list;
+      std::vector<PathAnalysis> analyses;
+      size_t pos = 0;
+      while (pos < paths.length()) {
+         size_t end = paths.find(':', pos);
+         if (end == std::string::npos) {
+            end = paths.length();
+         }
+         std::string path = paths.substr(pos, end - pos);
+         if (!path.empty()) {
+            path_list.push_back(path);
+            analyses.push_back(analyze_path(path, mounts, check_python));
+         }
+         pos = end + 1;
+      }
+
+      // Add discovered Python paths to the list
+      if (config_id == confPythonPrefix) {
+         for (const auto& pypath : discovered_pythons) {
+            // Check if not already in list
+            bool already_present = false;
+            for (const auto& existing : path_list) {
+               PathAnalysis ex = analyze_path(existing, mounts, check_python);
+               if (ex.resolved == resolve_real_path(pypath)) {
+                  already_present = true;
+                  break;
+               }
+            }
+            if (!already_present) {
+               path_list.push_back(pypath);
+               analyses.push_back(analyze_path(pypath, mounts, check_python));
+               comments.push_back("NOTE: Added " + pypath + " from 'which python/python3'");
+            }
+         }
+      }
+
+      // Separate usable from unusable paths
+      std::vector<std::string> good_paths, bad_paths;
+
+      for (size_t i = 0; i < path_list.size(); i++) {
+         bool has_critical_issues = false;
+
+         // For pythonprefix, check for Python installation issues
+         if (check_python) {
+            for (const auto& warning : analyses[i].warnings) {
+               if (warning.find("No bin/python") != std::string::npos ||
+                   warning.find("Path does not exist") != std::string::npos ||
+                   warning.find("parent directory is not writable") != std::string::npos) {
+                  has_critical_issues = true;
+                  break;
+               }
+            }
+         } else {
+            // For commpaths/cachepaths/localprefix
+            for (const auto& warning : analyses[i].warnings) {
+               if (warning.find("parent directory is not writable") != std::string::npos ||
+                   warning.find("REMOTE filesystem") != std::string::npos) {
+                  has_critical_issues = true;
+                  break;
+               }
+            }
+         }
+
+         if (has_critical_issues) {
+            bad_paths.push_back(path_list[i]);
+         } else {
+            good_paths.push_back(path_list[i]);
+         }
+      }
+
+      // If no good paths, add fallback
+      if (good_paths.empty() && (config_id == confCommPaths || config_id == confCachePaths)) {
+         if (!recommended_path.empty()) {
+            good_paths.push_back(recommended_path);
+            comments.push_back("NOTE: No usable paths found, using " + recommended_path);
+         }
+      }
+
+      // Build comments for bad paths (these came from configure/defaults, not user choice)
+      if (!bad_paths.empty()) {
+         if (check_python) {
+            comments.push_back("NOTE: The following paths are not valid Python installations:");
+         } else {
+            comments.push_back("NOTE: The following paths from configure/defaults are not usable:");
+         }
+         for (size_t i = 0; i < path_list.size(); i++) {
+            bool is_bad = (std::find(bad_paths.begin(), bad_paths.end(), path_list[i]) != bad_paths.end());
+            if (is_bad) {
+               comments.push_back("  " + path_list[i] + ":");
+               for (const auto& warning : analyses[i].warnings) {
+                  comments.push_back("    " + warning);
+               }
+            }
+         }
+         if (!good_paths.empty()) {
+            comments.push_back("  (These paths have been filtered out)");
+         }
+      }
+
+      // Use only good paths in output
+      if (!good_paths.empty()) {
+         std::string filtered;
+         for (const auto& p : good_paths) {
+            if (!filtered.empty()) filtered += ":";
+            filtered += p;
+         }
+         paths = filtered;
+      } else {
+         // No good paths at all
+         if (check_python) {
+            // For pythonprefix, skip output if no valid Python found
+            comments.push_back("WARNING: No valid Python installations found");
+            return;
+         }
+         paths = "";
+      }
+
+      // Add comment for usable paths if no issues
+      bool has_issues = !bad_paths.empty();
+      if (!has_issues && !good_paths.empty()) {
+         PathAnalysis first = analyze_path(good_paths[0], mounts, check_python);
+         if (first.mount && !first.mount->is_remote) {
+            comments.push_back(std::string(name) + ": Local " + first.mount->fstype +
+                             " filesystem, " + std::to_string(first.mount->avail_gb) + "GB available");
+         } else if (is_kernel_filesystem(first.resolved)) {
+            comments.push_back(std::string(name) + ": Kernel filesystem");
+         }
+      }
+
+      print_path_variable(name, paths, comments);
+   };
+
+   output_path_option(confCommPaths, "commpaths");
+   output_path_option(confCachePaths, "cachepaths");
+   output_path_option(confPythonPrefix, "pythonprefix", true);
+
+   // Special handling for localprefix - generate from top-level dirs without remote mounts
+   auto localprefix_result = confmap.getValueString(confLocalPrefix);
+   if (localprefix_result.first) {
+      std::vector<std::string> generated_locals = generate_localprefix(mounts);
+      std::vector<std::string> comments;
+
+      // Check if user specified additional paths (beyond defaults)
+      std::string user_value = localprefix_result.second;
+      std::set<std::string> user_paths;
+
+      // Parse user's colon-separated list
+      size_t pos = 0;
+      while (pos < user_value.length()) {
+         size_t end = user_value.find(':', pos);
+         if (end == std::string::npos) end = user_value.length();
+
+         std::string path = user_value.substr(pos, end - pos);
+         // Strip trailing slash for comparison
+         if (!path.empty() && path.back() == '/') path.pop_back();
+         if (!path.empty()) user_paths.insert(path);
+
+         pos = end + 1;
+      }
+
+      // Add generated paths to user paths
+      std::set<std::string> all_paths(user_paths);
+      for (const auto& gpath : generated_locals) {
+         all_paths.insert(gpath);
+      }
+
+      // Validate user additions
+      for (const auto& upath : user_paths) {
+         // Check if this was NOT auto-generated (meaning user added it)
+         bool was_generated = (std::find(generated_locals.begin(), generated_locals.end(), upath) != generated_locals.end());
+         if (!was_generated) {
+            // User added this - validate it
+            if (has_remote_mount_under(upath, mounts)) {
+               comments.push_back("WARNING: User-specified path has remote mounts underneath: " + upath);
+            } else {
+               comments.push_back("NOTE: User added: " + upath);
+            }
+         }
+      }
+
+      // Build output with trailing slashes
+      std::string output_value;
+      for (const auto& dir : all_paths) {
+         if (!output_value.empty()) output_value += ":";
+         output_value += (dir == "/" ? "/" : dir + "/");
+      }
+
+      if (comments.empty()) {
+         comments.push_back("localprefix: Top-level directories without remote mounts");
+      }
+
+      print_path_variable("localprefix", output_value, comments);
+   }
+}
+
+static void generate_all_config(const ConfigMap& confmap,
+                                 const std::vector<MountPoint>& mounts,
+                                 std::vector<std::string>& header_warnings)
+{
+   // Print header
+   print_config_header(header_warnings);
+
+   // Get all Spindle options
+   const std::map<SpindleConfigID, const SpindleOption&>& all_opts = getOptionsByID();
+
+   // Iterate through all options and output them
+   for (const auto& pair : all_opts) {
+      SpindleConfigID id = pair.first;
+      const SpindleOption& opt = pair.second;
+
+      // Skip options without command-line names (internal options)
+      if (!opt.cmdline_long) continue;
+
+      // Get the config file key name (cmdline_long with dashes removed)
+      std::string key = opt.cmdline_long;
+      key.erase(std::remove(key.begin(), key.end(), '-'), key.end());
+
+      // Check if this option is set (either by user or default)
+      bool is_set = confmap.isSet(id);
+      std::string value;
+
+      if (is_set) {
+         // Get the actual value
+         auto result = confmap.getValueString(id);
+         if (result.first) {
+            value = result.second;
+         }
+      }
+
+      // For the 4 path variables, output with full analysis
+      if (id == confCommPaths || id == confCachePaths ||
+          id == confPythonPrefix || id == confLocalPrefix) {
+         // Use the existing detailed output from generate_default_config
+         continue;  // We'll call those separately
+      }
+
+      // For other options, output as comment if not explicitly set by user
+      // or uncommented if set by command line
+      std::string comment_prefix = is_set ? "" : "# ";
+
+      // Output the option
+      std::cout << comment_prefix << key << " = " << value << std::endl;
+   }
+
+   // Now output the 4 path variables with full analysis
+   // These are always uncommented and analyzed
+   auto output_path_option = [&](SpindleConfigID config_id, const char* name,
+                                  bool check_python = false) {
+      if (!confmap.isSet(config_id)) {
+         return;
+      }
+
+      auto result = confmap.getValueString(config_id);
+      if (!result.first || result.second.empty()) {
+         return;
+      }
+
+      std::string paths = result.second;
+      std::vector<std::string> comments;
+
+      // For pythonprefix, discover additional Python installations
+      std::vector<std::string> discovered_pythons;
+      if (config_id == confPythonPrefix) {
+         discovered_pythons = discover_python_prefixes();
+      }
+
+      // Analyze paths (simplified for all mode)
+      std::vector<std::string> path_list;
+      size_t pos = 0;
+      while (pos < paths.length()) {
+         size_t end = paths.find(':', pos);
+         if (end == std::string::npos) {
+            end = paths.length();
+         }
+         std::string path = paths.substr(pos, end - pos);
+         if (!path.empty()) {
+            path_list.push_back(path);
+         }
+         pos = end + 1;
+      }
+
+      // Add discovered Python paths
+      if (config_id == confPythonPrefix) {
+         for (const auto& pypath : discovered_pythons) {
+            if (std::find(path_list.begin(), path_list.end(), pypath) == path_list.end()) {
+               path_list.push_back(pypath);
+            }
+         }
+      }
+
+      // Output
+      std::string output_value;
+      for (size_t i = 0; i < path_list.size(); i++) {
+         if (i > 0) output_value += ":";
+         output_value += path_list[i];
+      }
+
+      if (!output_value.empty()) {
+         print_path_variable(name, output_value, comments);
+      }
+   };
+
+   output_path_option(confCommPaths, "commpaths");
+   output_path_option(confCachePaths, "cachepaths");
+   output_path_option(confPythonPrefix, "pythonprefix", true);
+   output_path_option(confLocalPrefix, "localprefix");
+}
+
 static void print_version()
 {
    std::cout << "spindle-config-helper version " << PACKAGE_VERSION << std::endl;
@@ -609,19 +1382,81 @@ static void print_security_analysis(const ConfigMap& confmap, const std::vector<
 
 static void print_usage(const char *progname)
 {
-   std::cout << "Usage: " << progname << " [OPTIONS]\n\n"
-             << "Parse Spindle configuration from command line, environment variables, and\n"
-             << "configuration files, then output the resulting configuration in spindle.conf format.\n\n"
-             << "Options:\n"
+   std::cout << "Usage: " << progname << " [OPTIONS] [-- SPINDLE_OPTIONS]\n\n"
+             << "Generate and validate Spindle configuration files for HPC environments.\n\n"
+             << "DESCRIPTION:\n"
+             << "  spindle-config-helper analyzes the local system and generates appropriate\n"
+             << "  spindle.conf files. It detects local vs. remote filesystems, discovers\n"
+             << "  Python installations, validates paths, and tests SSH connectivity.\n\n"
+             << "OPTIONS:\n"
              << "  -h, --help              Display this help message and exit\n"
              << "  -V, --version           Display version information and exit\n"
-             << "  --usage                 Display brief usage summary and exit\n\n"
-             << "All Spindle configuration options are supported. See spindle-config-helper(1)\n"
-             << "for details, or use --usage for a complete list of options.\n\n"
-             << "Examples:\n"
-             << "  " << progname << " --commpaths=/dev/shm --cachepaths=/tmp\n"
-             << "  " << progname << " --config=/etc/spindle.conf\n"
-             << "  " << progname << " --launcher=slurm --security=none\n"
+             << "  -o, --output=FILE       Write output to FILE instead of stdout\n"
+             << "  --overwrite             Allow overwriting existing output file\n"
+             << "  -c, --check[=FILE]      Validate existing config FILE (optional)\n"
+             << "  -a, --all               Generate complete config with all options\n"
+             << "  --usage                 Display Spindle's usage summary\n\n"
+             << "MODES:\n"
+             << "  Default mode (no options):\n"
+             << "    - Analyzes filesystem mounts (local vs. remote)\n"
+             << "    - Checks $TMPDIR availability and recommends paths\n"
+             << "    - Tests SSH connectivity to verify compute node access\n"
+             << "    - Discovers Python installations via 'which python/python3'\n"
+             << "    - Generates localprefix from top-level directories\n"
+             << "    - Outputs minimal spindle.conf with 4 path variables:\n"
+             << "      * commpaths:     Local directories for inter-process communication\n"
+             << "      * cachepaths:    Local directories for file caching\n"
+             << "      * pythonprefix:  Python installation directories\n"
+             << "      * localprefix:   Directories excluded from caching\n"
+             << "    - Includes warnings and recommendations as comments\n\n"
+             << "  Check mode (-c FILE):\n"
+             << "    - Reads and parses existing spindle.conf file\n"
+             << "    - Validates option names against current Spindle version\n"
+             << "    - Validates enum values (e.g., level, security, launcher)\n"
+             << "    - Reports unknown or deprecated options\n"
+             << "    - Command-line options after -- override config file values\n\n"
+             << "  All mode (-a):\n"
+             << "    - Enumerates all Spindle configuration options\n"
+             << "    - Comments out options with default values (prefix '#')\n"
+             << "    - Uncomments options specified after --\n"
+             << "    - Useful for discovering available options\n\n"
+             << "ENVIRONMENT:\n"
+             << "  $TMPDIR                 Preferred directory for commpaths/cachepaths\n"
+             << "                          Falls back to /tmp if not set\n\n"
+             << "SPINDLE_OPTIONS:\n"
+             << "  Any valid Spindle option can be passed after --\n"
+             << "  Use '" << progname << " -- --usage' to see all available options\n"
+             << "  Common options:\n"
+             << "    --commpaths=PATHS     Colon-separated list of comm directories\n"
+             << "    --cachepaths=PATHS    Colon-separated list of cache directories\n"
+             << "    --level=LEVEL         Aggressiveness: high, medium, low, off\n"
+             << "    --security=MODE       Security: none, munge, keyfile\n"
+             << "    --launcher=TYPE       Launcher: serial, slurm, flux, etc.\n\n"
+             << "EXAMPLES:\n"
+             << "  # Generate new config to stdout\n"
+             << "  " << progname << "\n\n"
+             << "  # Generate config for review before saving\n"
+             << "  " << progname << " | less\n\n"
+             << "  # Save config to file\n"
+             << "  " << progname << " -o ~/.spindle/spindle.conf\n\n"
+             << "  # Generate with custom paths\n"
+             << "  " << progname << " -- --commpaths=/dev/shm --cachepaths=/tmp\n\n"
+             << "  # Check existing config for warnings\n"
+             << "  " << progname << " -c ~/.spindle/spindle.conf | grep WARNING\n\n"
+             << "  # Update config with new security setting\n"
+             << "  " << progname << " -c ~/.spindle/spindle.conf -o ~/.spindle/spindle.conf \\\n"
+             << "    --overwrite -- --security=munge\n\n"
+             << "  # Generate complete config with all options\n"
+             << "  " << progname << " -a -o spindle.conf.full\n\n"
+             << "  # See all available Spindle options\n"
+             << "  " << progname << " -- --usage\n\n"
+             << "EXIT STATUS:\n"
+             << "  0   Success\n"
+             << "  1   Error (invalid arguments, file I/O error, etc.)\n\n"
+             << "SEE ALSO:\n"
+             << "  spindle(1), spindle-config-helper(1)\n\n"
+             << "VERSION:\n"
+             << "  spindle-config-helper " << PACKAGE_VERSION << "\n"
              << std::endl;
 }
 
@@ -681,41 +1516,144 @@ static void format_config_value(const ConfigMap &confmap, SpindleConfigID id,
 int main(int argc, char *argv[])
 {
    // Handle -h/--help and -V/--version before config parsing
+   // Also check for -- --usage which should show Spindle's usage
+   bool show_spindle_usage = false;
+   int separator_idx = -1;
+   std::string output_file;
+   bool overwrite = false;
+   std::string check_file;
+   bool check_mode = false;
+   bool all_mode = false;
+
+   // First pass: check for help/version and find separator, parse output options
    for (int i = 1; i < argc; i++) {
-      if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-         print_usage(argv[0]);
-         return 0;
+      if (strcmp(argv[i], "--") == 0) {
+         separator_idx = i;
+         continue;
       }
-      if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0) {
-         print_version();
-         return 0;
+
+      if (separator_idx == -1) {
+         // Before --: check for config-helper options
+         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            print_usage(argv[0]);
+            return 0;
+         }
+         if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0) {
+            print_version();
+            return 0;
+         }
+         if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+            output_file = argv[i + 1];
+            i++; // Skip next argument
+         }
+         if (strncmp(argv[i], "--output=", 9) == 0) {
+            output_file = argv[i] + 9;
+         }
+         if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
+            output_file = argv[i + 1];
+            i++; // Skip next argument
+         }
+         if (strcmp(argv[i], "--overwrite") == 0) {
+            overwrite = true;
+         }
+         if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--all") == 0) {
+            all_mode = true;
+         }
+         if (strcmp(argv[i], "-c") == 0) {
+            check_mode = true;
+            // Check if next arg is a file (not starting with -)
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+               check_file = argv[i + 1];
+               i++; // Skip next argument
+            }
+         }
+         if (strncmp(argv[i], "--check=", 8) == 0) {
+            check_mode = true;
+            check_file = argv[i] + 8;
+         }
+         if (strcmp(argv[i], "--check") == 0) {
+            check_mode = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+               check_file = argv[i + 1];
+               i++; // Skip next argument
+            }
+         }
+      } else {
+         // After --: check for --usage
+         if (strcmp(argv[i], "--usage") == 0) {
+            show_spindle_usage = true;
+         }
       }
    }
 
-   // Check if application command was provided (after '--')
-   bool has_app = false;
-   for (int i = 1; i < argc; i++) {
-      if (strcmp(argv[i], "--") == 0 && i + 1 < argc) {
-         has_app = true;
-         break;
+   // Reconstruct argv to move Spindle options before -- and add dummy app
+   // Input:  spindle-config-helper [config-helper-opts] -- [spindle-opts]
+   // Output: spindle-config-helper [spindle-opts] -- /bin/true (filtering out config-helper opts)
+
+   std::vector<char*> new_argv;
+   new_argv.push_back(argv[0]);  // Program name
+
+   auto is_config_helper_opt = [](const char* arg) {
+      return strcmp(arg, "-o") == 0 ||
+             strcmp(arg, "-c") == 0 ||
+             strcmp(arg, "-a") == 0 ||
+             strncmp(arg, "--output", 8) == 0 ||
+             strncmp(arg, "--check", 7) == 0 ||
+             strcmp(arg, "--all") == 0 ||
+             strcmp(arg, "--overwrite") == 0;
+   };
+
+   if (separator_idx != -1) {
+      // Add config-helper options (before --), filtering out our options
+      for (int i = 1; i < separator_idx; i++) {
+         if (is_config_helper_opt(argv[i])) {
+            // Skip this arg, and if it takes an argument, skip that too
+            if ((strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0 ||
+                 strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--check") == 0) &&
+                i + 1 < argc && argv[i + 1][0] != '-') {
+               i++; // Skip the file argument too
+            }
+            continue;
+         }
+         new_argv.push_back(argv[i]);
+      }
+
+      // Add spindle options (after --)
+      for (int i = separator_idx + 1; i < argc; i++) {
+         new_argv.push_back(argv[i]);
+      }
+   } else {
+      // No -- found, copy args but filter out config-helper options
+      for (int i = 1; i < argc; i++) {
+         if (is_config_helper_opt(argv[i])) {
+            if ((strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0 ||
+                 strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--check") == 0) &&
+                i + 1 < argc && argv[i + 1][0] != '-') {
+               i++; // Skip the file argument too
+            }
+            continue;
+         }
+         new_argv.push_back(argv[i]);
       }
    }
 
-   // If no application provided, add a dummy one for the parser
-   char **modified_argv = argv;
-   int modified_argc = argc;
-   char *dummy_app = nullptr;
+   // Add dummy app
+   char *dummy_sep = strdup("--");
+   char *dummy_app = strdup("/bin/true");
+   new_argv.push_back(dummy_sep);
+   new_argv.push_back(dummy_app);
 
-   if (!has_app) {
-      dummy_app = strdup("/bin/true");
-      modified_argv = new char*[argc + 2];
-      for (int i = 0; i < argc; i++) {
-         modified_argv[i] = argv[i];
-      }
-      modified_argv[argc] = strdup("--");
-      modified_argv[argc + 1] = dummy_app;
-      modified_argc = argc + 2;
+   // Handle check mode: parse config file if provided
+   std::map<std::string, std::string> check_config;
+   std::vector<std::string> check_warnings;
+
+   if (check_mode && !check_file.empty()) {
+      check_config = parse_config_file(check_file, check_warnings);
+      // Config values will be merged with confmap after parsing command-line options
    }
+
+   char **modified_argv = new_argv.data();
+   int modified_argc = new_argv.size();
 
    ConfigMap confmap;
    std::string errmsg;
@@ -724,35 +1662,106 @@ int main(int argc, char *argv[])
    // Pass false for inExecutable since we're not the spindle launcher
    if (!gatherAllConfigInfo(modified_argc, modified_argv, false, confmap, errmsg)) {
       std::cerr << "Error: " << errmsg << std::endl;
-      if (!has_app) {
-         free(dummy_app);
-         free(modified_argv[argc]);
-         delete[] modified_argv;
-      }
+      free(dummy_app);
+      free(dummy_sep);
       return 1;
    }
 
-   // Clean up temporary argv if we created one
-   if (!has_app) {
-      free(dummy_app);
-      free(modified_argv[argc]);
-      delete[] modified_argv;
+   // Clean up temporary argv
+   free(dummy_app);
+   free(dummy_sep);
+
+   // In check mode, merge config file values with confmap
+   // Command-line options take precedence (they're already in confmap)
+   if (check_mode && !check_config.empty()) {
+      // For each config file option, check if it's already set
+      // If not set, add it to confmap
+      for (const auto& kv : check_config) {
+         const std::string& key = kv.first;
+         const std::string& value = kv.second;
+
+         // Find the corresponding SpindleConfigID
+         const std::map<SpindleConfigID, const SpindleOption&>& all_opts = getOptionsByID();
+         bool found = false;
+         SpindleConfigID found_id;
+
+         for (const auto& pair : all_opts) {
+            const SpindleOption& opt = pair.second;
+            if (opt.cmdline_long) {
+               // Remove dashes from cmdline_long to match config file format
+               std::string opt_name = opt.cmdline_long;
+               opt_name.erase(std::remove(opt_name.begin(), opt_name.end(), '-'), opt_name.end());
+               if (opt_name == key) {
+                  found_id = opt.config_id;
+                  found = true;
+                  break;
+               }
+            }
+         }
+
+         if (!found) {
+            check_warnings.push_back("WARNING: Unknown option in config file: " + key);
+            continue;
+         }
+
+         // Validate the value from config file
+         // Note: Full merging with command-line overrides needs deeper integration
+         // For now, we just validate and report warnings
+         std::string errstring;
+         if (!confmap.set(found_id, value, errstring)) {
+            check_warnings.push_back("WARNING: Invalid value for " + key + " in config file: " + errstring);
+         }
+      }
    }
 
    // Parse and analyze mount points
    std::vector<MountPoint> mounts = parse_mounts();
 
-   // Print security analysis
-   print_security_analysis(confmap, mounts);
+   // Collect header warnings (will add $TMPDIR and SSH checks later)
+   std::vector<std::string> header_warnings;
 
-   // Print filesystem recommendations and warnings
-   print_filesystem_recommendations(mounts, confmap);
+   // Add any warnings from config file parsing
+   header_warnings.insert(header_warnings.end(), check_warnings.begin(), check_warnings.end());
 
-   // Output configuration in spindle.conf format
-   const std::map<SpindleConfigID, const SpindleOption&> &options = getOptionsByID();
+   // Handle output file if specified
+   FILE* output_fp = nullptr;
+   int saved_stdout = -1;
 
-   for (const auto &pair : options) {
-      format_config_value(confmap, pair.first, pair.second);
+   if (!output_file.empty()) {
+      // Check if file exists
+      struct stat st;
+      if (stat(output_file.c_str(), &st) == 0 && !overwrite) {
+         std::cerr << "Error: Output file '" << output_file << "' already exists." << std::endl;
+         std::cerr << "Use --overwrite to overwrite the existing file." << std::endl;
+         return 1;
+      }
+
+      // Open output file
+      output_fp = fopen(output_file.c_str(), "w");
+      if (!output_fp) {
+         std::cerr << "Error: Could not open output file '" << output_file
+                   << "': " << strerror(errno) << std::endl;
+         return 1;
+      }
+
+      // Redirect stdout to file
+      saved_stdout = dup(STDOUT_FILENO);
+      dup2(fileno(output_fp), STDOUT_FILENO);
+   }
+
+   // Generate config based on mode
+   if (all_mode) {
+      generate_all_config(confmap, mounts, header_warnings);
+   } else {
+      generate_default_config(confmap, mounts, header_warnings);
+   }
+
+   // Restore stdout and close file if we redirected
+   if (output_fp) {
+      fflush(stdout);
+      dup2(saved_stdout, STDOUT_FILENO);
+      close(saved_stdout);
+      fclose(output_fp);
    }
 
    return 0;
