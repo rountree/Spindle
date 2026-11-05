@@ -774,6 +774,9 @@ static bool test_ssh_connectivity(const std::string& hostname, std::string& erro
    return false;
 }
 
+// Forward declarations
+static void print_config_header(std::vector<std::string>& warnings);
+
 // Parse a spindle.conf file and return key-value pairs
 // Returns: map of key -> value pairs
 // Ignores comments and blank lines
@@ -835,6 +838,81 @@ static std::map<std::string, std::string> parse_config_file(const std::string& f
 
    file.close();
    return config;
+}
+
+// Parse command-line options from argv (options after --)
+// Returns: map of key -> value pairs
+static std::map<std::string, std::string> parse_cmdline_options(int argc, char* argv[],
+                                                                  int separator_idx,
+                                                                  std::vector<std::string>& warnings)
+{
+   std::map<std::string, std::string> options;
+
+   if (separator_idx == -1 || separator_idx + 1 >= argc) {
+      return options;  // No options after --
+   }
+
+   // Parse options after --
+   for (int i = separator_idx + 1; i < argc; i++) {
+      std::string arg = argv[i];
+
+      // Skip --usage
+      if (arg == "--usage") continue;
+
+      // Parse --key=value or --key value
+      if (arg.substr(0, 2) == "--") {
+         std::string key, value;
+         size_t eq_pos = arg.find('=');
+
+         if (eq_pos != std::string::npos) {
+            // --key=value
+            key = arg.substr(2, eq_pos - 2);
+            value = arg.substr(eq_pos + 1);
+         } else {
+            // --key (boolean or next arg is value)
+            key = arg.substr(2);
+
+            // Check if next arg exists and doesn't start with --
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+               value = argv[i + 1];
+               i++;  // Skip next arg
+            } else {
+               // Boolean flag
+               value = "true";
+            }
+         }
+
+         // Remove dashes from key to match config file format
+         key.erase(std::remove(key.begin(), key.end(), '-'), key.end());
+
+         if (!key.empty()) {
+            options[key] = value;
+         }
+      } else {
+         warnings.push_back("WARNING: Ignoring unrecognized argument: " + arg);
+      }
+   }
+
+   return options;
+}
+
+// Output a checked/validated config (for check mode)
+static void output_checked_config(const std::map<std::string, std::string>& config,
+                                   std::vector<std::string>& warnings)
+{
+   // Print header
+   print_config_header(warnings);
+
+   // Output all options in sorted order
+   std::vector<std::string> keys;
+   for (const auto& kv : config) {
+      keys.push_back(kv.first);
+   }
+   std::sort(keys.begin(), keys.end());
+
+   for (const auto& key : keys) {
+      std::cout << key << " = " << config.at(key) << std::endl;
+   }
 }
 
 static void print_config_header(std::vector<std::string>& warnings)
@@ -1409,12 +1487,16 @@ static void print_usage(const char *progname)
              << "      * pythonprefix:  Python installation directories\n"
              << "      * localprefix:   Directories excluded from caching\n"
              << "    - Includes warnings and recommendations as comments\n\n"
-             << "  Check mode (-c FILE):\n"
-             << "    - Reads and parses existing spindle.conf file\n"
-             << "    - Validates option names against current Spindle version\n"
-             << "    - Validates enum values (e.g., level, security, launcher)\n"
-             << "    - Reports unknown or deprecated options\n"
-             << "    - Command-line options after -- override config file values\n\n"
+             << "  Check mode (-c [FILE]):\n"
+             << "    - FILE is optional: validates and outputs options from:\n"
+             << "      * Config file (if FILE provided)\n"
+             << "      * Command-line options after --\n"
+             << "    - Command-line options override config file values\n"
+             << "    - Validates option names and values\n"
+             << "    - Use cases:\n"
+             << "      * -c FILE           : Validate file\n"
+             << "      * -c -- --opt=val   : Validate single option\n"
+             << "      * -c FILE -- --opt  : Validate file + override\n\n"
              << "  All mode (-a):\n"
              << "    - Enumerates all Spindle configuration options\n"
              << "    - Comments out options with default values (prefix '#')\n"
@@ -1542,6 +1624,9 @@ int main(int argc, char *argv[])
             print_version();
             return 0;
          }
+         if (strcmp(argv[i], "--usage") == 0) {
+            show_spindle_usage = true;
+         }
          if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             output_file = argv[i + 1];
             i++; // Skip next argument
@@ -1584,6 +1669,194 @@ int main(int argc, char *argv[])
             show_spindle_usage = true;
          }
       }
+   }
+
+   // Handle -- --usage early (don't generate config)
+   if (show_spindle_usage) {
+      // Pass through to Spindle's option system by continuing with normal flow
+      // but we'll build argv with --usage and let it print
+      // Actually, just build minimal argv and call gatherAllConfigInfo
+      // which will handle --usage and exit
+
+      std::vector<char*> usage_argv;
+      usage_argv.push_back(argv[0]);
+
+      // Add --usage flag
+      char *usage_flag = strdup("--usage");
+      usage_argv.push_back(usage_flag);
+
+      // Add options after -- (if any)
+      if (separator_idx != -1) {
+         for (int i = separator_idx + 1; i < argc; i++) {
+            // Skip --usage if it appears here too
+            if (strcmp(argv[i], "--usage") != 0) {
+               usage_argv.push_back(argv[i]);
+            }
+         }
+      }
+
+      // Add dummy app
+      char *dummy_sep = strdup("--");
+      char *dummy_app = strdup("/bin/true");
+      usage_argv.push_back(dummy_sep);
+      usage_argv.push_back(dummy_app);
+
+      char **usage_argv_ptr = usage_argv.data();
+      int usage_argc = usage_argv.size();
+
+      ConfigMap confmap;
+      std::string errmsg;
+      gatherAllConfigInfo(usage_argc, usage_argv_ptr, false, confmap, errmsg);
+
+      free(usage_flag);
+      free(dummy_sep);
+      free(dummy_app);
+      return 0;
+   }
+
+   // Handle check mode with separate code path
+   if (check_mode) {
+      std::map<std::string, std::string> config_values;
+      std::vector<std::string> warnings;
+
+      // Parse config file if provided
+      if (!check_file.empty()) {
+         config_values = parse_config_file(check_file, warnings);
+      }
+
+      // Parse command-line options after --
+      std::map<std::string, std::string> cmdline_options =
+          parse_cmdline_options(argc, argv, separator_idx, warnings);
+
+      // Merge: command-line overrides file
+      for (const auto& kv : cmdline_options) {
+         config_values[kv.first] = kv.second;
+      }
+
+      // Validate all options by building argv and using gatherAllConfigInfo
+      // This reuses Spindle's validation without needing getOptionsByID
+
+      std::vector<char*> val_argv;
+      std::vector<std::string> val_strings;  // Keep strings alive
+
+      val_argv.push_back(argv[0]);  // Program name
+
+      // Build command-line arguments for validation
+      // Map config file keys (no dashes) to command-line format (with dashes)
+      // Use a static mapping to avoid iterating through option lists
+      std::map<std::string, std::string> key_mapping = {
+         {"localprefix", "local-prefix"},
+         {"pythonprefix", "python-prefix"},
+         // Note: commpaths and cachepaths don't need mapping - they're single words
+         {"relocaout", "reloc-aout"},
+         {"reloclibs", "reloc-libs"},
+         {"relocpython", "reloc-python"},
+         {"relocexec", "reloc-exec"},
+         {"followfork", "follow-fork"},
+         {"stopreloc", "stop-reloc"},
+         {"pushpull", "push"},
+         {"shmcachesize", "shmcache-size"},
+         {"msgcachebuffer", "msgcache-buffer"},
+         {"msgcachetimeout", "msgcache-timeout"},
+         {"cleanupproc", "cleanup-proc"},
+         {"cacheprefix", "cache-prefix"},
+         {"hostbin", "host-bin"},
+         {"startmultisession", "start-multisession"},
+         {"startsession", "start-session"},
+         {"endsession", "end-session"},
+         {"runinsession", "run-in-session"},
+         {"patchldso", "patch-ldso"},
+         {"crashdedup", "crash-dedup"},
+         {"crashaltstack", "crash-altstack"},
+         {"crashlog", "crash-log"},
+         {"rshcommand", "rsh-command"},
+         {"enablersh", "enable-rsh"},
+         {"execexcludes", "exec-excludes"},
+         {"numaincludes", "numa-includes"},
+         {"numaexcludes", "numa-excludes"},
+         {"audittype", "audit-type"},
+         {"disablelogging", "disable-logging"},
+         {"noclean", "no-clean"},
+         {"nohide", "no-hide"}
+         // Add more as needed - most single-word keys don't need mapping
+      };
+
+      for (const auto& kv : config_values) {
+         std::string cmdline_key = kv.first;
+
+         // Check if we have a mapping for this key
+         auto it = key_mapping.find(kv.first);
+         if (it != key_mapping.end()) {
+            cmdline_key = it->second;
+         }
+
+         // Add as two separate args: --key value
+         std::string opt = "--" + cmdline_key;
+         val_strings.push_back(opt);
+         val_strings.push_back(kv.second);
+      }
+
+      for (auto& s : val_strings) {
+         val_argv.push_back(const_cast<char*>(s.c_str()));
+      }
+
+      // Add dummy app
+      char *val_sep = strdup("--");
+      char *val_app = strdup("/bin/true");
+      val_argv.push_back(val_sep);
+      val_argv.push_back(val_app);
+
+      char **val_argv_ptr = val_argv.data();
+      int val_argc = val_argv.size();
+
+      ConfigMap val_confmap;
+      std::string val_errmsg;
+      if (!gatherAllConfigInfo(val_argc, val_argv_ptr, false, val_confmap, val_errmsg)) {
+         // Validation failed - gatherAllConfigInfo already printed error to stderr
+         // Do not generate config output
+         free(val_sep);
+         free(val_app);
+         return 1;
+      }
+
+      free(val_sep);
+      free(val_app);
+
+      // Handle file output if specified
+      FILE* output_fp = nullptr;
+      int saved_stdout = -1;
+
+      if (!output_file.empty()) {
+         struct stat st;
+         if (stat(output_file.c_str(), &st) == 0 && !overwrite) {
+            std::cerr << "Error: Output file '" << output_file << "' already exists." << std::endl;
+            std::cerr << "Use --overwrite to overwrite the existing file." << std::endl;
+            return 1;
+         }
+
+         output_fp = fopen(output_file.c_str(), "w");
+         if (!output_fp) {
+            std::cerr << "Error: Could not open output file '" << output_file
+                      << "': " << strerror(errno) << std::endl;
+            return 1;
+         }
+
+         saved_stdout = dup(STDOUT_FILENO);
+         dup2(fileno(output_fp), STDOUT_FILENO);
+      }
+
+      // Output the validated config
+      output_checked_config(config_values, warnings);
+
+      // Restore stdout and close file if we redirected
+      if (output_fp) {
+         fflush(stdout);
+         dup2(saved_stdout, STDOUT_FILENO);
+         close(saved_stdout);
+         fclose(output_fp);
+      }
+
+      return 0;
    }
 
    // Reconstruct argv to move Spindle options before -- and add dummy app
@@ -1643,15 +1916,6 @@ int main(int argc, char *argv[])
    new_argv.push_back(dummy_sep);
    new_argv.push_back(dummy_app);
 
-   // Handle check mode: parse config file if provided
-   std::map<std::string, std::string> check_config;
-   std::vector<std::string> check_warnings;
-
-   if (check_mode && !check_file.empty()) {
-      check_config = parse_config_file(check_file, check_warnings);
-      // Config values will be merged with confmap after parsing command-line options
-   }
-
    char **modified_argv = new_argv.data();
    int modified_argc = new_argv.size();
 
@@ -1671,57 +1935,11 @@ int main(int argc, char *argv[])
    free(dummy_app);
    free(dummy_sep);
 
-   // In check mode, merge config file values with confmap
-   // Command-line options take precedence (they're already in confmap)
-   if (check_mode && !check_config.empty()) {
-      // For each config file option, check if it's already set
-      // If not set, add it to confmap
-      for (const auto& kv : check_config) {
-         const std::string& key = kv.first;
-         const std::string& value = kv.second;
-
-         // Find the corresponding SpindleConfigID
-         const std::map<SpindleConfigID, const SpindleOption&>& all_opts = getOptionsByID();
-         bool found = false;
-         SpindleConfigID found_id;
-
-         for (const auto& pair : all_opts) {
-            const SpindleOption& opt = pair.second;
-            if (opt.cmdline_long) {
-               // Remove dashes from cmdline_long to match config file format
-               std::string opt_name = opt.cmdline_long;
-               opt_name.erase(std::remove(opt_name.begin(), opt_name.end(), '-'), opt_name.end());
-               if (opt_name == key) {
-                  found_id = opt.config_id;
-                  found = true;
-                  break;
-               }
-            }
-         }
-
-         if (!found) {
-            check_warnings.push_back("WARNING: Unknown option in config file: " + key);
-            continue;
-         }
-
-         // Validate the value from config file
-         // Note: Full merging with command-line overrides needs deeper integration
-         // For now, we just validate and report warnings
-         std::string errstring;
-         if (!confmap.set(found_id, value, errstring)) {
-            check_warnings.push_back("WARNING: Invalid value for " + key + " in config file: " + errstring);
-         }
-      }
-   }
-
    // Parse and analyze mount points
    std::vector<MountPoint> mounts = parse_mounts();
 
    // Collect header warnings (will add $TMPDIR and SSH checks later)
    std::vector<std::string> header_warnings;
-
-   // Add any warnings from config file parsing
-   header_warnings.insert(header_warnings.end(), check_warnings.begin(), check_warnings.end());
 
    // Handle output file if specified
    FILE* output_fp = nullptr;

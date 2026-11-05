@@ -52,13 +52,13 @@ Allow overwriting an existing output file when used with
 .BR \-o .
 .TP
 .BR \-c ", " \-\-check [=\fIFILE\fR]
-Validate an existing
-.I spindle.conf
-file. Checks option names against the current Spindle version, validates
-enum values, and reports unknown or deprecated options. If
+Validate and merge Spindle configuration options.
 .I FILE
-is not specified, only validates options passed after
-.BR \-\- .
+is optional. Reads options from config file (if provided) and/or
+command-line (after
+.BR \-\- ).
+Command-line options override config file values. Validates option names
+and values, outputting the merged and validated configuration.
 .TP
 .BR \-a ", " \-\-all
 Generate a complete configuration file including all Spindle options.
@@ -110,21 +110,30 @@ The output includes warnings and recommendations as comments.
 .SS Check Mode
 When invoked with
 .BR \-c ,
-the tool validates an existing configuration file:
+the tool validates and merges configuration options. The filename is optional,
+allowing three use cases:
+.TP
+.B \-c FILE
+Reads and validates options from
+.IR FILE .
+.TP
+.B \-c \-\- \-\-option=value
+Validates individual command-line options without reading a file.
+Useful for testing whether an option exists and if its value is valid.
+.TP
+.B \-c FILE \-\- \-\-option=value
+Reads options from
+.IR FILE ,
+merges with command-line options (command-line wins), validates all options,
+and outputs the merged configuration.
+.PP
+The tool validates:
 .IP \(bu 2
-Parses
-.I key = value
-pairs from the file
+Option names are valid in the current Spindle version
 .IP \(bu 2
-Verifies option names are valid in the current Spindle version
-.IP \(bu 2
-Validates enum values (e.g., level must be high/medium/low/off)
+Enum values (e.g., level must be high/medium/low/off/default)
 .IP \(bu 2
 Reports malformed lines, unknown options, and invalid values
-.IP \(bu 2
-Command-line options passed after
-.B \-\-
-take precedence over config file values
 .SS All Mode
 When invoked with
 .BR \-a ,
