@@ -55,6 +55,7 @@ static bool is_remote_filesystem(const std::string& fstype)
    static const char* remote_types[] = {
       "nfs", "nfs4", "lustre", "gpfs", "panfs",
       "ceph", "glusterfs", "afs", "smbfs", "cifs",
+      "overlay",  // Overlay filesystems are considered non-local
       nullptr
    };
 
