@@ -1364,8 +1364,6 @@ int main(int argc, char *argv[])
    int separator_idx = -1;
    std::string output_file;
    bool overwrite = false;
-   std::string check_file;
-   bool check_mode = false;
    bool all_mode = false;
 
    // First pass: check for help/version and find separator, parse output options
@@ -1414,25 +1412,6 @@ int main(int argc, char *argv[])
          }
          if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--all") == 0) {
             all_mode = true;
-         }
-         if (strcmp(argv[i], "-c") == 0) {
-            check_mode = true;
-            // Check if next arg is a file (not starting with -)
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
-               check_file = argv[i + 1];
-               i++; // Skip next argument
-            }
-         }
-         if (strncmp(argv[i], "--check=", 8) == 0) {
-            check_mode = true;
-            check_file = argv[i] + 8;
-         }
-         if (strcmp(argv[i], "--check") == 0) {
-            check_mode = true;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
-               check_file = argv[i + 1];
-               i++; // Skip next argument
-            }
          }
       } else {
          // After --: check for --usage
