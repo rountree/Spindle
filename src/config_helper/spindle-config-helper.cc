@@ -572,32 +572,44 @@ static std::string determine_best_path(const std::vector<MountPoint>& mounts,
 {
    // Priority order: TMPDIR, TEMPDIR, TMP, then /tmp
    const char* env_vars[] = {"TMPDIR", "TEMPDIR", "TMP", nullptr};
+   bool any_env_set = false;
+   std::string first_valid_path;
 
+   // Check environment variables
    for (int i = 0; env_vars[i] != nullptr; i++) {
       const char* env_value = getenv(env_vars[i]);
 
       if (env_value && env_value[0] != '\0') {
+         any_env_set = true;
          std::string tmpdir = env_value;
          std::string error_msg;
 
          if (validate_tmpdir_path(tmpdir, mounts, error_msg)) {
-            return tmpdir;
-         } else {
-            warnings.push_back(std::string("$") + env_vars[i] + " is set to '" +
-                             tmpdir + "' but not usable: " + error_msg);
+            if (first_valid_path.empty()) {
+               first_valid_path = tmpdir;
+            }
          }
       }
    }
 
-   // None of the environment variables are set or usable
-   warnings.push_back("$TMPDIR, $TEMPDIR, and $TMP are not set or not usable");
+   // Generate appropriate WARNING or Note for TMPDIR section
+   if (!any_env_set) {
+      warnings.push_back("WARNING:  The TMPDIR environment variable was not set.");
+   } else if (!first_valid_path.empty()) {
+      warnings.push_back("Note:  The TMPDIR path is local and writeable.");
+   } else {
+      warnings.push_back("WARNING:  The TMPDIR environment variable is not a local, writeable filesystem.");
+   }
+
+   // Return best path found, or fall back to /tmp
+   if (!first_valid_path.empty()) {
+      return first_valid_path;
+   }
 
    // Fall back to /tmp
    std::string error_msg;
    if (validate_tmpdir_path("/tmp", mounts, error_msg)) {
       return "/tmp";
-   } else {
-      warnings.push_back("/tmp is not usable: " + error_msg);
    }
 
    // No suitable path found
@@ -642,8 +654,9 @@ static std::vector<std::string> get_python_sys_paths()
 {
    std::set<std::string> paths;
 
-   // Run Python to get sys.prefix and sys.path
-   const char* cmd = "python3 -c \"import sys; print(sys.prefix); print('\\n'.join(sys.path))\" 2>/dev/null";
+   // Run Python with PYTHONHOME unset to get system defaults
+   // This ensures we get valid paths even if PYTHONHOME is broken
+   const char* cmd = "unset PYTHONHOME; python3 -c \"import sys; print(sys.prefix); print('\\n'.join(sys.path))\" 2>/dev/null";
    FILE* fp = popen(cmd, "r");
    if (!fp) {
       return {};
@@ -669,21 +682,91 @@ static std::vector<std::string> get_python_sys_paths()
    return std::vector<std::string>(paths.begin(), paths.end());
 }
 
+// Deduplicate paths by keeping only top-level directories
+// If /foo is in the list and /foo/bar is also in the list, keep only /foo
+static std::vector<std::string> deduplicate_paths(const std::vector<std::string>& paths)
+{
+   if (paths.empty()) return paths;
+
+   // Sort by path length (shortest first)
+   std::vector<std::string> sorted_paths = paths;
+   std::sort(sorted_paths.begin(), sorted_paths.end(),
+             [](const std::string& a, const std::string& b) {
+                return a.length() < b.length();
+             });
+
+   std::vector<std::string> result;
+   for (const auto& path : sorted_paths) {
+      bool is_subpath = false;
+
+      // Check if this path is under any already-kept path
+      for (const auto& kept : result) {
+         // Check if path starts with kept/
+         if (path.size() > kept.size() &&
+             path.compare(0, kept.size(), kept) == 0 &&
+             (path[kept.size()] == '/' || kept == "/")) {
+            is_subpath = true;
+            break;
+         }
+      }
+
+      if (!is_subpath) {
+         result.push_back(path);
+      }
+   }
+
+   return result;
+}
+
+// Check if a path contains Python libraries
+static bool is_valid_python_prefix(const std::string& path)
+{
+   // Check for lib/python* or lib64/python* directories
+   std::string lib_path = path + "/lib";
+   std::string lib64_path = path + "/lib64";
+
+   DIR* dir = opendir(lib_path.c_str());
+   if (dir) {
+      struct dirent* entry;
+      while ((entry = readdir(dir)) != nullptr) {
+         if (strncmp(entry->d_name, "python", 6) == 0) {
+            closedir(dir);
+            return true;
+         }
+      }
+      closedir(dir);
+   }
+
+   dir = opendir(lib64_path.c_str());
+   if (dir) {
+      struct dirent* entry;
+      while ((entry = readdir(dir)) != nullptr) {
+         if (strncmp(entry->d_name, "python", 6) == 0) {
+            closedir(dir);
+            return true;
+         }
+      }
+      closedir(dir);
+   }
+
+   return false;
+}
+
 static std::vector<std::string> discover_python_prefixes()
 {
    std::set<std::string> prefixes;
 
-   // Priority 1: Check PYTHONPREFIX environment variable
-   const char* pythonprefix_env = getenv("PYTHONPREFIX");
-   if (pythonprefix_env && pythonprefix_env[0] != '\0') {
+   // Priority 1: Check PYTHONHOME environment variable and validate paths
+   const char* pythonhome_env = getenv("PYTHONHOME");
+   if (pythonhome_env && pythonhome_env[0] != '\0') {
       // Parse colon-separated list
-      std::string paths_str(pythonprefix_env);
+      std::string paths_str(pythonhome_env);
       size_t start = 0;
       size_t end = paths_str.find(':');
 
       while (end != std::string::npos) {
          std::string path = paths_str.substr(start, end - start);
-         if (!path.empty() && access(path.c_str(), F_OK) == 0) {
+         if (!path.empty() && is_valid_python_prefix(path)) {
             prefixes.insert(path);
          }
          start = end + 1;
@@ -692,39 +775,25 @@ static std::vector<std::string> discover_python_prefixes()
 
       // Add last path
       std::string path = paths_str.substr(start);
-      if (!path.empty() && access(path.c_str(), F_OK) == 0) {
+      if (!path.empty() && is_valid_python_prefix(path)) {
          prefixes.insert(path);
       }
 
-      // If PYTHONPREFIX provided valid paths, use only those
+      // If PYTHONHOME provided valid Python installations, use only those
       if (!prefixes.empty()) {
-         return std::vector<std::string>(prefixes.begin(), prefixes.end());
+         std::vector<std::string> all_paths(prefixes.begin(), prefixes.end());
+         return deduplicate_paths(all_paths);
       }
    }
 
-   // Priority 2: Try Python sys.prefix and sys.path
+   // Priority 2: Fall back to Python sys.prefix (if PYTHONHOME not set or had no valid paths)
    std::vector<std::string> sys_paths = get_python_sys_paths();
-   if (!sys_paths.empty()) {
-      for (const auto& path : sys_paths) {
-         prefixes.insert(path);
-      }
-      if (!prefixes.empty()) {
-         return std::vector<std::string>(prefixes.begin(), prefixes.end());
-      }
+   for (const auto& path : sys_paths) {
+      prefixes.insert(path);
    }
 
-   // Priority 3: Fall back to 'which python' discovery
-   std::string py2 = get_python_prefix_from_which("python");
-   if (!py2.empty()) {
-      prefixes.insert(py2);
-   }
-
-   std::string py3 = get_python_prefix_from_which("python3");
-   if (!py3.empty()) {
-      prefixes.insert(py3);
-   }
-
-   return std::vector<std::string>(prefixes.begin(), prefixes.end());
+   std::vector<std::string> all_paths(prefixes.begin(), prefixes.end());
+   return deduplicate_paths(all_paths);
 }
 
 static bool has_remote_mount_under(const std::string& prefix, const std::vector<MountPoint>& mounts)
@@ -872,17 +941,16 @@ static void test_ssh_ring(int mpi_rank, int mpi_size, std::vector<std::string>& 
 
       if (all_passed) {
          char msg[512];
-         snprintf(msg, sizeof(msg), "SSH ring test passed: All %d ranks successfully tested SSH connectivity", mpi_size);
+         snprintf(msg, sizeof(msg), "Note:  Tested ssh successfully under MPI using %d nodes.", mpi_size);
          warnings.push_back(std::string(msg));
       } else {
-         char msg[512];
-         snprintf(msg, sizeof(msg), "SSH ring test: %d/%d successful", successful_tests, mpi_size);
-         warnings.push_back(std::string(msg));
+         warnings.push_back("WARNING:  Executing under MPI, but ssh communication among compute nodes failed.");
 
-         // Report failures
+         // Report detailed failures as additional lines
+         char msg[512];
          for (int i = 0; i < mpi_size; i++) {
             if (!all_results[i].success) {
-               snprintf(msg, sizeof(msg), "  Rank %d (%s) -> Rank %d (%s): FAILED - %s",
+               snprintf(msg, sizeof(msg), "#   Rank %d (%s) -> Rank %d (%s): FAILED - %s",
                        all_results[i].rank, all_results[i].source_host,
                        all_results[i].target_rank, all_results[i].target_host,
                        all_results[i].error_msg);
@@ -1092,24 +1160,12 @@ static void print_config_header(std::vector<std::string>& warnings)
    std::cout << "# Generated: " << get_timestamp() << std::endl;
    std::cout << "#" << std::endl;
 
-   if (!warnings.empty()) {
-      // Check if we have any actual warnings vs just informational notes
-      bool has_warnings = false;
-      for (const auto& msg : warnings) {
-         if (msg.find("WARNING") != std::string::npos ||
-             msg.find("CRITICAL") != std::string::npos ||
-             msg.find("failed") != std::string::npos ||
-             msg.find("not set") != std::string::npos ||
-             msg.find("not usable") != std::string::npos) {
-            has_warnings = true;
-            break;
-         }
-      }
+   // Print each warning/note on its own line (already prefixed with # WARNING: or # Note:)
+   for (const auto& warning : warnings) {
+      std::cout << "# " << warning << std::endl;
+   }
 
-      std::cout << "# " << (has_warnings ? "WARNINGS:" : "NOTES:") << std::endl;
-      for (const auto& warning : warnings) {
-         std::cout << "#   " << warning << std::endl;
-      }
+   if (!warnings.empty()) {
       std::cout << "#" << std::endl;
    }
 }
@@ -1122,11 +1178,13 @@ static void print_path_variable(const std::string& name, const std::string& valu
       std::cout << "# " << comment << std::endl;
    }
 
-   std::cout << name << " = " << value << std::endl;
-
-   if (!comments.empty()) {
-      std::cout << std::endl;  // Blank line after commented variables
+   // If value is empty, comment out the line
+   if (value.empty()) {
+      std::cout << "# " << name << " =" << std::endl;
+   } else {
+      std::cout << name << " = " << value << std::endl;
    }
+   // No blank line after - we put blank lines BEFORE sections instead
 }
 
 static void generate_default_config(const ConfigMap& confmap,
@@ -1277,26 +1335,7 @@ static void generate_default_config(const ConfigMap& confmap,
          }
       }
 
-      // Build comments for bad paths (these came from configure/defaults, not user choice)
-      if (!bad_paths.empty()) {
-         if (check_python) {
-            comments.push_back("NOTE: The following paths are not valid Python installations:");
-         } else {
-            comments.push_back("NOTE: The following paths from configure/defaults are not usable:");
-         }
-         for (size_t i = 0; i < path_list.size(); i++) {
-            bool is_bad = (std::find(bad_paths.begin(), bad_paths.end(), path_list[i]) != bad_paths.end());
-            if (is_bad) {
-               comments.push_back("  " + path_list[i] + ":");
-               for (const auto& warning : analyses[i].warnings) {
-                  comments.push_back("    " + warning);
-               }
-            }
-         }
-         if (!good_paths.empty()) {
-            comments.push_back("  (These paths have been filtered out)");
-         }
-      }
+      // Silently drop bad paths - no need to warn about them
 
       // Use only good paths in output
       if (!good_paths.empty()) {
@@ -1307,13 +1346,11 @@ static void generate_default_config(const ConfigMap& confmap,
          }
          paths = filtered;
       } else {
-         // No good paths at all
-         if (check_python) {
-            // For pythonprefix, skip output if no valid Python found
-            comments.push_back("WARNING: No valid Python installations found");
-            return;
-         }
+         // No good paths at all - output commented line
          paths = "";
+         if (check_python) {
+            comments.push_back("WARNING: No valid Python installations found");
+         }
       }
 
       // Add comment for usable paths if no issues
@@ -1331,8 +1368,24 @@ static void generate_default_config(const ConfigMap& confmap,
       print_path_variable(name, paths, comments);
    };
 
+   // Add comment block for commpaths and cachepaths
+   std::cout << "#" << std::endl;
+   std::cout << "# commpaths and cachepaths" << std::endl;
+   std::cout << "# These two settings are colon-separated lists of local (on-node) storage that can be used for Spindle" << std::endl;
+   std::cout << "#   sockets and caches, respectively.  If the entries below are commented out, they either pointed to" << std::endl;
+   std::cout << "#   a non-local filesystem or were not writeable by this user.  Both of these are based on the" << std::endl;
+   std::cout << "#   TMPDIR environment variable; fallback is /tmp." << std::endl;
    output_path_option(confCommPaths, "commpaths");
    output_path_option(confCachePaths, "cachepaths");
+
+   // Add comment block for pythonpath
+   std::cout << "#" << std::endl;
+   std::cout << "# pythonpath" << std::endl;
+   std::cout << "# This is a colon-separated list of paths that contain python packages (including site-specific" << std::endl;
+   std::cout << "#   packages).  The directories will include PYTHONHOME (if specified) and the results of" << std::endl;
+   std::cout << "#   checking python's sys.prefix and sys.path.  If the entry is commented out, the program could" << std::endl;
+   std::cout << "#   not locate python libraries." << std::endl;
+
    output_path_option(confPythonPrefix, "pythonprefix", true);
 
    // Special handling for localprefix - generate from top-level dirs without remote mounts
@@ -1386,9 +1439,12 @@ static void generate_default_config(const ConfigMap& confmap,
          output_value += (dir == "/" ? "/" : dir + "/");
       }
 
-      if (comments.empty()) {
-         comments.push_back("localprefix: Top-level directories without remote mounts");
-      }
+      // Add comment block for localprefix
+      std::cout << "#" << std::endl;
+      std::cout << "# localprefix" << std::endl;
+      std::cout << "# This is a colon-separated list of paths that Spindle should treat as node-local filesystems" << std::endl;
+      std::cout << "# (i.e., Spindle will not attempt to cache anything underneath these directories).  Overlay" << std::endl;
+      std::cout << "# filesystems are assumed to be non-local." << std::endl;
 
       print_path_variable("localprefix", output_value, comments);
    }
@@ -1758,18 +1814,48 @@ static void format_config_value(const ConfigMap &confmap, SpindleConfigID id,
    }
 }
 
+// Detect if we're running under an MPI launcher by checking for MPI-related environment variables
+static bool running_under_mpi()
+{
+   // Check for common MPI launcher environment variables
+   const char* mpi_env_vars[] = {
+      "PMI_RANK",           // PMI-based launchers
+      "PMI_SIZE",
+      "PMIX_RANK",          // PMIx
+      "SLURM_PROCID",       // Slurm
+      "SLURM_NTASKS",
+      "FLUX_TASK_RANK",     // Flux
+      "FLUX_JOB_SIZE",
+      "OMPI_COMM_WORLD_RANK",  // OpenMPI
+      "MPI_LOCALRANKID",    // Intel MPI
+      nullptr
+   };
+
+   for (int i = 0; mpi_env_vars[i] != nullptr; i++) {
+      if (getenv(mpi_env_vars[i]) != nullptr) {
+         return true;
+      }
+   }
+
+   return false;
+}
+
 int main(int argc, char *argv[])
 {
-   // Initialize MPI
+   // Initialize MPI if running under an MPI launcher
    int mpi_rank = 0, mpi_size = 1;
+   bool is_mpi_job = running_under_mpi();
    int mpi_initialized = 0;
-   MPI_Initialized(&mpi_initialized);
 
-   if (!mpi_initialized) {
-      MPI_Init(&argc, &argv);
+   if (is_mpi_job) {
+      MPI_Initialized(&mpi_initialized);
+
+      if (!mpi_initialized) {
+         MPI_Init(&argc, &argv);
+      }
+      MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
    }
-   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
    // Handle -h/--help and -V/--version before config parsing
    // Also check for -- --usage which should show Spindle's usage
@@ -1794,14 +1880,18 @@ int main(int argc, char *argv[])
             if (mpi_rank == 0) {
                print_usage(argv[0]);
             }
-            MPI_Finalize();
+            if (is_mpi_job) {
+               MPI_Finalize();
+            }
             return 0;
          }
          if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0) {
             if (mpi_rank == 0) {
                print_version();
             }
-            MPI_Finalize();
+            if (is_mpi_job) {
+               MPI_Finalize();
+            }
             return 0;
          }
          if (strcmp(argv[i], "--usage") == 0) {
@@ -1891,7 +1981,9 @@ int main(int argc, char *argv[])
       free(usage_flag);
       free(dummy_sep);
       free(dummy_app);
-      MPI_Finalize();
+      if (is_mpi_job) {
+         MPI_Finalize();
+      }
       return 0;
    }
 
@@ -2037,7 +2129,9 @@ int main(int argc, char *argv[])
          fclose(output_fp);
       }
 
-      MPI_Finalize();
+      if (is_mpi_job) {
+         MPI_Finalize();
+      }
       return 0;
    }
 
@@ -2120,22 +2214,49 @@ int main(int argc, char *argv[])
    // Parse and analyze mount points (all ranks need this for SSH test)
    std::vector<MountPoint> mounts = parse_mounts();
 
-   // Collect header warnings (will add $TMPDIR and SSH checks later)
+   // Collect header warnings
    std::vector<std::string> header_warnings;
 
+   // Generate PYTHONHOME warning/note (only rank 0 needs to do this since it's the only one printing)
+   if (mpi_rank == 0) {
+      const char* pythonhome_env = getenv("PYTHONHOME");
+      if (!pythonhome_env || pythonhome_env[0] == '\0') {
+         header_warnings.push_back("WARNING:  The PYTHONHOME environment variable was not set.");
+      } else {
+         // Check if paths are valid
+         std::vector<std::string> py_paths = discover_python_prefixes();
+         if (py_paths.empty()) {
+            header_warnings.push_back("WARNING:  None of the PYTHONHOME paths are valid.");
+         } else {
+            header_warnings.push_back("Note:  At least one path from PYTHONHOME is valid and contains Python packages.");
+         }
+      }
+   }
+
+   // Generate Munge warning/note (only rank 0)
+   if (mpi_rank == 0) {
+      const char* sandbox_engine = getenv("SANDBOX_ENGINE");
+      bool in_sandbox = (sandbox_engine != nullptr);
+
+      if (check_munge_available(in_sandbox)) {
+         header_warnings.push_back("Note:  Munge is working as expected.");
+      } else {
+         header_warnings.push_back("WARNING:  Munge is either not set up or not supported.");
+      }
+   }
+
    // ALL RANKS: Test SSH connectivity using ring topology (uses collective MPI operations)
-   if (mpi_size > 1) {
+   // MPI/SSH warning will be generated by test_ssh_ring or afterward
+   if (!is_mpi_job) {
+      // Not running under MPI
+      if (mpi_rank == 0) {
+         header_warnings.push_back("WARNING:  Not executing under MPI.  This environment may not match what is used by parallel programs.");
+      }
+   } else if (mpi_size > 1) {
       test_ssh_ring(mpi_rank, mpi_size, header_warnings);
    } else if (mpi_rank == 0) {
-      // Single node - test local SSH only
-      std::string hostname = get_hostname_for_ssh();
-      std::string ssh_error;
-      if (!test_ssh_connectivity(hostname, ssh_error)) {
-         header_warnings.push_back("SSH test failed for " + hostname + ": " + ssh_error);
-         header_warnings.push_back("  (SSH keys may not be configured for compute node access)");
-      } else {
-         header_warnings.push_back("SSH test passed for " + hostname);
-      }
+      // Single node - add single node warning
+      header_warnings.push_back("WARNING:  Executing under MPI with a single compute node.  This may not give accurate ssh results.");
    }
 
    // Only rank 0 generates and prints output
@@ -2150,7 +2271,9 @@ int main(int argc, char *argv[])
          if (stat(output_file.c_str(), &st) == 0 && !overwrite) {
             std::cerr << "Error: Output file '" << output_file << "' already exists." << std::endl;
             std::cerr << "Use --overwrite to overwrite the existing file." << std::endl;
-            MPI_Finalize();
+            if (is_mpi_job) {
+               MPI_Finalize();
+            }
             return 1;
          }
 
@@ -2159,7 +2282,9 @@ int main(int argc, char *argv[])
          if (!output_fp) {
             std::cerr << "Error: Could not open output file '" << output_file
                       << "': " << strerror(errno) << std::endl;
-            MPI_Finalize();
+            if (is_mpi_job) {
+               MPI_Finalize();
+            }
             return 1;
          }
 
@@ -2184,6 +2309,8 @@ int main(int argc, char *argv[])
       }
    }
 
-   MPI_Finalize();
+   if (is_mpi_job) {
+      MPI_Finalize();
+   }
    return 0;
 }
