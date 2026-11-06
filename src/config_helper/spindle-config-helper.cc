@@ -939,9 +939,20 @@ static void test_ssh_ring(int mpi_rank, int mpi_size, std::vector<std::string>& 
          }
       }
 
+      // Count unique nodes from the hostname list
+      std::set<std::string> unique_nodes;
+      for (int i = 0; i < mpi_size; i++) {
+         std::string hostname(&all_hosts[i * MAX_HOSTNAME_LEN]);
+         if (!hostname.empty()) {
+            unique_nodes.insert(hostname);
+         }
+      }
+      int num_nodes = unique_nodes.size();
+
       if (all_passed) {
          char msg[512];
-         snprintf(msg, sizeof(msg), "Note:  Tested ssh successfully under MPI using %d nodes.", mpi_size);
+         snprintf(msg, sizeof(msg), "Note:  Tested ssh successfully under MPI using %d ranks across %d nodes.",
+                  mpi_size, num_nodes);
          warnings.push_back(std::string(msg));
       } else {
          warnings.push_back("WARNING:  Executing under MPI, but ssh communication among compute nodes failed.");
@@ -1378,9 +1389,9 @@ static void generate_default_config(const ConfigMap& confmap,
    output_path_option(confCommPaths, "commpaths");
    output_path_option(confCachePaths, "cachepaths");
 
-   // Add comment block for pythonpath
+   // Add comment block for python-prefix
    std::cout << "#" << std::endl;
-   std::cout << "# pythonpath" << std::endl;
+   std::cout << "# python-prefix" << std::endl;
    std::cout << "# This is a colon-separated list of paths that contain python packages (including site-specific" << std::endl;
    std::cout << "#   packages).  The directories will include PYTHONHOME (if specified) and the results of" << std::endl;
    std::cout << "#   checking python's sys.prefix and sys.path.  If the entry is commented out, the program could" << std::endl;
