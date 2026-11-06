@@ -1362,10 +1362,7 @@ int main(int argc, char *argv[])
    // Also check for -- --usage which should show Spindle's usage
    bool show_spindle_usage = false;
    int separator_idx = -1;
-   std::string output_file;
-   bool overwrite = false;
-
-   // First pass: check for help/version and find separator, parse output options
+   // First pass: check for help/version and find separator
    for (int i = 1; i < argc; i++) {
       if (strcmp(argv[i], "--") == 0) {
          separator_idx = i;
@@ -1394,20 +1391,6 @@ int main(int argc, char *argv[])
          }
          if (strcmp(argv[i], "--usage") == 0) {
             show_spindle_usage = true;
-         }
-         if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-            output_file = argv[i + 1];
-            i++; // Skip next argument
-         }
-         if (strncmp(argv[i], "--output=", 9) == 0) {
-            output_file = argv[i] + 9;
-         }
-         if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
-            output_file = argv[i + 1];
-            i++; // Skip next argument
-         }
-         if (strcmp(argv[i], "--overwrite") == 0) {
-            overwrite = true;
          }
       } else {
          // After --: check for --usage
@@ -1470,44 +1453,17 @@ int main(int argc, char *argv[])
    std::vector<char*> new_argv;
    new_argv.push_back(argv[0]);  // Program name
 
-   auto is_config_helper_opt = [](const char* arg) {
-      return strcmp(arg, "-o") == 0 ||
-             strncmp(arg, "--output", 8) == 0 ||
-             strcmp(arg, "--overwrite") == 0;
-   };
+   // No config-helper options to filter anymore (only -h/-V which exit early)
+   // Just copy all args, respecting the -- separator
 
    if (separator_idx != -1) {
-      // Add config-helper options (before --), filtering out our options
-      for (int i = 1; i < separator_idx; i++) {
-         if (is_config_helper_opt(argv[i])) {
-            // Skip this arg, and if it takes an argument, skip that too
-            if ((strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0) &&
-                i + 1 < argc && argv[i + 1][0] != '-') {
-               i++; // Skip the file argument too
-            }
-            continue;
-         }
-         new_argv.push_back(argv[i]);
-      }
-
-      // Add spindle options (after --)
+      // Add args before -- (should be nothing since -h/-V exit early)
+      // And add spindle options (after --)
       for (int i = separator_idx + 1; i < argc; i++) {
          new_argv.push_back(argv[i]);
       }
-   } else {
-      // No -- found, copy args but filter out config-helper options
-      for (int i = 1; i < argc; i++) {
-         if (is_config_helper_opt(argv[i])) {
-            if ((strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0 ||
-                 strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--check") == 0) &&
-                i + 1 < argc && argv[i + 1][0] != '-') {
-               i++; // Skip the file argument too
-            }
-            continue;
-         }
-         new_argv.push_back(argv[i]);
-      }
    }
+   // If no --, nothing to add (no spindle options)
 
    // Add dummy app
    char *dummy_sep = strdup("--");
@@ -1584,48 +1540,8 @@ int main(int argc, char *argv[])
 
    // Only rank 0 generates and prints output
    if (mpi_rank == 0) {
-      // Handle output file if specified
-      FILE* output_fp = nullptr;
-      int saved_stdout = -1;
-
-      if (!output_file.empty()) {
-         // Check if file exists
-         struct stat st;
-         if (stat(output_file.c_str(), &st) == 0 && !overwrite) {
-            std::cerr << "Error: Output file '" << output_file << "' already exists." << std::endl;
-            std::cerr << "Use --overwrite to overwrite the existing file." << std::endl;
-            if (is_mpi_job) {
-               MPI_Finalize();
-            }
-            return 1;
-         }
-
-         // Open output file
-         output_fp = fopen(output_file.c_str(), "w");
-         if (!output_fp) {
-            std::cerr << "Error: Could not open output file '" << output_file
-                      << "': " << strerror(errno) << std::endl;
-            if (is_mpi_job) {
-               MPI_Finalize();
-            }
-            return 1;
-         }
-
-         // Redirect stdout to file
-         saved_stdout = dup(STDOUT_FILENO);
-         dup2(fileno(output_fp), STDOUT_FILENO);
-      }
-
-      // Generate config based on mode
+      // Generate config to stdout
       generate_default_config(confmap, mounts, header_warnings, mpi_rank, mpi_size);
-
-      // Restore stdout and close file if we redirected
-      if (output_fp) {
-         fflush(stdout);
-         dup2(saved_stdout, STDOUT_FILENO);
-         close(saved_stdout);
-         fclose(output_fp);
-      }
    }
 
    if (is_mpi_job) {
