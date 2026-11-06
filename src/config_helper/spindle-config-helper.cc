@@ -1364,7 +1364,6 @@ int main(int argc, char *argv[])
    int separator_idx = -1;
    std::string output_file;
    bool overwrite = false;
-   bool all_mode = false;
 
    // First pass: check for help/version and find separator, parse output options
    for (int i = 1; i < argc; i++) {
@@ -1409,9 +1408,6 @@ int main(int argc, char *argv[])
          }
          if (strcmp(argv[i], "--overwrite") == 0) {
             overwrite = true;
-         }
-         if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--all") == 0) {
-            all_mode = true;
          }
       } else {
          // After --: check for --usage
@@ -1476,11 +1472,7 @@ int main(int argc, char *argv[])
 
    auto is_config_helper_opt = [](const char* arg) {
       return strcmp(arg, "-o") == 0 ||
-             strcmp(arg, "-c") == 0 ||
-             strcmp(arg, "-a") == 0 ||
              strncmp(arg, "--output", 8) == 0 ||
-             strncmp(arg, "--check", 7) == 0 ||
-             strcmp(arg, "--all") == 0 ||
              strcmp(arg, "--overwrite") == 0;
    };
 
@@ -1489,8 +1481,7 @@ int main(int argc, char *argv[])
       for (int i = 1; i < separator_idx; i++) {
          if (is_config_helper_opt(argv[i])) {
             // Skip this arg, and if it takes an argument, skip that too
-            if ((strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0 ||
-                 strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--check") == 0) &&
+            if ((strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0) &&
                 i + 1 < argc && argv[i + 1][0] != '-') {
                i++; // Skip the file argument too
             }
