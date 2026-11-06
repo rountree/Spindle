@@ -118,6 +118,10 @@ AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
 am__v_lt_0 = --silent
 am__v_lt_1 = 
+spindle_config_helper_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(spindle_config_helper_CXXFLAGS) $(CXXFLAGS) \
+	$(spindle_config_helper_LDFLAGS) $(LDFLAGS) -o $@
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -382,8 +386,11 @@ spindle_config_helper_CPPFLAGS = -I$(top_srcdir)/src/include \
                                   -I$(top_srcdir)/src/server/comlib \
                                   -I$(top_srcdir)/src/cobo \
                                   -I$(top_srcdir)/src/fe/comlib \
-                                  -DPKGSYSCONFDIR=\"$(PKGSYSCONF_DIR)\"
+                                  -DPKGSYSCONFDIR=\"$(PKGSYSCONF_DIR)\" \
+                                  $(MPI_CXXFLAGS)
 
+spindle_config_helper_CXXFLAGS = $(MPI_CXXFLAGS)
+spindle_config_helper_LDFLAGS = $(MPI_CXXLDFLAGS)
 spindle_config_helper_LDADD = $(top_builddir)/src/fe/startup/libconfigparse.a \
                                $(top_builddir)/src/fe/logging/libspindleflogc.la \
                                -lpthread
@@ -474,7 +481,7 @@ clean-binPROGRAMS:
 
 spindle-config-helper$(EXEEXT): $(spindle_config_helper_OBJECTS) $(spindle_config_helper_DEPENDENCIES) $(EXTRA_spindle_config_helper_DEPENDENCIES) 
 	@rm -f spindle-config-helper$(EXEEXT)
-	$(AM_V_CXXLD)$(CXXLINK) $(spindle_config_helper_OBJECTS) $(spindle_config_helper_LDADD) $(LIBS)
+	$(AM_V_CXXLD)$(spindle_config_helper_LINK) $(spindle_config_helper_OBJECTS) $(spindle_config_helper_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -515,18 +522,18 @@ am--depfiles: $(am__depfiles_remade)
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LTCXXCOMPILE) -c -o $@ $<
 
 spindle_config_helper-spindle-config-helper.o: spindle-config-helper.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(spindle_config_helper_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT spindle_config_helper-spindle-config-helper.o -MD -MP -MF $(DEPDIR)/spindle_config_helper-spindle-config-helper.Tpo -c -o spindle_config_helper-spindle-config-helper.o `test -f 'spindle-config-helper.cc' || echo '$(srcdir)/'`spindle-config-helper.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(spindle_config_helper_CPPFLAGS) $(CPPFLAGS) $(spindle_config_helper_CXXFLAGS) $(CXXFLAGS) -MT spindle_config_helper-spindle-config-helper.o -MD -MP -MF $(DEPDIR)/spindle_config_helper-spindle-config-helper.Tpo -c -o spindle_config_helper-spindle-config-helper.o `test -f 'spindle-config-helper.cc' || echo '$(srcdir)/'`spindle-config-helper.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/spindle_config_helper-spindle-config-helper.Tpo $(DEPDIR)/spindle_config_helper-spindle-config-helper.Po
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='spindle-config-helper.cc' object='spindle_config_helper-spindle-config-helper.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(spindle_config_helper_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o spindle_config_helper-spindle-config-helper.o `test -f 'spindle-config-helper.cc' || echo '$(srcdir)/'`spindle-config-helper.cc
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(spindle_config_helper_CPPFLAGS) $(CPPFLAGS) $(spindle_config_helper_CXXFLAGS) $(CXXFLAGS) -c -o spindle_config_helper-spindle-config-helper.o `test -f 'spindle-config-helper.cc' || echo '$(srcdir)/'`spindle-config-helper.cc
 
 spindle_config_helper-spindle-config-helper.obj: spindle-config-helper.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(spindle_config_helper_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT spindle_config_helper-spindle-config-helper.obj -MD -MP -MF $(DEPDIR)/spindle_config_helper-spindle-config-helper.Tpo -c -o spindle_config_helper-spindle-config-helper.obj `if test -f 'spindle-config-helper.cc'; then $(CYGPATH_W) 'spindle-config-helper.cc'; else $(CYGPATH_W) '$(srcdir)/spindle-config-helper.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(spindle_config_helper_CPPFLAGS) $(CPPFLAGS) $(spindle_config_helper_CXXFLAGS) $(CXXFLAGS) -MT spindle_config_helper-spindle-config-helper.obj -MD -MP -MF $(DEPDIR)/spindle_config_helper-spindle-config-helper.Tpo -c -o spindle_config_helper-spindle-config-helper.obj `if test -f 'spindle-config-helper.cc'; then $(CYGPATH_W) 'spindle-config-helper.cc'; else $(CYGPATH_W) '$(srcdir)/spindle-config-helper.cc'; fi`
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/spindle_config_helper-spindle-config-helper.Tpo $(DEPDIR)/spindle_config_helper-spindle-config-helper.Po
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='spindle-config-helper.cc' object='spindle_config_helper-spindle-config-helper.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(spindle_config_helper_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o spindle_config_helper-spindle-config-helper.obj `if test -f 'spindle-config-helper.cc'; then $(CYGPATH_W) 'spindle-config-helper.cc'; else $(CYGPATH_W) '$(srcdir)/spindle-config-helper.cc'; fi`
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(spindle_config_helper_CPPFLAGS) $(CPPFLAGS) $(spindle_config_helper_CXXFLAGS) $(CXXFLAGS) -c -o spindle_config_helper-spindle-config-helper.obj `if test -f 'spindle-config-helper.cc'; then $(CYGPATH_W) 'spindle-config-helper.cc'; else $(CYGPATH_W) '$(srcdir)/spindle-config-helper.cc'; fi`
 
 mostlyclean-libtool:
 	-rm -f *.lo

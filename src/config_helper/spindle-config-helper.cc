@@ -34,6 +34,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <time.h>
 #include <dirent.h>
 #include <errno.h>
+#include <mpi.h>
 
 extern "C" {
 #include "keyfile.h"
@@ -568,21 +569,27 @@ static bool validate_tmpdir_path(const std::string& path,
 static std::string determine_best_path(const std::vector<MountPoint>& mounts,
                                         std::vector<std::string>& warnings)
 {
-   // Check $TMPDIR first
-   const char* tmpdir_env = getenv("TMPDIR");
+   // Priority order: TMPDIR, TEMPDIR, TMP, then /tmp
+   const char* env_vars[] = {"TMPDIR", "TEMPDIR", "TMP", nullptr};
 
-   if (tmpdir_env && tmpdir_env[0] != '\0') {
-      std::string tmpdir = tmpdir_env;
-      std::string error_msg;
+   for (int i = 0; env_vars[i] != nullptr; i++) {
+      const char* env_value = getenv(env_vars[i]);
 
-      if (validate_tmpdir_path(tmpdir, mounts, error_msg)) {
-         return tmpdir;
-      } else {
-         warnings.push_back("$TMPDIR is set to '" + tmpdir + "' but not usable: " + error_msg);
+      if (env_value && env_value[0] != '\0') {
+         std::string tmpdir = env_value;
+         std::string error_msg;
+
+         if (validate_tmpdir_path(tmpdir, mounts, error_msg)) {
+            return tmpdir;
+         } else {
+            warnings.push_back(std::string("$") + env_vars[i] + " is set to '" +
+                             tmpdir + "' but not usable: " + error_msg);
+         }
       }
-   } else {
-      warnings.push_back("$TMPDIR is not set");
    }
+
+   // None of the environment variables are set or usable
+   warnings.push_back("$TMPDIR, $TEMPDIR, and $TMP are not set or not usable");
 
    // Fall back to /tmp
    std::string error_msg;
@@ -629,17 +636,88 @@ static std::string get_python_prefix_from_which(const char* python_cmd)
    return result;
 }
 
+// Get Python paths from sys.prefix and sys.path
+static std::vector<std::string> get_python_sys_paths()
+{
+   std::set<std::string> paths;
+
+   // Run Python to get sys.prefix and sys.path
+   const char* cmd = "python3 -c \"import sys; print(sys.prefix); print('\\n'.join(sys.path))\" 2>/dev/null";
+   FILE* fp = popen(cmd, "r");
+   if (!fp) {
+      return {};
+   }
+
+   char line[PATH_MAX];
+   while (fgets(line, sizeof(line), fp) != nullptr) {
+      // Remove trailing newline
+      size_t len = strlen(line);
+      if (len > 0 && line[len-1] == '\n') {
+         line[len-1] = '\0';
+      }
+
+      if (strlen(line) > 0) {
+         // Check if this looks like a valid path
+         if (line[0] == '/' && access(line, F_OK) == 0) {
+            paths.insert(line);
+         }
+      }
+   }
+   pclose(fp);
+
+   return std::vector<std::string>(paths.begin(), paths.end());
+}
+
 static std::vector<std::string> discover_python_prefixes()
 {
    std::set<std::string> prefixes;
 
-   // Try 'which python'
+   // Priority 1: Check PYTHONPREFIX environment variable
+   const char* pythonprefix_env = getenv("PYTHONPREFIX");
+   if (pythonprefix_env && pythonprefix_env[0] != '\0') {
+      // Parse colon-separated list
+      std::string paths_str(pythonprefix_env);
+      size_t start = 0;
+      size_t end = paths_str.find(':');
+
+      while (end != std::string::npos) {
+         std::string path = paths_str.substr(start, end - start);
+         if (!path.empty() && access(path.c_str(), F_OK) == 0) {
+            prefixes.insert(path);
+         }
+         start = end + 1;
+         end = paths_str.find(':', start);
+      }
+
+      // Add last path
+      std::string path = paths_str.substr(start);
+      if (!path.empty() && access(path.c_str(), F_OK) == 0) {
+         prefixes.insert(path);
+      }
+
+      // If PYTHONPREFIX provided valid paths, use only those
+      if (!prefixes.empty()) {
+         return std::vector<std::string>(prefixes.begin(), prefixes.end());
+      }
+   }
+
+   // Priority 2: Try Python sys.prefix and sys.path
+   std::vector<std::string> sys_paths = get_python_sys_paths();
+   if (!sys_paths.empty()) {
+      for (const auto& path : sys_paths) {
+         prefixes.insert(path);
+      }
+      if (!prefixes.empty()) {
+         return std::vector<std::string>(prefixes.begin(), prefixes.end());
+      }
+   }
+
+   // Priority 3: Fall back to 'which python' discovery
    std::string py2 = get_python_prefix_from_which("python");
    if (!py2.empty()) {
       prefixes.insert(py2);
    }
 
-   // Try 'which python3'
    std::string py3 = get_python_prefix_from_which("python3");
    if (!py3.empty()) {
       prefixes.insert(py3);
@@ -721,6 +799,97 @@ static std::string get_hostname_for_ssh()
       return "";
    }
    return std::string(hostname);
+}
+
+// Forward declaration
+static bool test_ssh_connectivity(const std::string& hostname, std::string& error_msg);
+
+// Structure to hold SSH test results for MPI communication
+struct SSHTestResult {
+   int rank;
+   int target_rank;
+   bool success;
+   char error_msg[256];
+   char source_host[256];
+   char target_host[256];
+};
+
+// Ring topology SSH test: each rank tests SSH to next rank
+static void test_ssh_ring(int mpi_rank, int mpi_size, std::vector<std::string>& warnings)
+{
+   // Get local hostname
+   std::string local_hostname = get_hostname_for_ssh();
+
+   // Exchange hostnames among all ranks using MPI_Allgather
+   const int MAX_HOSTNAME_LEN = 256;
+   char local_host[MAX_HOSTNAME_LEN];
+   char all_hosts[MAX_HOSTNAME_LEN * mpi_size];
+
+   strncpy(local_host, local_hostname.c_str(), MAX_HOSTNAME_LEN - 1);
+   local_host[MAX_HOSTNAME_LEN - 1] = '\0';
+
+   MPI_Allgather(local_host, MAX_HOSTNAME_LEN, MPI_CHAR,
+                 all_hosts, MAX_HOSTNAME_LEN, MPI_CHAR,
+                 MPI_COMM_WORLD);
+
+   // Determine target: (rank + 1) % size
+   int target_rank = (mpi_rank + 1) % mpi_size;
+   std::string target_hostname(&all_hosts[target_rank * MAX_HOSTNAME_LEN]);
+
+   // Test SSH to target
+   SSHTestResult result;
+   result.rank = mpi_rank;
+   result.target_rank = target_rank;
+   strncpy(result.source_host, local_hostname.c_str(), 255);
+   result.source_host[255] = '\0';
+   strncpy(result.target_host, target_hostname.c_str(), 255);
+   result.target_host[255] = '\0';
+
+   std::string ssh_error;
+   result.success = test_ssh_connectivity(target_hostname, ssh_error);
+   strncpy(result.error_msg, ssh_error.c_str(), 255);
+   result.error_msg[255] = '\0';
+
+   // Gather all results to rank 0
+   SSHTestResult all_results[mpi_size];
+   MPI_Gather(&result, sizeof(SSHTestResult), MPI_BYTE,
+              all_results, sizeof(SSHTestResult), MPI_BYTE,
+              0, MPI_COMM_WORLD);
+
+   // Rank 0 processes and reports results
+   if (mpi_rank == 0) {
+      int successful_tests = 0;
+      bool all_passed = true;
+
+      for (int i = 0; i < mpi_size; i++) {
+         if (all_results[i].success) {
+            successful_tests++;
+         } else {
+            all_passed = false;
+         }
+      }
+
+      if (all_passed) {
+         char msg[512];
+         snprintf(msg, sizeof(msg), "SSH ring test passed: All %d ranks successfully tested SSH connectivity", mpi_size);
+         warnings.push_back(std::string(msg));
+      } else {
+         char msg[512];
+         snprintf(msg, sizeof(msg), "SSH ring test: %d/%d successful", successful_tests, mpi_size);
+         warnings.push_back(std::string(msg));
+
+         // Report failures
+         for (int i = 0; i < mpi_size; i++) {
+            if (!all_results[i].success) {
+               snprintf(msg, sizeof(msg), "  Rank %d (%s) -> Rank %d (%s): FAILED - %s",
+                       all_results[i].rank, all_results[i].source_host,
+                       all_results[i].target_rank, all_results[i].target_host,
+                       all_results[i].error_msg);
+               warnings.push_back(std::string(msg));
+            }
+         }
+      }
+   }
 }
 
 static bool test_ssh_connectivity(const std::string& hostname, std::string& error_msg)
@@ -961,7 +1130,8 @@ static void print_path_variable(const std::string& name, const std::string& valu
 
 static void generate_default_config(const ConfigMap& confmap,
                                      const std::vector<MountPoint>& mounts,
-                                     std::vector<std::string>& header_warnings)
+                                     std::vector<std::string>& header_warnings,
+                                     int mpi_rank, int mpi_size)
 {
    // Determine best path for commpaths/cachepaths if using defaults
    std::string recommended_path;
@@ -993,15 +1163,7 @@ static void generate_default_config(const ConfigMap& confmap,
       }
    }
 
-   // Test SSH connectivity
-   std::string hostname = get_hostname_for_ssh();
-   std::string ssh_error;
-   if (!test_ssh_connectivity(hostname, ssh_error)) {
-      header_warnings.push_back("SSH test failed for " + hostname + ": " + ssh_error);
-      header_warnings.push_back("  (SSH keys may not be configured for compute node access)");
-   } else {
-      header_warnings.push_back("SSH test passed for " + hostname);
-   }
+   // SSH test results already collected in header_warnings (done in main before calling this function)
 
    // Header
    print_config_header(header_warnings);
@@ -1597,6 +1759,17 @@ static void format_config_value(const ConfigMap &confmap, SpindleConfigID id,
 
 int main(int argc, char *argv[])
 {
+   // Initialize MPI
+   int mpi_rank = 0, mpi_size = 1;
+   int mpi_initialized = 0;
+   MPI_Initialized(&mpi_initialized);
+
+   if (!mpi_initialized) {
+      MPI_Init(&argc, &argv);
+   }
+   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+
    // Handle -h/--help and -V/--version before config parsing
    // Also check for -- --usage which should show Spindle's usage
    bool show_spindle_usage = false;
@@ -1617,11 +1790,17 @@ int main(int argc, char *argv[])
       if (separator_idx == -1) {
          // Before --: check for config-helper options
          if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-            print_usage(argv[0]);
+            if (mpi_rank == 0) {
+               print_usage(argv[0]);
+            }
+            MPI_Finalize();
             return 0;
          }
          if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0) {
-            print_version();
+            if (mpi_rank == 0) {
+               print_version();
+            }
+            MPI_Finalize();
             return 0;
          }
          if (strcmp(argv[i], "--usage") == 0) {
@@ -1711,6 +1890,7 @@ int main(int argc, char *argv[])
       free(usage_flag);
       free(dummy_sep);
       free(dummy_app);
+      MPI_Finalize();
       return 0;
    }
 
@@ -1856,6 +2036,7 @@ int main(int argc, char *argv[])
          fclose(output_fp);
       }
 
+      MPI_Finalize();
       return 0;
    }
 
@@ -1935,52 +2116,73 @@ int main(int argc, char *argv[])
    free(dummy_app);
    free(dummy_sep);
 
-   // Parse and analyze mount points
+   // Parse and analyze mount points (all ranks need this for SSH test)
    std::vector<MountPoint> mounts = parse_mounts();
 
    // Collect header warnings (will add $TMPDIR and SSH checks later)
    std::vector<std::string> header_warnings;
 
-   // Handle output file if specified
-   FILE* output_fp = nullptr;
-   int saved_stdout = -1;
+   // ALL RANKS: Test SSH connectivity using ring topology (uses collective MPI operations)
+   if (mpi_size > 1) {
+      test_ssh_ring(mpi_rank, mpi_size, header_warnings);
+   } else if (mpi_rank == 0) {
+      // Single node - test local SSH only
+      std::string hostname = get_hostname_for_ssh();
+      std::string ssh_error;
+      if (!test_ssh_connectivity(hostname, ssh_error)) {
+         header_warnings.push_back("SSH test failed for " + hostname + ": " + ssh_error);
+         header_warnings.push_back("  (SSH keys may not be configured for compute node access)");
+      } else {
+         header_warnings.push_back("SSH test passed for " + hostname);
+      }
+   }
 
-   if (!output_file.empty()) {
-      // Check if file exists
-      struct stat st;
-      if (stat(output_file.c_str(), &st) == 0 && !overwrite) {
-         std::cerr << "Error: Output file '" << output_file << "' already exists." << std::endl;
-         std::cerr << "Use --overwrite to overwrite the existing file." << std::endl;
-         return 1;
+   // Only rank 0 generates and prints output
+   if (mpi_rank == 0) {
+      // Handle output file if specified
+      FILE* output_fp = nullptr;
+      int saved_stdout = -1;
+
+      if (!output_file.empty()) {
+         // Check if file exists
+         struct stat st;
+         if (stat(output_file.c_str(), &st) == 0 && !overwrite) {
+            std::cerr << "Error: Output file '" << output_file << "' already exists." << std::endl;
+            std::cerr << "Use --overwrite to overwrite the existing file." << std::endl;
+            MPI_Finalize();
+            return 1;
+         }
+
+         // Open output file
+         output_fp = fopen(output_file.c_str(), "w");
+         if (!output_fp) {
+            std::cerr << "Error: Could not open output file '" << output_file
+                      << "': " << strerror(errno) << std::endl;
+            MPI_Finalize();
+            return 1;
+         }
+
+         // Redirect stdout to file
+         saved_stdout = dup(STDOUT_FILENO);
+         dup2(fileno(output_fp), STDOUT_FILENO);
       }
 
-      // Open output file
-      output_fp = fopen(output_file.c_str(), "w");
-      if (!output_fp) {
-         std::cerr << "Error: Could not open output file '" << output_file
-                   << "': " << strerror(errno) << std::endl;
-         return 1;
+      // Generate config based on mode
+      if (all_mode) {
+         generate_all_config(confmap, mounts, header_warnings);
+      } else {
+         generate_default_config(confmap, mounts, header_warnings, mpi_rank, mpi_size);
       }
 
-      // Redirect stdout to file
-      saved_stdout = dup(STDOUT_FILENO);
-      dup2(fileno(output_fp), STDOUT_FILENO);
+      // Restore stdout and close file if we redirected
+      if (output_fp) {
+         fflush(stdout);
+         dup2(saved_stdout, STDOUT_FILENO);
+         close(saved_stdout);
+         fclose(output_fp);
+      }
    }
 
-   // Generate config based on mode
-   if (all_mode) {
-      generate_all_config(confmap, mounts, header_warnings);
-   } else {
-      generate_default_config(confmap, mounts, header_warnings);
-   }
-
-   // Restore stdout and close file if we redirected
-   if (output_fp) {
-      fflush(stdout);
-      dup2(saved_stdout, STDOUT_FILENO);
-      close(saved_stdout);
-      fclose(output_fp);
-   }
-
+   MPI_Finalize();
    return 0;
 }

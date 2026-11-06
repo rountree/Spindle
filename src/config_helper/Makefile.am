@@ -10,7 +10,12 @@ spindle_config_helper_CPPFLAGS = -I$(top_srcdir)/src/include \
                                   -I$(top_srcdir)/src/server/comlib \
                                   -I$(top_srcdir)/src/cobo \
                                   -I$(top_srcdir)/src/fe/comlib \
-                                  -DPKGSYSCONFDIR=\"$(PKGSYSCONF_DIR)\"
+                                  -DPKGSYSCONFDIR=\"$(PKGSYSCONF_DIR)\" \
+                                  $(MPI_CXXFLAGS)
+
+spindle_config_helper_CXXFLAGS = $(MPI_CXXFLAGS)
+
+spindle_config_helper_LDFLAGS = $(MPI_CXXLDFLAGS)
 
 spindle_config_helper_LDADD = $(top_builddir)/src/fe/startup/libconfigparse.a \
                                $(top_builddir)/src/fe/logging/libspindleflogc.la \
